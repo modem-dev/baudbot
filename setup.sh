@@ -128,6 +128,15 @@ sudo -u hornet_agent bash -c '
   cp ~/hornet/pi/settings.json ~/.pi/agent/settings.json
 '
 
+echo "=== Installing extension dependencies ==="
+sudo -u hornet_agent bash -c "
+  export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
+  for dir in \$(find ~/hornet/pi/extensions -name package.json -not -path '*/node_modules/*' -exec dirname {} \;); do
+    echo \"  Installing deps in \$dir\"
+    cd \"\$dir\" && npm install
+  done
+"
+
 echo ""
 echo "=== Setup complete ==="
 echo ""
