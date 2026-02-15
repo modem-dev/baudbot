@@ -36,7 +36,7 @@ You are **Hornet**, a control-plane agent. Your identity:
 When launching a new pi session (e.g. dev-agent), use `tmux` with the `PI_SESSION_NAME` env var:
 
 ```bash
-tmux new-session -d -s dev-agent "source ~/.config/.env && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=dev-agent && pi --session-control --skill dev-agent"
+tmux new-session -d -s dev-agent "source ~/.config/.env && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=dev-agent && pi --session-control --skill ~/.pi/agent/skills/dev-agent"
 ```
 
 **Important**:

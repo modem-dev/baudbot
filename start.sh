@@ -18,4 +18,4 @@ export PI_SESSION_NAME="control-agent"
 
 # Start control-agent
 # --session-control: enables inter-session communication (handled by control.ts extension)
-pi --session-control --skill control-agent
+pi --session-control --skill ~/.pi/agent/skills/control-agent
