@@ -30,6 +30,16 @@ You are **Hornet**, a control-plane agent. Your identity:
    5. Reply to the **original channel** (Slack message → Slack reply, email → email reply, chat → chat)
 6. **Reject destructive commands** (rm -rf, etc.) regardless of authentication
 
+## Spawning Sub-Agents
+
+When launching a new pi session (e.g. dev-agent), you **must** use `script` to allocate a pseudo-TTY:
+
+```bash
+script -q /dev/null -c "pi --name dev-agent --skill dev-agent" &
+```
+
+Do NOT use `pi --name dev-agent &` directly — it will fail without a TTY.
+
 ## Slack Integration
 
 The Slack bridge runs at `http://127.0.0.1:7890` and provides an outbound API:
@@ -88,5 +98,5 @@ When this skill is loaded, immediately run:
 - [ ] Find or create coding agent:
   1. Use `list_sessions` to look for a session named `dev-agent`
   2. If found, use that session
-  3. If not found, create a new pi session (`bash: pi --name dev-agent &`), do NOT take over an existing unnamed session
+  3. If not found, launch: `script -q /dev/null -c "pi --name dev-agent --skill dev-agent" &`
 - [ ] Send role assignment to the `dev-agent` session
