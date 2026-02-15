@@ -5,7 +5,6 @@
 # Prerequisites:
 #   - Arch Linux (or similar)
 #   - Docker installed
-#   - Node.js available in system PATH or will be installed
 #
 # This script:
 #   1. Creates the hornet_agent user
@@ -37,6 +36,9 @@ else
 fi
 chmod 750 "$HORNET_HOME"
 
+echo "=== Ensuring .bashrc exists ==="
+sudo -u hornet_agent touch "$HORNET_HOME/.bashrc"
+
 echo "=== Adding $ADMIN_USER to hornet_agent group ==="
 usermod -aG hornet_agent "$ADMIN_USER"
 
@@ -44,6 +46,7 @@ echo "=== Generating SSH key ==="
 if [ ! -f "$HORNET_HOME/.ssh/id_ed25519" ]; then
   sudo -u hornet_agent bash -c '
     mkdir -p ~/.ssh
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
     ssh-keygen -t ed25519 -C "hornet-fw" -f ~/.ssh/id_ed25519 -N ""
     cat > ~/.ssh/config << SSHEOF
 Host github.com
@@ -52,7 +55,7 @@ Host github.com
 SSHEOF
     chmod 700 ~/.ssh
     chmod 600 ~/.ssh/id_ed25519 ~/.ssh/config
-    chmod 644 ~/.ssh/id_ed25519.pub
+    chmod 644 ~/.ssh/id_ed25519.pub ~/.ssh/known_hosts
   '
   echo "SSH public key:"
   cat "$HORNET_HOME/.ssh/id_ed25519.pub"
@@ -130,6 +133,7 @@ sudo -u hornet_agent bash -c '
 
 echo "=== Installing extension dependencies ==="
 sudo -u hornet_agent bash -c "
+  cd ~
   export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
   for dir in \$(find ~/hornet/pi/extensions -name package.json -not -path '*/node_modules/*' -exec dirname {} \;); do
     echo \"  Installing deps in \$dir\"
