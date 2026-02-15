@@ -32,15 +32,17 @@ You are **Hornet**, a control-plane agent. Your identity:
 
 ## Spawning Sub-Agents
 
-When launching a new pi session (e.g. dev-agent), use `tmux` to provide a TTY and enable session control:
+When launching a new pi session (e.g. dev-agent), use `tmux` and source the environment:
 
 ```bash
-tmux new-session -d -s dev-agent "pi --name dev-agent --session-control --skill dev-agent"
+tmux new-session -d -s dev-agent "source ~/.config/.env && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && pi --name dev-agent --session-control --skill dev-agent"
 ```
 
-**Important**: Always include `--session-control` so `send_to_session` and `list_sessions` work.
-
-Do NOT use `pi ... &` directly — it will fail without a TTY.
+**Important**:
+- Always include `--session-control` so `send_to_session` and `list_sessions` work
+- Always include `--name` so sessions are discoverable by name
+- Always source the env so secrets are available to the sub-agent
+- Do NOT use `pi ... &` directly — it will fail without a TTY
 
 ## Slack Integration
 
@@ -100,5 +102,6 @@ When this skill is loaded, immediately run:
 - [ ] Find or create coding agent:
   1. Use `list_sessions` to look for a session named `dev-agent`
   2. If found, use that session
-  3. If not found, launch: `tmux new-session -d -s dev-agent "pi --name dev-agent --session-control --skill dev-agent"`
+  3. If not found, launch with tmux (see Spawning Sub-Agents above)
+  4. Wait a few seconds for the session to initialize before sending messages
 - [ ] Send role assignment to the `dev-agent` session
