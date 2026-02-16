@@ -129,7 +129,10 @@ sudo -u hornet_agent bash -c '
 - Secrets in `~/.config/.env` are `600` perms, never committed.
 - Session logs are auto-redacted of API keys/tokens on boot.
 
-## Commit Guidelines
+## Git Workflow
 
-- Concise, action-oriented messages: `security: add rate limiting to bridge API`
+- **Never commit directly to `main`.** All changes go on feature branches with PRs.
+- One branch per todo/task. Branch names should be descriptive: `add-uninstall-script`, `seccomp-profile`, etc.
+- Use `gh pr create` to open PRs (not the GitHub API with tokens).
+- Concise, action-oriented commit messages: `security: add rate limiting to bridge API`
 - Prefix with area: `security:`, `bridge:`, `deploy:`, `docs:`, `arch:`, `tests:`
