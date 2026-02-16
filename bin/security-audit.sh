@@ -174,31 +174,46 @@ if [ -d "$HORNET_HOME/.pi/session-control" ]; then
   fi
 fi
 
-# Check for files owned by wrong user in hornet repo
-# NOTE: Protected files (bin/, hooks/, tool-guard.ts, security.mjs, etc.) are
-# intentionally owned by bentlegen/root as an extra defense layer. Only flag
-# unexpected non-hornet_agent ownership in agent-modifiable areas.
+# Verify protected files are NOT writable by hornet_agent.
+# Protected files should be owned by bentlegen (or root for .git/hooks/pre-commit)
+# so the agent cannot modify them even with full shell access.
+# This is a 4th security layer alongside tool-guard, pre-commit hook, and skill guidance.
 if [ -d "$HORNET_HOME/hornet" ]; then
-  wrong_owner=$(find "$HORNET_HOME/hornet" \
-    -not -user hornet_agent \
-    -not -path '*/.git/*' \
-    -not -path '*/bin/*' \
-    -not -path '*/hooks/*' \
-    -not -path '*/.github/*' -not -path '*/.github' \
-    -not -name '.secrets.baseline' \
-    -not -path '*/tool-guard.ts' \
-    -not -path '*/tool-guard.test.mjs' \
-    -not -path '*/security.mjs' \
-    -not -path '*/security.test.mjs' \
-    -not -name 'setup.sh' \
-    -not -name 'start.sh' \
-    -not -name 'SECURITY.md' \
-    2>/dev/null | wc -l)
-  if [ "$wrong_owner" -gt 0 ]; then
-    finding "WARN" "$wrong_owner file(s) in hornet repo with unexpected ownership" \
-      "Review with: find ~/hornet -not -user hornet_agent -not -path '*/bin/*' -not -path '*/.git/*'"
-  else
-    ok "File ownership correct (protected files admin-owned, rest agent-owned)"
+  PROTECTED_FILES=(
+    "$HORNET_HOME/hornet/bin/security-audit.sh"
+    "$HORNET_HOME/hornet/bin/security-audit.test.sh"
+    "$HORNET_HOME/hornet/bin/setup-firewall.sh"
+    "$HORNET_HOME/hornet/bin/harden-permissions.sh"
+    "$HORNET_HOME/hornet/bin/hornet-docker"
+    "$HORNET_HOME/hornet/bin/hornet-safe-bash"
+    "$HORNET_HOME/hornet/bin/hornet-safe-bash.test.sh"
+    "$HORNET_HOME/hornet/bin/scan-extensions.mjs"
+    "$HORNET_HOME/hornet/bin/scan-extensions.test.mjs"
+    "$HORNET_HOME/hornet/bin/redact-logs.sh"
+    "$HORNET_HOME/hornet/bin/redact-logs.test.sh"
+    "$HORNET_HOME/hornet/bin/hornet-firewall.service"
+    "$HORNET_HOME/hornet/pi/extensions/tool-guard.ts"
+    "$HORNET_HOME/hornet/pi/extensions/tool-guard.test.mjs"
+    "$HORNET_HOME/hornet/slack-bridge/security.mjs"
+    "$HORNET_HOME/hornet/slack-bridge/security.test.mjs"
+    "$HORNET_HOME/hornet/setup.sh"
+    "$HORNET_HOME/hornet/start.sh"
+    "$HORNET_HOME/hornet/SECURITY.md"
+    "$HORNET_HOME/hornet/hooks/pre-commit"
+  )
+  agent_writable=0
+  for pf in "${PROTECTED_FILES[@]}"; do
+    [ ! -e "$pf" ] && continue
+    pf_owner=$(stat -c '%U' "$pf" 2>/dev/null)
+    if [ "$pf_owner" = "hornet_agent" ]; then
+      finding "CRITICAL" "Protected file owned by hornet_agent (agent can modify!): $(basename "$pf")" \
+        "Fix: sudo chown bentlegen:hornet_agent $pf && sudo chmod 644 $pf"
+      fix_skip "Fix ownership of $(basename "$pf")" "Requires root: sudo chown bentlegen:hornet_agent $pf"
+      agent_writable=$((agent_writable + 1))
+    fi
+  done
+  if [ "$agent_writable" -eq 0 ]; then
+    ok "All protected files are admin-owned (agent cannot modify)"
   fi
 fi
 echo ""
