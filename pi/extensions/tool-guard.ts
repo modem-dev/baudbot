@@ -22,7 +22,7 @@ import { existsSync } from "node:fs";
 
 const AGENT_USER = process.env.HORNET_AGENT_USER || "hornet_agent";
 const AGENT_HOME = process.env.HORNET_AGENT_HOME || `/home/${AGENT_USER}`;
-const HORNET_DIR = process.env.HORNET_SOURCE_DIR || "";
+const HORNET_SRC_DIR = process.env.HORNET_SOURCE_DIR || "";
 
 // ── Audit logging ───────────────────────────────────────────────────────────
 // Append-only log of every tool call for forensic analysis.
@@ -172,22 +172,22 @@ const BASH_DENY_RULES: DenyRule[] = [
   // ── Source repo protection ─────────────────────────────────────────────
   // Block chmod/chown on the hornet source repo (admin-owned)
   // Only active when HORNET_SOURCE_DIR is configured
-  ...(HORNET_DIR ? [
+  ...(HORNET_SRC_DIR ? [
     {
       id: "chmod-hornet-source",
-      pattern: new RegExp(`chmod\\b.*${escapeRegex(HORNET_DIR)}`),
+      pattern: new RegExp(`chmod\\b.*${escapeRegex(HORNET_SRC_DIR)}`),
       label: "chmod on hornet source repo",
       severity: "block" as const,
     },
     {
       id: "chown-hornet-source",
-      pattern: new RegExp(`chown\\b.*${escapeRegex(HORNET_DIR)}`),
+      pattern: new RegExp(`chown\\b.*${escapeRegex(HORNET_SRC_DIR)}`),
       label: "chown on hornet source repo",
       severity: "block" as const,
     },
     {
       id: "tee-hornet-source",
-      pattern: new RegExp(`tee\\s+.*${escapeRegex(HORNET_DIR)}/`),
+      pattern: new RegExp(`tee\\s+.*${escapeRegex(HORNET_SRC_DIR)}/`),
       label: "tee write to hornet source repo",
       severity: "block" as const,
     },
@@ -258,7 +258,7 @@ const PROTECTED_RUNTIME_FILES = [
 
 function isProtectedPath(filePath: string): boolean {
   // Entire source repo is read-only (when configured)
-  if (HORNET_DIR && (filePath.startsWith(HORNET_DIR + "/") || filePath === HORNET_DIR)) {
+  if (HORNET_SRC_DIR && (filePath.startsWith(HORNET_SRC_DIR + "/") || filePath === HORNET_SRC_DIR)) {
     return true;
   }
   // Protected runtime security files
@@ -372,7 +372,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block writes to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = filePath.startsWith(HORNET_DIR)
+        const rule = filePath.startsWith(HORNET_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -381,7 +381,7 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = filePath.startsWith(HORNET_DIR)
+        const desc = filePath.startsWith(HORNET_SRC_DIR)
           ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
@@ -417,7 +417,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block edits to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = filePath.startsWith(HORNET_DIR)
+        const rule = filePath.startsWith(HORNET_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -426,7 +426,7 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = filePath.startsWith(HORNET_DIR)
+        const desc = filePath.startsWith(HORNET_SRC_DIR)
           ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
