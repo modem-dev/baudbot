@@ -22,6 +22,7 @@ import { existsSync } from "node:fs";
 
 const AGENT_USER = process.env.HORNET_AGENT_USER || "hornet_agent";
 const AGENT_HOME = process.env.HORNET_AGENT_HOME || `/home/${AGENT_USER}`;
+const HORNET_DIR = process.env.HORNET_SOURCE_DIR || "";
 
 // ── Audit logging ───────────────────────────────────────────────────────────
 // Append-only log of every tool call for forensic analysis.
@@ -245,13 +246,6 @@ function isAllowedWritePath(filePath: string): boolean {
 }
 
 // ── Read-only source repo ───────────────────────────────────────────────────
-// The hornet source repo is admin-owned (outside the agent's home).
-// The agent runs from deployed copies in ~/.pi/agent/extensions/,
-// ~/.pi/agent/skills/, and ~/runtime/slack-bridge/.
-// This tool-guard blocks write/edit to the source repo AND chmod/chown.
-// Set HORNET_SOURCE_DIR to the admin's source repo path to block agent writes.
-const HORNET_DIR = process.env.HORNET_SOURCE_DIR || "";
-
 // ── Protected runtime paths ─────────────────────────────────────────────────
 // Security-critical files deployed to the agent's runtime directories.
 // These are copies from the source repo that the agent must not modify.
