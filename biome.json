@@ -1,0 +1,41 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.1/schema.json",
+  "files": {
+    "includes": [
+      "bin/**/*.mjs",
+      "pi/extensions/**/*.ts",
+      "pi/extensions/**/*.mjs",
+      "slack-bridge/**/*.mjs"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noAssignInExpressions": "off",
+        "useIterableCallbackReturn": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useConst": "warn",
+        "useTemplate": "off",
+        "useImportType": "warn"
+      },
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn",
+        "noUnusedFunctionParameters": "off",
+        "noUnusedPrivateClassMembers": "warn"
+      },
+      "complexity": {
+        "useSimpleNumberKeys": "off",
+        "useOptionalChain": "warn"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": false
+  }
+}

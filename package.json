@@ -1,0 +1,17 @@
+{
+  "name": "hornet",
+  "private": true,
+  "scripts": {
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write --unsafe",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.1",
+    "@mariozechner/pi-coding-agent": "^0.52.12",
+    "@onkernel/sdk": "^0.33.0",
+    "@sinclair/typebox": "^0.34.48",
+    "agentmail": "^0.2.15",
+    "typescript": "^5.9.3"
+  }
+}
