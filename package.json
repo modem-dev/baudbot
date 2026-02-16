@@ -1,0 +1,11 @@
+{
+  "name": "hornet",
+  "private": true,
+  "scripts": {
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write --unsafe"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.1"
+  }
+}

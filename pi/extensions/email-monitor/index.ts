@@ -197,7 +197,7 @@ export default function (pi: ExtensionAPI) {
           );
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // Silently fail — will retry next interval
     }
   }

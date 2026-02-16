@@ -39,7 +39,7 @@ function getClient(): AgentMailClient {
 // ---------------------------------------------------------------------------
 
 let activeInboxId: string | undefined;
-let activeInboxAddress: string | undefined;
+let _activeInboxAddress: string | undefined;
 
 function formatInbox(inbox: any): string {
 	const parts = [`id: ${inbox.inboxId}`];
@@ -182,7 +182,7 @@ export default function (pi: ExtensionAPI) {
 					await client.inboxes.delete(id);
 					if (id === activeInboxId) {
 						activeInboxId = undefined;
-						activeInboxAddress = undefined;
+						_activeInboxAddress = undefined;
 					}
 					return {
 						content: [{ type: "text", text: `Inbox ${id} deleted.` }],
@@ -678,6 +678,6 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		activeInboxId = undefined;
-		activeInboxAddress = undefined;
+		_activeInboxAddress = undefined;
 	});
 }
