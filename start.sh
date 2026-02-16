@@ -17,6 +17,9 @@ set +a
 umask 077
 ~/hornet/bin/harden-permissions.sh
 
+# Redact any secrets that leaked into session logs
+~/hornet/bin/redact-logs.sh 2>/dev/null || true
+
 # Set session name (read by auto-name.ts extension)
 export PI_SESSION_NAME="control-agent"
 

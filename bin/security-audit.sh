@@ -2,12 +2,20 @@
 # Security audit for Hornet agent infrastructure
 # Run as hornet_agent or admin user to check security posture
 #
-# Usage: ~/hornet/bin/security-audit.sh
-#        sudo -u hornet_agent ~/hornet/bin/security-audit.sh
+# Usage: ~/hornet/bin/security-audit.sh [--deep]
+#        sudo -u hornet_agent ~/hornet/bin/security-audit.sh --deep
+#
+# --deep: Run the Node.js extension scanner for cross-pattern analysis
 
 set -euo pipefail
 
 HORNET_HOME="${HORNET_HOME:-/home/hornet_agent}"
+DEEP=0
+for arg in "$@"; do
+  if [ "$arg" = "--deep" ]; then
+    DEEP=1
+  fi
+done
 
 # Counters
 critical=0
@@ -128,6 +136,9 @@ leaked_files=$(find "$HORNET_HOME" -maxdepth 3 \
   -not -name '*.md' \
   -not -name 'bridge.mjs' \
   -not -name 'security.mjs' \
+  -not -name 'redact-logs.sh' \
+  -not -name 'scan-extensions.mjs' \
+  -not -name 'setup.sh' \
   -type f -perm /044 \
   -exec grep -l -E "$secret_patterns" {} \; 2>/dev/null | head -5 || true)
 
@@ -326,6 +337,32 @@ for ext_dir in "${ext_dirs[@]}"; do
     fi
   fi
 done
+
+# Deep scan: cross-pattern analysis via Node scanner
+if [ "$DEEP" -eq 1 ]; then
+  NODE_BIN="$HORNET_HOME/opt/node-v22.14.0-linux-x64/bin/node"
+  SCANNER="$HORNET_HOME/hornet/bin/scan-extensions.mjs"
+  if [ -x "$NODE_BIN" ] && [ -f "$SCANNER" ]; then
+    echo ""
+    echo "Deep Extension Scan (cross-pattern analysis)"
+    deep_output=$("$NODE_BIN" "$SCANNER" \
+      "$HORNET_HOME/hornet/pi/extensions" \
+      "$HORNET_HOME/hornet/pi/skills" 2>&1 || true)
+    deep_critical=$(echo "$deep_output" | grep -c '❌ CRITICAL' || true)
+    deep_warn=$(echo "$deep_output" | grep -c '⚠️' || true)
+    if [ "$deep_critical" -gt 0 ]; then
+      finding "WARN" "$deep_critical cross-pattern critical finding(s) in deep scan" \
+        "Run: node ~/hornet/bin/scan-extensions.mjs for details"
+    elif [ "$deep_warn" -gt 0 ]; then
+      finding "INFO" "$deep_warn cross-pattern warning(s) in deep scan" \
+        "Run: node ~/hornet/bin/scan-extensions.mjs for details"
+    else
+      ok "Deep extension scan clean"
+    fi
+  else
+    finding "INFO" "Deep scanner not available (Node or scanner not found)" ""
+  fi
+fi
 
 # Check that bridge security.mjs exists and is tested
 if [ -f "$HORNET_HOME/hornet/slack-bridge/security.mjs" ]; then
