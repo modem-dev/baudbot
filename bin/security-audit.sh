@@ -18,7 +18,7 @@ pass=0
 finding() {
   local severity="$1"
   local title="$2"
-  local detail="$3"
+  local detail="${3:-}"
 
   case "$severity" in
     CRITICAL) echo "  ❌ CRITICAL: $title"; critical=$((critical + 1)) ;;
@@ -127,8 +127,9 @@ leaked_files=$(find "$HORNET_HOME" -maxdepth 3 \
   -not -path '*/.env.schema' \
   -not -name '*.md' \
   -not -name 'bridge.mjs' \
+  -not -name 'security.mjs' \
   -type f -perm /044 \
-  -exec grep -l -E "$secret_patterns" {} \; 2>/dev/null | head -5)
+  -exec grep -l -E "$secret_patterns" {} \; 2>/dev/null | head -5 || true)
 
 if [ -n "$leaked_files" ]; then
   finding "CRITICAL" "Possible secrets in group/world-readable files:" ""
@@ -143,6 +144,58 @@ if [ -f "$HORNET_HOME/.gitconfig" ]; then
     finding "WARN" "Possible credentials in .gitconfig" "$HORNET_HOME/.gitconfig"
   else
     ok "No credentials in .gitconfig"
+  fi
+fi
+
+# Check for stale .env copies outside .config
+stale_envs=$(find "$HORNET_HOME" -maxdepth 3 \
+  -name '.env' -not -path '*/.config/*' \
+  -not -path '*/node_modules/*' \
+  -not -path '*/.git/*' \
+  2>/dev/null | head -5 || true)
+if [ -n "$stale_envs" ]; then
+  finding "WARN" "Found .env file(s) outside ~/.config:" ""
+  echo "$stale_envs" | while read -r f; do echo "              $f"; done
+else
+  ok "No stale .env copies found"
+fi
+
+# Check git history for committed secrets
+if [ -d "$HORNET_HOME/hornet/.git" ]; then
+  git_secrets=$(cd "$HORNET_HOME/hornet" && git log --all -p --diff-filter=A 2>/dev/null \
+    | grep -cE '(sk-[a-zA-Z0-9]{20,}|xoxb-[0-9]|xapp-[0-9]|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16})' 2>/dev/null || true)
+  git_secrets="${git_secrets:-0}"
+  if [ "$git_secrets" -gt 0 ]; then
+    finding "CRITICAL" "$git_secrets potential secret(s) found in git history" \
+      "Run: git log --all -p | grep -nE 'sk-|xoxb-|xapp-|ghp_|AKIA'"
+  else
+    ok "No secrets detected in git history"
+  fi
+fi
+
+# Check .gitignore excludes .env
+if [ -f "$HORNET_HOME/hornet/.gitignore" ]; then
+  if grep -q '\.env' "$HORNET_HOME/hornet/.gitignore" 2>/dev/null; then
+    ok ".gitignore excludes .env files"
+  else
+    finding "WARN" ".gitignore does not exclude .env files" \
+      "Add '*.env' or '.env' to $HORNET_HOME/hornet/.gitignore"
+  fi
+elif [ -d "$HORNET_HOME/hornet/.git" ]; then
+  finding "WARN" "No .gitignore found in repo" \
+    "Create $HORNET_HOME/hornet/.gitignore with at minimum: .env"
+fi
+
+# Scan session logs for accidentally logged secrets
+if [ -d "$HORNET_HOME/.pi/agent/sessions" ]; then
+  log_secrets=$(find "$HORNET_HOME/.pi/agent/sessions" -name '*.jsonl' \
+    -exec grep -lE '(sk-[a-zA-Z0-9]{20,}|xoxb-[0-9]{10,}|xapp-[0-9]{10,})' {} \; 2>/dev/null | wc -l || true)
+  log_secrets="${log_secrets:-0}"
+  if [ "$log_secrets" -gt 0 ]; then
+    finding "CRITICAL" "$log_secrets session log(s) contain possible API keys/tokens" \
+      "Review and redact: find ~/.pi/agent/sessions -name '*.jsonl' -exec grep -l 'sk-\|xoxb-\|xapp-' {} +"
+  else
+    ok "No secrets detected in session logs"
   fi
 fi
 echo ""
@@ -174,14 +227,18 @@ if command -v iptables &>/dev/null; then
   fi
 fi
 
-# Check for unexpected listeners
-if [ "$(id -u)" = "$(id -u hornet_agent 2>/dev/null)" ]; then
-  listeners=$(ss -tlnp 2>/dev/null | grep -v '127.0.0.1' | grep -v '::1' | grep -v 'LISTEN' | wc -l)
-  # This is a rough check — skip if not running as hornet_agent
+# Check for firewall persistence
+if [ -f /etc/systemd/system/hornet-firewall.service ]; then
+  ok "Firewall persistence configured (systemd)"
+elif [ -f /etc/iptables/rules.v4 ] && grep -q 'HORNET_OUTPUT' /etc/iptables/rules.v4 2>/dev/null; then
+  ok "Firewall persistence configured (iptables-save)"
+else
+  finding "WARN" "Firewall rules are NOT persistent across reboots" \
+    "Install: sudo cp ~/hornet/bin/hornet-firewall.service /etc/systemd/system/ && sudo systemctl enable hornet-firewall"
 fi
 echo ""
 
-# ── Ollama ───────────────────────────────────────────────────────────────────
+# ── Services ─────────────────────────────────────────────────────────────────
 
 echo "Services"
 if ss -tlnp 2>/dev/null | grep -q ':11434'; then
@@ -191,6 +248,117 @@ if ss -tlnp 2>/dev/null | grep -q ':11434'; then
       "Consider binding to 127.0.0.1 if not needed externally"
   else
     ok "Ollama bound to $bind_addr"
+  fi
+fi
+echo ""
+
+# ── Tool Safety ──────────────────────────────────────────────────────────────
+
+echo "Tool Safety"
+
+# Check bash wrapper
+if [ -f /usr/local/bin/hornet-safe-bash ]; then
+  if [ ! -w /usr/local/bin/hornet-safe-bash ]; then
+    ok "Safe bash wrapper installed (not agent-writable)"
+  else
+    finding "WARN" "hornet-safe-bash is writable by current user" \
+      "Should be root-owned: sudo chown root:root /usr/local/bin/hornet-safe-bash"
+  fi
+else
+  finding "INFO" "Safe bash wrapper not installed" \
+    "Optional defense-in-depth: install /usr/local/bin/hornet-safe-bash"
+fi
+echo ""
+
+# ── Extension / Skill Vetting ────────────────────────────────────────────────
+
+echo "Extension & Skill Safety"
+
+# Check pi extensions for suspicious patterns
+suspicious_extension_patterns='(eval\s*\(|new\s+Function\s*\(|child_process|execSync|execFile|spawn\s*\(|writeFileSync.*\/etc|writeFileSync.*\/home\/(?!hornet_agent))'
+ext_dirs=(
+  "$HORNET_HOME/.pi/agent/extensions"
+  "$HORNET_HOME/hornet/pi/extensions"
+)
+ext_findings=0
+for ext_dir in "${ext_dirs[@]}"; do
+  if [ -d "$ext_dir" ]; then
+    while IFS= read -r ext_file; do
+      if grep -qP "$suspicious_extension_patterns" "$ext_file" 2>/dev/null; then
+        finding "WARN" "Suspicious pattern in extension: $(basename "$ext_file")" "$ext_file"
+        ext_findings=$((ext_findings + 1))
+      fi
+    done < <(find "$ext_dir" -not -path '*/node_modules/*' -type f \( -name '*.ts' -o -name '*.js' -o -name '*.mjs' \) 2>/dev/null)
+  fi
+done
+if [ "$ext_findings" -eq 0 ]; then
+  ok "No suspicious patterns in extensions"
+fi
+
+# Check skills for dangerous tool instructions
+skill_dirs=(
+  "$HORNET_HOME/.pi/agent/skills"
+  "$HORNET_HOME/hornet/pi/skills"
+)
+skill_findings=0
+for skill_dir in "${skill_dirs[@]}"; do
+  if [ -d "$skill_dir" ]; then
+    while IFS= read -r skill_file; do
+      # Check for skills that might instruct the agent to do dangerous things
+      if grep -qiP '(ignore\s+(previous|all)\s+instructions|override\s+safety|disable\s+security)' "$skill_file" 2>/dev/null; then
+        finding "CRITICAL" "Skill attempts to override safety: $(basename "$(dirname "$skill_file")")" "$skill_file"
+        skill_findings=$((skill_findings + 1))
+      fi
+    done < <(find "$skill_dir" -type f -name '*.md' 2>/dev/null)
+  fi
+done
+if [ "$skill_findings" -eq 0 ]; then
+  ok "No safety-override patterns in skills"
+fi
+
+# Check for unexpected node_modules in extension dirs
+for ext_dir in "${ext_dirs[@]}"; do
+  if [ -d "$ext_dir" ]; then
+    unexpected_modules=$(find "$ext_dir" -name 'node_modules' -type d 2>/dev/null | wc -l)
+    if [ "$unexpected_modules" -gt 0 ]; then
+      finding "WARN" "$unexpected_modules unexpected node_modules in extensions" \
+        "Extensions should be self-contained — review dependencies"
+    fi
+  fi
+done
+
+# Check that bridge security.mjs exists and is tested
+if [ -f "$HORNET_HOME/hornet/slack-bridge/security.mjs" ]; then
+  ok "Bridge security module exists"
+  if [ -f "$HORNET_HOME/hornet/slack-bridge/security.test.mjs" ]; then
+    ok "Bridge security tests exist"
+  else
+    finding "WARN" "No tests for bridge security module" \
+      "Add security.test.mjs"
+  fi
+else
+  finding "WARN" "Bridge security module not found" \
+    "Expected $HORNET_HOME/hornet/slack-bridge/security.mjs"
+fi
+echo ""
+
+# ── Bridge Config ────────────────────────────────────────────────────────────
+
+echo "Bridge Configuration"
+
+# Check SLACK_ALLOWED_USERS is set (without reading the actual value)
+if [ -f "$HORNET_HOME/.config/.env" ]; then
+  if grep -q '^SLACK_ALLOWED_USERS=' "$HORNET_HOME/.config/.env" 2>/dev/null; then
+    allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$HORNET_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
+    if [ "$allowed_count" -gt 0 ]; then
+      ok "SLACK_ALLOWED_USERS configured ($allowed_count user(s))"
+    else
+      finding "CRITICAL" "SLACK_ALLOWED_USERS is empty" \
+        "Bridge will refuse to start — add at least one user ID"
+    fi
+  else
+    finding "CRITICAL" "SLACK_ALLOWED_USERS not set in .env" \
+      "Bridge will refuse to start — add SLACK_ALLOWED_USERS=U..."
   fi
 fi
 echo ""

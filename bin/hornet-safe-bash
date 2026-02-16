@@ -1,0 +1,81 @@
+#!/bin/bash
+# Safe bash wrapper for hornet_agent
+# Blocks known-dangerous command patterns before execution.
+# Install: /usr/local/bin/hornet-safe-bash (root-owned, not writable by agent)
+#
+# This is defense-in-depth — the agent's instructions also prohibit these,
+# but a successful injection might override soft instructions.
+
+# Patterns that should NEVER be executed by the agent
+COMMAND="$*"
+
+block() {
+  echo "🚫 BLOCKED by hornet-safe-bash: $1" >&2
+  echo "   Command: ${COMMAND:0:200}" >&2
+  exit 137
+}
+
+# Fork bomb
+if echo "$COMMAND" | grep -qP ':\(\)\s*\{.*\|.*&.*\}'; then
+  block "fork bomb"
+fi
+
+# rm -rf / or rm -rf /* (root filesystem deletion)
+if echo "$COMMAND" | grep -qP 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?(\/\s*$|\/\*|\/\s+)'; then
+  block "recursive delete of root filesystem"
+fi
+if echo "$COMMAND" | grep -qP 'rm\s+(-[a-zA-Z]*r[a-zA-Z]*\s+)?(-[a-zA-Z]*f[a-zA-Z]*\s+)?(\/\s*$|\/\*|\/\s+)'; then
+  block "recursive delete of root filesystem"
+fi
+
+# dd writing to block devices
+if echo "$COMMAND" | grep -qP 'dd\s+.*of=/dev/(sd|vd|nvme|xvd)'; then
+  block "dd write to block device"
+fi
+
+# mkfs on block devices
+if echo "$COMMAND" | grep -qP 'mkfs\b.*\/dev\/'; then
+  block "mkfs on block device"
+fi
+
+# chmod 777 on sensitive paths
+if echo "$COMMAND" | grep -qP 'chmod\s+(-[a-zA-Z]*\s+)?777\s+(\/|\/etc|\/home|\/root|\/var)'; then
+  block "chmod 777 on sensitive path"
+fi
+
+# Curl/wget piped to shell
+if echo "$COMMAND" | grep -qP '(curl|wget)\s+.*\|\s*(ba)?sh'; then
+  block "piping download to shell"
+fi
+
+# Reverse shell patterns
+if echo "$COMMAND" | grep -qP 'bash\s+-i\s+>(&|\|)\s*/dev/tcp/'; then
+  block "reverse shell (bash /dev/tcp)"
+fi
+if echo "$COMMAND" | grep -qP 'nc\s+(-[a-zA-Z]*\s+)*[0-9]+.*-e\s*(\/bin\/)?(ba)?sh'; then
+  block "reverse shell (netcat)"
+fi
+if echo "$COMMAND" | grep -qP 'python[23]?\s+-c.*socket.*connect.*subprocess'; then
+  block "reverse shell (python)"
+fi
+
+# crontab modification (persistence)
+if echo "$COMMAND" | grep -qP '(crontab\s+-[erl]|echo.*>\s*/etc/cron)'; then
+  block "crontab modification"
+fi
+
+# Modifying /etc/passwd or /etc/shadow
+if echo "$COMMAND" | grep -qP '>\s*/etc/(passwd|shadow|sudoers)'; then
+  block "write to system auth files"
+fi
+
+# SSH key injection to other users
+if echo "$COMMAND" | grep -qP '>\s*/home/(?!hornet_agent).*/\.ssh/authorized_keys'; then
+  block "SSH key injection to another user"
+fi
+if echo "$COMMAND" | grep -qP '>\s*/root/\.ssh/authorized_keys'; then
+  block "SSH key injection to root"
+fi
+
+# If none of the blockers fired, execute normally
+exec /bin/bash -c "$COMMAND"
