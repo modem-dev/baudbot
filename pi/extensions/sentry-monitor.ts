@@ -495,7 +495,7 @@ export default function (pi: ExtensionAPI) {
           text = `Unknown action: ${(params as any).action}`;
       }
 
-      return { content: [{ type: "text" as const, text }] };
+      return { content: [{ type: "text" as const, text }], details: undefined };
     },
   });
 }
