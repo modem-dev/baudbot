@@ -34,23 +34,11 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install slack-bridge dependencies
+      - name: Install dependencies
         run: cd slack-bridge && npm ci
 
-      - name: Test — bridge security (71 tests)
-        run: cd slack-bridge && node --test security.test.mjs
-
-      - name: Test — tool-guard (60 tests)
-        run: cd pi/extensions && node --test tool-guard.test.mjs
-
-      - name: Test — extension scanner (15 tests)
-        run: cd bin && node --test scan-extensions.test.mjs
-
-      - name: Test — safe-bash wrapper (24 tests)
-        run: cd bin && bash hornet-safe-bash.test.sh
-
-      - name: Test — log redaction (11 tests)
-        run: cd bin && bash redact-logs.test.sh
+      - name: Run all tests
+        run: bin/test.sh
 
       # security-audit.sh checks live system state (running services, firewall,
       # /proc mounts) that doesn't exist in CI. Run it locally instead:
