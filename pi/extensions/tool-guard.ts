@@ -372,7 +372,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block writes to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = filePath.startsWith(HORNET_SRC_DIR)
+        const rule = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -381,7 +381,7 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = filePath.startsWith(HORNET_SRC_DIR)
+        const desc = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
           ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
@@ -417,7 +417,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block edits to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = filePath.startsWith(HORNET_SRC_DIR)
+        const rule = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -426,7 +426,7 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = filePath.startsWith(HORNET_SRC_DIR)
+        const desc = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
           ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
