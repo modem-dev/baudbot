@@ -31,6 +31,29 @@ Every AI agent framework gives the model shell access and hopes for the best. Ho
 
 **202 tests** across 6 test suites. CI runs all tests + `detect-secrets` on every push.
 
+## How It Compares
+
+Hornet was partly inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s security architecture. Different threat models lead to different strengths:
+
+| | Feature | 🐝 Hornet | 🦞 OpenClaw |
+|---|---------|-----------|-------------|
+| 1 | **Tamper-proofing** | Root-owned hook + tool-guard + skill layer. Agent can't edit its own security. | N/A — human owns everything |
+| 2 | **Network egress** | iptables per-UID. Kernel-enforced, unbypassable. | Docker `network:none` (opt-in) |
+| 3 | **Process hiding** | `hidepid=2` — can't see other PIDs | Docker only (off by default) |
+| 4 | **Shell deny list** | Dual-layer blocks rm -rf, reverse shells, fork bombs pre-execution | None — trusts LLM or sandboxes it |
+| 5 | **Sandbox** | Basic docker wrapper | Full system: 3 modes, capDrop ALL, seccomp, resource limits |
+| 6 | **Auth** | Slack only, fail-closed allowlist | 5 auth modes, 10+ channels, device crypto, proxy validation |
+| 7 | **Audit** | 24 checks + live kernel scans | 30+ checks + auto-fix + cross-platform |
+| 8 | **Tool policy** | Blocks dangerous patterns globally | 4 profiles, 12 groups, per-agent allow/deny |
+| 9 | **Injection defense** | Content wrapping + Unicode sanitization | Same technique, 10+ content sources |
+| 10 | **CI** | 202 tests + detect-secrets | Full suite + detect-secrets + pre-commit |
+
+**Hornet's edge**: kernel-level walls an AI can't punch through — even fully compromised, iptables/hidepid/root-owned hooks hold. The agent works on real files in real repos (no sandbox friction), but can't exfiltrate data or escalate privileges.
+
+**OpenClaw's edge**: app-level sophistication — full Docker sandbox, granular tool profiles, multi-channel auth, auto-fix audit, formal TLA+ verification.
+
+**Different threat models**: Hornet guards against *its own AI going rogue*. OpenClaw guards against *external attackers reaching your personal assistant*.
+
 ## Architecture
 
 ```
