@@ -2,7 +2,7 @@
 
 **Hardened autonomous agent infrastructure. Careful — you might get stung.**
 
-Hornet is an open framework for running AI coding agents as isolated Linux processes with defense-in-depth security. It assumes the worst: that the agent *will* be prompt-injected, and builds kernel-level walls that hold even when the LLM is fully compromised.
+Hornet is an open framework for running always-on AI agents that support software teams — coding agents, automated SREs, QA bots, monitoring, triage, and more. Agents run as isolated Linux processes with defense-in-depth security. Hornet assumes the worst: that an agent *will* be prompt-injected, and builds kernel-level walls that hold even when the LLM is fully compromised.
 
 ## Why
 
@@ -10,9 +10,11 @@ Every AI agent framework gives the model shell access and hopes for the best. Ho
 
 - **OS-level isolation** — dedicated Unix user, no sudo, can't see other processes
 - **Kernel-enforced network control** — iptables per-UID egress allowlist
-- **Tamper-proof security** — root-owned hooks prevent the agent from weakening its own defenses
+- **Tamper-proof security** — root-owned hooks prevent agents from weakening their own defenses
 - **Dual-layer command blocking** — dangerous shell patterns caught before execution at two independent layers
 - **Self-healing** — permissions hardened on every boot, secrets redacted from logs automatically
+
+Agents work on real files in real repos — no sandbox friction. They make real git branches, run real tests, and push real PRs. But they can't exfiltrate data, escalate privileges, or phone home.
 
 ## Security Stack
 
@@ -157,7 +159,7 @@ sudo -u hornet_agent bash -c "export PATH=~/opt/node-v22.14.0-linux-x64/bin:\$PA
 
 ## How It Works
 
-Hornet runs a **control-agent** that spawns sub-agents (dev-agent, sentry-agent) in tmux sessions and starts a Slack bridge. Messages flow:
+Hornet runs a **control-agent** that spawns specialized sub-agents in tmux sessions and starts a Slack bridge. Out of the box it ships with a dev-agent (coding), sentry-agent (monitoring/triage), and a control-agent (orchestration) — but you can add any agent role. Messages flow:
 
 ```
 Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
