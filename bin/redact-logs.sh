@@ -34,9 +34,9 @@ REDACT_PATTERNS=(
   # OpenAI API keys
   's/sk-[a-zA-Z0-9]{20,}/[REDACTED_API_KEY]/g'
   # Slack bot tokens
-  's/xoxb-[0-9A-Za-z\-]{20,}/[REDACTED_SLACK_TOKEN]/g'
+  's/xoxb-[0-9A-Za-z-]{20,}/[REDACTED_SLACK_TOKEN]/g'
   # Slack app tokens
-  's/xapp-[0-9A-Za-z\-]{20,}/[REDACTED_SLACK_TOKEN]/g'
+  's/xapp-[0-9A-Za-z-]{20,}/[REDACTED_SLACK_TOKEN]/g'
   # GitHub PATs
   's/ghp_[a-zA-Z0-9]{36}/[REDACTED_GITHUB_TOKEN]/g'
   # GitHub fine-grained PATs
@@ -44,9 +44,9 @@ REDACT_PATTERNS=(
   # AWS access keys
   's/AKIA[A-Z0-9]{16}/[REDACTED_AWS_KEY]/g'
   # Bearer tokens in headers
-  's/(Bearer\s+)[a-zA-Z0-9\-._~+\/]+=*/\1[REDACTED_BEARER]/gi'
+  's/(Bearer[[:space:]]+)[a-zA-Z0-9._~+/-]+[=]*/\1[REDACTED_BEARER]/gI'
   # Generic password/secret in key=value or key: value
-  's/(password|secret|token|api_key|apikey|api-key)\s*[:=]\s*['\''"][^'\''"]{8,}['\''"]/\1=[REDACTED_SECRET]/gi'
+  's/(password|secret|api_key|apikey|api-key)[[:space:]]*[:=][[:space:]]*"[^"]{8,}"/\1=[REDACTED_SECRET]/gI'
 )
 
 files_changed=0
