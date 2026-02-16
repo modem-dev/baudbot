@@ -69,7 +69,7 @@ interface MonitorState {
 // ── Extension ─────────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-  let state: MonitorState = {
+  const state: MonitorState = {
     polling: false,
     intervalMs: 3 * 60_000, // 3 minutes
     lastPollTs: null,
@@ -187,7 +187,7 @@ export default function (pi: ExtensionAPI) {
     const title = att?.title || text.split("\n")[0] || "(untitled)";
 
     // Try to extract Sentry issue link and ID
-    let link = att?.title_link || "";
+    const link = att?.title_link || "";
     let issueId: string | undefined;
     const idMatch = link.match(/issues\/(\d+)/);
     if (idMatch) issueId = idMatch[1];
@@ -495,7 +495,7 @@ export default function (pi: ExtensionAPI) {
           text = `Unknown action: ${(params as any).action}`;
       }
 
-      return { content: [{ type: "text" as const, text }] };
+      return { content: [{ type: "text" as const, text }], details: undefined };
     },
   });
 }

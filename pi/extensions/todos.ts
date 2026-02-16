@@ -46,7 +46,7 @@ import {
 	Spacer,
 	type SelectItem,
 	Text,
-	TUI,
+	type TUI,
 	fuzzyMatch,
 	getEditorKeybindings,
 	matchesKey,
@@ -706,7 +706,7 @@ class TodoDetailOverlayComponent {
 
 function getTodosDir(cwd: string): string {
 	const overridePath = process.env[TODO_PATH_ENV];
-	if (overridePath && overridePath.trim()) {
+	if (overridePath?.trim()) {
 		return path.resolve(cwd, overridePath.trim());
 	}
 	return path.resolve(cwd, TODO_DIR_NAME);
@@ -714,7 +714,7 @@ function getTodosDir(cwd: string): string {
 
 function getTodosDirLabel(cwd: string): string {
 	const overridePath = process.env[TODO_PATH_ENV];
-	if (overridePath && overridePath.trim()) {
+	if (overridePath?.trim()) {
 		return path.resolve(cwd, overridePath.trim());
 	}
 	return TODO_DIR_NAME;

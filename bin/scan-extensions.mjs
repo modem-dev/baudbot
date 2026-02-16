@@ -208,7 +208,6 @@ async function scanDirectory(dirPath) {
       const findings = scanSource(source, file);
       allFindings.push(...findings);
     } catch {
-      continue;
     }
   }
 

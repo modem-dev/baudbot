@@ -224,9 +224,9 @@ function renderUsageBar(
 	if (total <= 0) return "";
 
 	const toCols = (n: number) => Math.round((n / total) * w);
-	let sys = toCols(parts.system);
-	let tools = toCols(parts.tools);
-	let con = toCols(parts.convo);
+	const sys = toCols(parts.system);
+	const tools = toCols(parts.tools);
+	const con = toCols(parts.convo);
 	let rem = w - sys - tools - con;
 	if (rem < 0) rem = 0;
 	// adjust rounding drift
@@ -273,7 +273,6 @@ type ContextViewData = {
 };
 
 class ContextView implements Component {
-	private tui: TUI;
 	private theme: any;
 	private onDone: () => void;
 	private data: ContextViewData;

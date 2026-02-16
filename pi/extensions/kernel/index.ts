@@ -15,7 +15,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import Kernel from "@onkernel/sdk";
 
@@ -38,7 +38,7 @@ function getClient(): Kernel {
 // ---------------------------------------------------------------------------
 
 let activeBrowserId: string | undefined;
-let activeLiveViewUrl: string | undefined;
+let _activeLiveViewUrl: string | undefined;
 
 function formatBrowser(b: {
 	session_id: string;
@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
 
 					const browser = await client.browsers.create(createParams as any);
 					activeBrowserId = browser.session_id;
-					activeLiveViewUrl = browser.browser_live_view_url ?? undefined;
+					_activeLiveViewUrl = browser.browser_live_view_url ?? undefined;
 
 					return {
 						content: [
@@ -169,7 +169,7 @@ export default function (pi: ExtensionAPI) {
 					await client.browsers.deleteByID(sid);
 					if (sid === activeBrowserId) {
 						activeBrowserId = undefined;
-						activeLiveViewUrl = undefined;
+						_activeLiveViewUrl = undefined;
 					}
 					return {
 						content: [{ type: "text", text: `Browser ${sid} deleted.` }],
@@ -459,7 +459,7 @@ export default function (pi: ExtensionAPI) {
 				if (selected) {
 					activeBrowserId = selected;
 					const match = browsers.find((b: any) => b.session_id === selected);
-					activeLiveViewUrl = match?.browser_live_view_url ?? undefined;
+					_activeLiveViewUrl = match?.browser_live_view_url ?? undefined;
 					ctx.ui.notify(`Active browser: ${selected}`, "info");
 				}
 			} catch (err: any) {
@@ -490,7 +490,7 @@ export default function (pi: ExtensionAPI) {
 		// Don't auto-delete browsers on shutdown — they may be long-lived
 		// Just clear local state
 		activeBrowserId = undefined;
-		activeLiveViewUrl = undefined;
+		_activeLiveViewUrl = undefined;
 	});
 
 	// -------------------------------------------------------------------
@@ -503,7 +503,7 @@ export default function (pi: ExtensionAPI) {
 			if (e.type === "message" && e.message?.role === "toolResult") {
 				if (e.message.toolName === "kernel_browser" && e.message.details?.browser?.session_id) {
 					activeBrowserId = e.message.details.browser.session_id;
-					activeLiveViewUrl = e.message.details.browser.browser_live_view_url ?? undefined;
+					_activeLiveViewUrl = e.message.details.browser.browser_live_view_url ?? undefined;
 				}
 			}
 		}
