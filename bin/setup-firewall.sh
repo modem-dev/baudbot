@@ -7,7 +7,7 @@
 #   Blocks: everything else (reverse shells, raw sockets, non-standard ports)
 #
 # LOCALHOST:
-#   Allows: Slack bridge (7890), Ollama (11434), DNS (53)
+#   Allows: Slack bridge (7890), Ollama (11434), PostgreSQL (54322), DNS (53)
 #   Blocks: everything else (Steam, CUPS, Tailscale admin, unknown services)
 #
 # The agent cannot:
@@ -49,6 +49,9 @@ iptables -w -A "$CHAIN" -o lo -p tcp --dport 7890 -j ACCEPT
 # Allow Ollama (local LLM inference)
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 11434 -j ACCEPT
 
+# Allow PostgreSQL in Docker (modem app dev/test)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 54322 -j ACCEPT
+
 # Allow DNS on localhost
 iptables -w -A "$CHAIN" -o lo -p udp --dport 53 -j ACCEPT
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 53 -j ACCEPT
@@ -87,7 +90,7 @@ echo "✅ Firewall active. Rules:"
 echo ""
 iptables -w -L "$CHAIN" -n -v --line-numbers
 echo ""
-echo "Localhost allowed: 7890 (bridge), 11434 (ollama), 53 (dns)"
+echo "Localhost allowed: 7890 (bridge), 11434 (ollama), 54322 (postgres), 53 (dns)"
 echo "Internet allowed:  80, 443, 22, 53"
 echo "Everything else:   BLOCKED + LOGGED"
 echo ""
