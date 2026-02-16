@@ -95,6 +95,17 @@ sudo -u hornet_agent bash -c "
   git config --global init.defaultBranch main
 "
 
+echo "=== Configuring shared repo permissions ==="
+# Set core.sharedRepository=group on all repos so git creates objects
+# with group-write perms. Without this, umask 077 in start.sh causes
+# new .git/objects to be owner-only, breaking group access (admin user).
+for repo in "$HORNET_HOME/hornet" "$HORNET_HOME/workspace/modem" "$HORNET_HOME/workspace/website"; do
+  if [ -d "$repo/.git" ]; then
+    sudo -u hornet_agent git -C "$repo" config core.sharedRepository group
+    echo "  ✓ $repo"
+  fi
+done
+
 echo "=== Adding PATH to bashrc ==="
 if ! grep -q "node-v$NODE_VERSION" "$HORNET_HOME/.bashrc"; then
   sudo -u hornet_agent bash -c "echo 'export PATH=\$HOME/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH' >> ~/.bashrc"
@@ -106,6 +117,12 @@ sudo -u hornet_agent bash -c '
   touch ~/.config/.env
   chmod 600 ~/.config/.env
 '
+
+echo "=== Installing pre-commit hook (root-owned, tamper-proof) ==="
+cp "$REPO_DIR/hooks/pre-commit" "$REPO_DIR/.git/hooks/pre-commit"
+chown root:root "$REPO_DIR/.git/hooks/pre-commit"
+chmod 755 "$REPO_DIR/.git/hooks/pre-commit"
+echo "Installed root-owned pre-commit hook — agent cannot modify protected security files"
 
 echo "=== Installing Docker wrapper ==="
 cp "$REPO_DIR/bin/hornet-docker" /usr/local/bin/hornet-docker
@@ -219,3 +236,4 @@ echo "  5. Launch: sudo -u hornet_agent $HORNET_HOME/hornet/start.sh"
 echo ""
 echo "To verify security posture:"
 echo "  sudo -u hornet_agent $REPO_DIR/bin/security-audit.sh"
+# test

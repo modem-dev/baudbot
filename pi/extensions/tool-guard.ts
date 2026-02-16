@@ -163,6 +163,37 @@ const SENSITIVE_DELETE_PATHS = [
   /rm\s+(-[a-zA-Z]*\s+)*\/home\/(?!hornet_agent)/,
 ];
 
+// ── Protected hornet paths ──────────────────────────────────────────────────
+// Security-critical files in the hornet repo that the agent must not modify.
+// Defense-in-depth: the pre-commit hook also blocks these, but this catches
+// edits before they even hit disk.
+const HORNET_DIR = "/home/hornet_agent/hornet";
+const PROTECTED_HORNET_PREFIXES = [
+  `${HORNET_DIR}/bin/`,
+  `${HORNET_DIR}/hooks/`,
+];
+const PROTECTED_HORNET_FILES = [
+  `${HORNET_DIR}/pi/extensions/tool-guard.ts`,
+  `${HORNET_DIR}/pi/extensions/tool-guard.test.mjs`,
+  `${HORNET_DIR}/slack-bridge/security.mjs`,
+  `${HORNET_DIR}/slack-bridge/security.test.mjs`,
+  `${HORNET_DIR}/SECURITY.md`,
+  `${HORNET_DIR}/setup.sh`,
+  `${HORNET_DIR}/start.sh`,
+];
+
+function isProtectedHornetPath(filePath: string): boolean {
+  for (const prefix of PROTECTED_HORNET_PREFIXES) {
+    if (filePath.startsWith(prefix)) return true;
+  }
+  for (const file of PROTECTED_HORNET_FILES) {
+    if (filePath === file) return true;
+  }
+  // Also block .git/hooks/ modification
+  if (filePath.startsWith(`${HORNET_DIR}/.git/hooks/`)) return true;
+  return false;
+}
+
 export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, _ctx) => {
     // Guard bash/Bash tool calls
@@ -215,7 +246,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // Guard write tool — block writes to system paths
+    // Guard write tool — block writes to system paths and protected hornet files
     if (isToolCallEventType("write", event)) {
       const filePath = (event.input as { path?: string }).path ?? "";
       if (
@@ -234,9 +265,18 @@ export default function (pi: ExtensionAPI) {
           reason: `🛡️ Blocked by tool-guard: Cannot write to ${filePath}. Only /home/hornet_agent/ is allowed.`,
         };
       }
+      if (isProtectedHornetPath(filePath)) {
+        console.error(
+          `🛡️ TOOL-GUARD BLOCKED [write-protected-hornet]: ${filePath}`,
+        );
+        return {
+          block: true,
+          reason: `🛡️ Blocked by tool-guard: ${filePath} is a protected security file. Only the admin can modify it.`,
+        };
+      }
     }
 
-    // Guard edit tool — same path restrictions
+    // Guard edit tool — same path restrictions + protected hornet files
     if (isToolCallEventType("edit", event)) {
       const filePath = (event.input as { path?: string }).path ?? "";
       if (
@@ -253,6 +293,15 @@ export default function (pi: ExtensionAPI) {
         return {
           block: true,
           reason: `🛡️ Blocked by tool-guard: Cannot edit ${filePath}. Only /home/hornet_agent/ is allowed.`,
+        };
+      }
+      if (isProtectedHornetPath(filePath)) {
+        console.error(
+          `🛡️ TOOL-GUARD BLOCKED [edit-protected-hornet]: ${filePath}`,
+        );
+        return {
+          block: true,
+          reason: `🛡️ Blocked by tool-guard: ${filePath} is a protected security file. Only the admin can modify it.`,
         };
       }
     }

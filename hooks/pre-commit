@@ -1,0 +1,72 @@
+#!/bin/bash
+# Hornet pre-commit hook — protects security-critical files from agent modification.
+#
+# Install (root-owned so agent cannot modify or delete):
+#   sudo cp ~/hornet/hooks/pre-commit ~/hornet/.git/hooks/pre-commit
+#   sudo chown root:root ~/hornet/.git/hooks/pre-commit
+#   sudo chmod 755 ~/hornet/.git/hooks/pre-commit
+#
+# The agent can freely modify:
+#   - pi/skills/          (operational knowledge)
+#   - pi/extensions/      (non-security extensions like zen-provider.ts, auto-name.ts, etc.)
+#   - slack-bridge/bridge.mjs (non-security bridge code)
+#   - README.md, .gitignore, etc.
+#
+# The agent CANNOT modify (blocked by this hook):
+#   - bin/                (security scripts: tool deny lists, firewall, audit, hardening)
+#   - pi/extensions/tool-guard.ts (and its tests)
+#   - slack-bridge/security.mjs (and its tests)
+#   - SECURITY.md
+#   - setup.sh
+#   - start.sh
+#   - hooks/              (this hook's source)
+
+set -euo pipefail
+
+PROTECTED_PREFIXES=(
+  "bin/"
+  "hooks/"
+  "setup.sh"
+  "start.sh"
+  "SECURITY.md"
+)
+
+PROTECTED_FILES=(
+  "pi/extensions/tool-guard.ts"
+  "pi/extensions/tool-guard.test.mjs"
+  "slack-bridge/security.mjs"
+  "slack-bridge/security.test.mjs"
+)
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACDMR)
+blocked=()
+
+for file in $STAGED; do
+  for prefix in "${PROTECTED_PREFIXES[@]}"; do
+    if [[ "$file" == "$prefix"* ]]; then
+      blocked+=("$file")
+      break
+    fi
+  done
+  for protected in "${PROTECTED_FILES[@]}"; do
+    if [[ "$file" == "$protected" ]]; then
+      blocked+=("$file")
+      break
+    fi
+  done
+done
+
+if [ ${#blocked[@]} -gt 0 ]; then
+  echo ""
+  echo "🛡️  COMMIT BLOCKED — protected security files modified:"
+  echo ""
+  for f in "${blocked[@]}"; do
+    echo "   ✗ $f"
+  done
+  echo ""
+  echo "These files are admin-managed. To modify them:"
+  echo "  1. Ask the admin to make the change"
+  echo "  2. Or use: git commit --no-verify (admin only)"
+  echo ""
+  exit 1
+fi
