@@ -7,9 +7,8 @@
 #   Blocks: everything else (reverse shells, raw sockets, non-standard ports)
 #
 # LOCALHOST:
-#   Allows: Dev servers (3000-3999, 5173, 6006, 8787-8800, 9229-9260),
-#           Slack bridge (7890), Ollama (11434), PostgreSQL (54322), DNS (53)
-#   Blocks: everything else (Steam, CUPS, Tailscale admin, unknown services)
+#   Allows: Dev servers & databases on common ports (see rules below)
+#   Blocks: system services (CUPS, X11, D-Bus, Tailscale admin, etc.)
 #
 # The agent cannot:
 # - Open reverse shells on non-standard ports
@@ -44,25 +43,33 @@ iptables -w -N "$CHAIN"
 
 # ── Localhost: allow only specific services ──────────────────────────────────
 
-# ── Infrastructure ────────────────────────────────────────────────────────
-# Slack bridge (outbound API)
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 7890 -j ACCEPT
-# Ollama (local LLM inference)
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 11434 -j ACCEPT
-# PostgreSQL in Docker (modem app)
+# ── Dev servers & frameworks ──────────────────────────────────────────────
+# 3000-3999: Next.js, Express, Remix, generic web servers
+# 4000-4999: Astro (4321), Remix (4200), Nuxt, etc.
+# 5000-5999: Vite (5173), Flask, generic dev servers
+# 6000-6099: Storybook (6006), Expo (6100 range is X11 — skip 6063+)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 3000:5999 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 6006 -j ACCEPT
+
+# ── Databases ────────────────────────────────────────────────────────────
+# 5432: PostgreSQL (native)
+# 6379: Redis
+# 27017: MongoDB
+# 54322: PostgreSQL (Docker-mapped)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 5432 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 6379 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 27017 -j ACCEPT
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 54322 -j ACCEPT
 
-# ── Dev servers (for running/testing modem app locally) ──────────────────
-# Next.js (dashboard, website)
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 3000:3999 -j ACCEPT
-# Vite
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 5173 -j ACCEPT
-# Storybook
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 6006 -j ACCEPT
-# Wrangler dev servers (Cloudflare Workers)
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 8787:8800 -j ACCEPT
-# Node/Wrangler inspector (debugging)
-iptables -w -A "$CHAIN" -o lo -p tcp --dport 9229:9260 -j ACCEPT
+# ── Infrastructure ───────────────────────────────────────────────────────
+# 7890: Slack bridge
+# 8000-9999: Wrangler (8787), Django/FastAPI (8000), inspector (9229+), MinIO (9000)
+# 11434: Ollama
+# 24678: Vite HMR websocket
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 7890 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 8000:9999 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 11434 -j ACCEPT
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 24678 -j ACCEPT
 
 # Allow DNS on localhost
 iptables -w -A "$CHAIN" -o lo -p udp --dport 53 -j ACCEPT
@@ -102,9 +109,10 @@ echo "✅ Firewall active. Rules:"
 echo ""
 iptables -w -L "$CHAIN" -n -v --line-numbers
 echo ""
-echo "Localhost allowed: 3000-3999 (next), 5173 (vite), 6006 (storybook),"
-echo "                   7890 (bridge), 8787-8800 (wrangler), 9229-9260 (inspector),"
-echo "                   11434 (ollama), 54322 (postgres), 53 (dns)"
+echo "Localhost allowed: 3000-5999 (dev servers), 5432 (pg), 6006 (storybook),"
+echo "                   6379 (redis), 7890 (bridge), 8000-9999 (wrangler/inspector),"
+echo "                   11434 (ollama), 24678 (vite hmr), 27017 (mongo),"
+echo "                   54322 (pg docker), 53 (dns)"
 echo "Internet allowed:  80, 443, 22, 53"
 echo "Everything else:   BLOCKED + LOGGED"
 echo ""
