@@ -173,47 +173,77 @@ if [ -d "$HORNET_HOME/.pi/session-control" ]; then
     ok "Control sockets are owner-only"
   fi
 fi
+echo ""
 
-# Verify protected files are NOT writable by hornet_agent.
-# Protected files should be owned by bentlegen (or root for .git/hooks/pre-commit)
-# so the agent cannot modify them even with full shell access.
-# This is a 4th security layer alongside tool-guard, pre-commit hook, and skill guidance.
-if [ -d "$HORNET_HOME/hornet" ]; then
-  PROTECTED_FILES=(
-    "$HORNET_HOME/hornet/bin/security-audit.sh"
-    "$HORNET_HOME/hornet/bin/security-audit.test.sh"
-    "$HORNET_HOME/hornet/bin/setup-firewall.sh"
-    "$HORNET_HOME/hornet/bin/harden-permissions.sh"
-    "$HORNET_HOME/hornet/bin/hornet-docker"
-    "$HORNET_HOME/hornet/bin/hornet-safe-bash"
-    "$HORNET_HOME/hornet/bin/hornet-safe-bash.test.sh"
-    "$HORNET_HOME/hornet/bin/scan-extensions.mjs"
-    "$HORNET_HOME/hornet/bin/scan-extensions.test.mjs"
-    "$HORNET_HOME/hornet/bin/redact-logs.sh"
-    "$HORNET_HOME/hornet/bin/redact-logs.test.sh"
-    "$HORNET_HOME/hornet/bin/hornet-firewall.service"
-    "$HORNET_HOME/hornet/pi/extensions/tool-guard.ts"
-    "$HORNET_HOME/hornet/pi/extensions/tool-guard.test.mjs"
-    "$HORNET_HOME/hornet/slack-bridge/security.mjs"
-    "$HORNET_HOME/hornet/slack-bridge/security.test.mjs"
-    "$HORNET_HOME/hornet/setup.sh"
-    "$HORNET_HOME/hornet/start.sh"
-    "$HORNET_HOME/hornet/SECURITY.md"
-    "$HORNET_HOME/hornet/hooks/pre-commit"
-  )
-  agent_writable=0
-  for pf in "${PROTECTED_FILES[@]}"; do
-    [ ! -e "$pf" ] && continue
-    pf_owner=$(stat -c '%U' "$pf" 2>/dev/null)
-    if [ "$pf_owner" = "hornet_agent" ]; then
-      finding "CRITICAL" "Protected file owned by hornet_agent (agent can modify!): $(basename "$pf")" \
-        "Fix: sudo chown bentlegen:hornet_agent $pf && sudo chmod 644 $pf"
-      fix_skip "Fix ownership of $(basename "$pf")" "Requires root: sudo chown bentlegen:hornet_agent $pf"
-      agent_writable=$((agent_writable + 1))
+# ── Source Repo Read-Only ────────────────────────────────────────────────────
+
+echo "Source Repo Isolation"
+
+# Check if ~/hornet/ is read-only via bind mount (strongest)
+hornet_mount=$(grep "$HORNET_HOME/hornet" /proc/mounts 2>/dev/null || true)
+if echo "$hornet_mount" | grep -q '\bro\b'; then
+  ok "~/hornet/ is read-only bind mount (kernel-enforced)"
+else
+  # Fallback: check if agent can write to ~/hornet/
+  if test -w "$HORNET_HOME/hornet" 2>/dev/null; then
+    finding "CRITICAL" "~/hornet/ directory is writable by agent" \
+      "Run: sudo mount --bind ~/hornet ~/hornet && sudo mount -o remount,bind,ro ~/hornet"
+    fix_skip "Make ~/hornet read-only" "Requires root: bind mount"
+  else
+    # Check individual files
+    writable_count=$(find "$HORNET_HOME/hornet" -writable -not -path "*/.git/*" 2>/dev/null | wc -l || echo 0)
+    if [ "$writable_count" -gt 0 ]; then
+      finding "WARN" "$writable_count file(s) in ~/hornet/ are writable by agent" \
+        "Run: sudo -u hornet_agent find ~/hornet -user hornet_agent -exec chmod a-w {} +"
+    else
+      ok "~/hornet/ is not writable by agent (permissions)"
     fi
-  done
-  if [ "$agent_writable" -eq 0 ]; then
-    ok "All protected files are admin-owned (agent cannot modify)"
+  fi
+fi
+
+# Check extensions/skills are real dirs, not symlinks into source
+if [ -L "$HORNET_HOME/.pi/agent/extensions" ]; then
+  finding "CRITICAL" "~/.pi/agent/extensions is a symlink (should be a real dir)" \
+    "Run: rm ~/.pi/agent/extensions && mkdir ~/.pi/agent/extensions && deploy.sh"
+else
+  ok "~/.pi/agent/extensions/ is a real directory"
+fi
+
+if [ -L "$HORNET_HOME/.pi/agent/skills" ]; then
+  finding "CRITICAL" "~/.pi/agent/skills is a symlink (should be a real dir)" \
+    "Run: rm ~/.pi/agent/skills && mkdir ~/.pi/agent/skills && deploy.sh"
+else
+  ok "~/.pi/agent/skills/ is a real directory"
+fi
+
+# Check runtime bridge exists
+if [ -d "$HORNET_HOME/runtime/slack-bridge" ]; then
+  ok "Runtime bridge directory exists"
+else
+  finding "WARN" "~/runtime/slack-bridge/ not found" \
+    "Run: deploy.sh"
+fi
+
+# Check runtime integrity — compare deployed security files against source
+if [ -f "$HORNET_HOME/.pi/agent/extensions/tool-guard.ts" ] && [ -f "$HORNET_HOME/hornet/pi/extensions/tool-guard.ts" ]; then
+  src_hash=$(sha256sum "$HORNET_HOME/hornet/pi/extensions/tool-guard.ts" 2>/dev/null | cut -d' ' -f1)
+  dst_hash=$(sha256sum "$HORNET_HOME/.pi/agent/extensions/tool-guard.ts" 2>/dev/null | cut -d' ' -f1)
+  if [ "$src_hash" = "$dst_hash" ]; then
+    ok "tool-guard.ts: runtime matches source"
+  else
+    finding "CRITICAL" "tool-guard.ts: runtime does NOT match source (possibly tampered)" \
+      "Re-deploy: sudo ~/hornet/bin/deploy.sh"
+  fi
+fi
+
+if [ -f "$HORNET_HOME/runtime/slack-bridge/security.mjs" ] && [ -f "$HORNET_HOME/hornet/slack-bridge/security.mjs" ]; then
+  src_hash=$(sha256sum "$HORNET_HOME/hornet/slack-bridge/security.mjs" 2>/dev/null | cut -d' ' -f1)
+  dst_hash=$(sha256sum "$HORNET_HOME/runtime/slack-bridge/security.mjs" 2>/dev/null | cut -d' ' -f1)
+  if [ "$src_hash" = "$dst_hash" ]; then
+    ok "security.mjs: runtime matches source"
+  else
+    finding "CRITICAL" "security.mjs: runtime does NOT match source (possibly tampered)" \
+      "Re-deploy: sudo ~/hornet/bin/deploy.sh"
   fi
 fi
 echo ""
@@ -559,7 +589,9 @@ if [ "$DEEP" -eq 1 ]; then
     echo ""
     echo "Deep Extension Scan (cross-pattern analysis)"
     deep_output=$("$NODE_BIN" "$SCANNER" \
+      "$HORNET_HOME/.pi/agent/extensions" \
       "$HORNET_HOME/hornet/pi/extensions" \
+      "$HORNET_HOME/.pi/agent/skills" \
       "$HORNET_HOME/hornet/pi/skills" 2>&1 || true)
     deep_critical=$(echo "$deep_output" | grep -c '❌ CRITICAL' || true)
     deep_warn=$(echo "$deep_output" | grep -c '⚠️' || true)
@@ -578,17 +610,19 @@ if [ "$DEEP" -eq 1 ]; then
 fi
 
 # Check that bridge security.mjs exists and is tested
-if [ -f "$HORNET_HOME/hornet/slack-bridge/security.mjs" ]; then
-  ok "Bridge security module exists"
-  if [ -f "$HORNET_HOME/hornet/slack-bridge/security.test.mjs" ]; then
-    ok "Bridge security tests exist"
+if [ -f "$HORNET_HOME/runtime/slack-bridge/security.mjs" ]; then
+  ok "Bridge security module exists (runtime)"
+  if [ -f "$HORNET_HOME/runtime/slack-bridge/security.test.mjs" ]; then
+    ok "Bridge security tests exist (runtime)"
   else
-    finding "WARN" "No tests for bridge security module" \
-      "Add security.test.mjs"
+    finding "WARN" "No tests for bridge security module in runtime" \
+      "Run deploy.sh to copy from source"
   fi
+elif [ -f "$HORNET_HOME/hornet/slack-bridge/security.mjs" ]; then
+  ok "Bridge security module exists (source)"
 else
   finding "WARN" "Bridge security module not found" \
-    "Expected $HORNET_HOME/hornet/slack-bridge/security.mjs"
+    "Expected in ~/runtime/slack-bridge/security.mjs or ~/hornet/slack-bridge/security.mjs"
 fi
 echo ""
 

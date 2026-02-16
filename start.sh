@@ -1,6 +1,14 @@
 #!/bin/bash
 # Hornet Agent Launcher
 # Run as: sudo -u hornet_agent /home/hornet_agent/hornet/start.sh
+#
+# Architecture: ~/hornet/ is the read-only source repo (admin-managed).
+# The agent runs from deployed copies:
+#   ~/.pi/agent/extensions/  ← pi extensions
+#   ~/.pi/agent/skills/      ← operational skills
+#   ~/runtime/slack-bridge/  ← bridge process
+#
+# To update runtime files, admin edits ~/hornet/ and runs bin/deploy.sh.
 
 set -euo pipefail
 cd ~

@@ -31,6 +31,12 @@ const BASH_DENY_RULES = [
   { id: "ssh-key-injection-root", pattern: />\s*\/root\/\.ssh\/authorized_keys/, label: "SSH key injection to root", severity: "block" },
   { id: "chmod-777-sensitive", pattern: /chmod\s+(-[a-zA-Z]*\s+)?777\s+\/(etc|home|root|var|usr)/, label: "chmod 777 on sensitive path", severity: "block" },
   { id: "fork-bomb", pattern: /:\(\)\s*\{.*\|.*&.*\}/, label: "Fork bomb", severity: "block" },
+  // Source repo protection
+  { id: "chmod-hornet-source", pattern: /chmod\b.*\/home\/hornet_agent\/hornet/, label: "chmod on read-only source repo ~/hornet/", severity: "block" },
+  { id: "chown-hornet-source", pattern: /chown\b.*\/home\/hornet_agent\/hornet/, label: "chown on read-only source repo ~/hornet/", severity: "block" },
+  { id: "tee-hornet-source", pattern: /tee\s+.*\/home\/hornet_agent\/hornet\//, label: "tee write to read-only source repo ~/hornet/", severity: "block" },
+  { id: "chmod-runtime-security", pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security)\./, label: "chmod on protected runtime security file", severity: "block" },
+  // Credential exfiltration
   { id: "env-exfil-curl", pattern: /\benv\b.*\|\s*(curl|wget|nc)\b/, label: "Piping environment to network tool", severity: "block" },
   { id: "cat-env-curl", pattern: /cat\s+.*\.env.*\|\s*(curl|wget|nc)\b/, label: "Exfiltrating .env via network", severity: "block" },
   { id: "base64-exfil", pattern: /base64\s+.*\|\s*(curl|wget)\b/, label: "Base64-encoding data for exfiltration", severity: "block" },
@@ -56,27 +62,26 @@ function isAllowedWritePath(filePath) {
   return ALLOWED_WRITE_PREFIXES.some((p) => filePath.startsWith(p));
 }
 
-// ── Protected hornet paths ──────────────────────────────────────────────────
+// ── Read-only source repo ───────────────────────────────────────────────────
 const HORNET_DIR = "/home/hornet_agent/hornet";
-const PROTECTED_HORNET_PREFIXES = [`${HORNET_DIR}/bin/`, `${HORNET_DIR}/hooks/`];
-const PROTECTED_HORNET_FILES = [
-  `${HORNET_DIR}/pi/extensions/tool-guard.ts`,
-  `${HORNET_DIR}/pi/extensions/tool-guard.test.mjs`,
-  `${HORNET_DIR}/slack-bridge/security.mjs`,
-  `${HORNET_DIR}/slack-bridge/security.test.mjs`,
-  `${HORNET_DIR}/SECURITY.md`,
-  `${HORNET_DIR}/setup.sh`,
-  `${HORNET_DIR}/start.sh`,
+
+// ── Protected runtime paths ─────────────────────────────────────────────────
+const PROTECTED_RUNTIME_FILES = [
+  "/home/hornet_agent/.pi/agent/extensions/tool-guard.ts",
+  "/home/hornet_agent/.pi/agent/extensions/tool-guard.test.mjs",
+  "/home/hornet_agent/runtime/slack-bridge/security.mjs",
+  "/home/hornet_agent/runtime/slack-bridge/security.test.mjs",
 ];
 
-function isProtectedHornetPath(filePath) {
-  for (const prefix of PROTECTED_HORNET_PREFIXES) {
-    if (filePath.startsWith(prefix)) return true;
+function isProtectedPath(filePath) {
+  // Entire source repo is read-only
+  if (filePath.startsWith(HORNET_DIR + "/") || filePath === HORNET_DIR) {
+    return true;
   }
-  for (const file of PROTECTED_HORNET_FILES) {
+  // Protected runtime security files
+  for (const file of PROTECTED_RUNTIME_FILES) {
     if (filePath === file) return true;
   }
-  if (filePath.startsWith(`${HORNET_DIR}/.git/hooks/`)) return true;
   return false;
 }
 
@@ -99,12 +104,12 @@ function checkBashCommand(command) {
   return { blocked: false, warned: false, rule: null };
 }
 
-// checkWritePath now uses the allow-list approach
+// checkWritePath uses the allow-list + protected path approach
 function checkWritePath(filePath) {
   // Allow-list: must be under allowed prefixes
   if (!isAllowedWritePath(filePath)) return true; // blocked
-  // Then check protected paths
-  if (isProtectedHornetPath(filePath)) return true; // blocked
+  // Then check protected paths (source repo + runtime security files)
+  if (isProtectedPath(filePath)) return true; // blocked
   return false; // allowed
 }
 
@@ -250,6 +255,27 @@ describe("tool-guard: credential exfiltration blocked", () => {
   });
 });
 
+describe("tool-guard: source repo protection (bash)", () => {
+  it("blocks chmod on ~/hornet/", () => {
+    assert.equal(checkBashCommand("chmod u+w /home/hornet_agent/hornet/start.sh").blocked, true);
+  });
+  it("blocks chmod -R on ~/hornet/", () => {
+    assert.equal(checkBashCommand("chmod -R a+w /home/hornet_agent/hornet").blocked, true);
+  });
+  it("blocks chown on ~/hornet/", () => {
+    assert.equal(checkBashCommand("chown hornet_agent /home/hornet_agent/hornet/bin/security-audit.sh").blocked, true);
+  });
+  it("blocks tee to ~/hornet/", () => {
+    assert.equal(checkBashCommand("tee /home/hornet_agent/hornet/bin/evil.sh").blocked, true);
+  });
+  it("blocks chmod on runtime tool-guard", () => {
+    assert.equal(checkBashCommand("chmod a+w /home/hornet_agent/.pi/agent/extensions/tool-guard.ts").blocked, true);
+  });
+  it("blocks chmod on runtime security.mjs", () => {
+    assert.equal(checkBashCommand("chmod 777 /home/hornet_agent/runtime/slack-bridge/security.mjs").blocked, true);
+  });
+});
+
 describe("tool-guard: sensitive write paths blocked", () => {
   it("blocks write to /etc/", () => {
     assert.equal(checkBashCommand("echo test > /etc/hosts").blocked, true);
@@ -287,15 +313,18 @@ describe("tool-guard: sensitive delete paths blocked", () => {
 });
 
 describe("tool-guard: workspace confinement (allow-list)", () => {
-  // ALLOWED: writes under /home/hornet_agent/
+  // ALLOWED: writes under /home/hornet_agent/ that are NOT protected
   it("allows write to /home/hornet_agent/workspace/foo.ts", () => {
     assert.equal(checkWritePath("/home/hornet_agent/workspace/foo.ts"), false);
   });
-  it("allows write to /home/hornet_agent/hornet/pi/skills/new-skill/SKILL.md", () => {
-    assert.equal(checkWritePath("/home/hornet_agent/hornet/pi/skills/new-skill/SKILL.md"), false);
-  });
   it("allows write to /home/hornet_agent/scripts/test.sh", () => {
     assert.equal(checkWritePath("/home/hornet_agent/scripts/test.sh"), false);
+  });
+  it("allows write to /home/hornet_agent/.pi/agent/skills/new-skill/SKILL.md", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/.pi/agent/skills/new-skill/SKILL.md"), false);
+  });
+  it("allows write to /home/hornet_agent/runtime/slack-bridge/bridge.mjs", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/runtime/slack-bridge/bridge.mjs"), false);
   });
 
   // BLOCKED: outside /home/hornet_agent/
@@ -332,18 +361,49 @@ describe("tool-guard: workspace confinement (allow-list)", () => {
   it("blocks write to /sys", () => {
     assert.equal(checkWritePath("/sys/class"), true);
   });
+});
 
-  // BLOCKED: protected hornet paths (still blocked even though under allowed prefix)
-  it("blocks write to protected hornet path (tool-guard.ts)", () => {
-    assert.equal(checkWritePath("/home/hornet_agent/hornet/pi/extensions/tool-guard.ts"), true);
+describe("tool-guard: source repo is fully read-only (write/edit)", () => {
+  it("blocks write to ANY file in ~/hornet/", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/hornet/README.md"), true);
   });
-  it("blocks write to protected hornet path (bin/)", () => {
+  it("blocks write to ~/hornet/pi/extensions/auto-name.ts", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/hornet/pi/extensions/auto-name.ts"), true);
+  });
+  it("blocks write to ~/hornet/pi/skills/new-skill/SKILL.md", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/hornet/pi/skills/new-skill/SKILL.md"), true);
+  });
+  it("blocks write to ~/hornet/bin/security-audit.sh", () => {
     assert.equal(checkWritePath("/home/hornet_agent/hornet/bin/security-audit.sh"), true);
   });
-  it("blocks write to protected hornet path (setup.sh)", () => {
+  it("blocks write to ~/hornet/setup.sh", () => {
     assert.equal(checkWritePath("/home/hornet_agent/hornet/setup.sh"), true);
   });
-  it("blocks write to .git/hooks/", () => {
+  it("blocks write to ~/hornet/.git/hooks/pre-commit", () => {
     assert.equal(checkWritePath("/home/hornet_agent/hornet/.git/hooks/pre-commit"), true);
+  });
+  it("blocks write to ~/hornet/slack-bridge/bridge.mjs", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/hornet/slack-bridge/bridge.mjs"), true);
+  });
+});
+
+describe("tool-guard: protected runtime security files", () => {
+  it("blocks write to runtime tool-guard.ts", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/.pi/agent/extensions/tool-guard.ts"), true);
+  });
+  it("blocks write to runtime tool-guard.test.mjs", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/.pi/agent/extensions/tool-guard.test.mjs"), true);
+  });
+  it("blocks write to runtime security.mjs", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/runtime/slack-bridge/security.mjs"), true);
+  });
+  it("blocks write to runtime security.test.mjs", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/runtime/slack-bridge/security.test.mjs"), true);
+  });
+  it("allows write to runtime bridge.mjs (agent-modifiable)", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/runtime/slack-bridge/bridge.mjs"), false);
+  });
+  it("allows write to runtime non-security extensions", () => {
+    assert.equal(checkWritePath("/home/hornet_agent/.pi/agent/extensions/auto-name.ts"), false);
   });
 });

@@ -154,6 +154,35 @@ const BASH_DENY_RULES: DenyRule[] = [
     severity: "block",
   },
 
+  // ── Source repo protection ─────────────────────────────────────────────
+  // Block chmod/chown on ~/hornet/ to prevent undoing read-only permissions
+  {
+    id: "chmod-hornet-source",
+    pattern: /chmod\b.*\/home\/hornet_agent\/hornet/,
+    label: "chmod on read-only source repo ~/hornet/",
+    severity: "block",
+  },
+  {
+    id: "chown-hornet-source",
+    pattern: /chown\b.*\/home\/hornet_agent\/hornet/,
+    label: "chown on read-only source repo ~/hornet/",
+    severity: "block",
+  },
+  // Block tee/redirect writes to source repo
+  {
+    id: "tee-hornet-source",
+    pattern: /tee\s+.*\/home\/hornet_agent\/hornet\//,
+    label: "tee write to read-only source repo ~/hornet/",
+    severity: "block",
+  },
+  // Block chmod/chown on protected runtime security files
+  {
+    id: "chmod-runtime-security",
+    pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security)\./,
+    label: "chmod on protected runtime security file",
+    severity: "block",
+  },
+
   // ── Credential exfiltration ──────────────────────────────────────────
   {
     id: "env-exfil-curl",
@@ -199,34 +228,33 @@ function isAllowedWritePath(filePath: string): boolean {
   return ALLOWED_WRITE_PREFIXES.some((p) => filePath.startsWith(p));
 }
 
-// ── Protected hornet paths ──────────────────────────────────────────────────
-// Security-critical files in the hornet repo that the agent must not modify.
-// Defense-in-depth: the pre-commit hook also blocks these, but this catches
-// edits before they even hit disk.
+// ── Read-only source repo ───────────────────────────────────────────────────
+// ~/hornet/ is the admin-managed infra source. The entire directory is read-only
+// to the agent (permissions removed). The agent runs from deployed copies in
+// ~/.pi/agent/extensions/, ~/.pi/agent/skills/, and ~/runtime/slack-bridge/.
+// This tool-guard blocks write/edit to the source repo AND chmod/chown that
+// could undo the read-only permissions.
 const HORNET_DIR = "/home/hornet_agent/hornet";
-const PROTECTED_HORNET_PREFIXES = [
-  `${HORNET_DIR}/bin/`,
-  `${HORNET_DIR}/hooks/`,
-];
-const PROTECTED_HORNET_FILES = [
-  `${HORNET_DIR}/pi/extensions/tool-guard.ts`,
-  `${HORNET_DIR}/pi/extensions/tool-guard.test.mjs`,
-  `${HORNET_DIR}/slack-bridge/security.mjs`,
-  `${HORNET_DIR}/slack-bridge/security.test.mjs`,
-  `${HORNET_DIR}/SECURITY.md`,
-  `${HORNET_DIR}/setup.sh`,
-  `${HORNET_DIR}/start.sh`,
+
+// ── Protected runtime paths ─────────────────────────────────────────────────
+// Security-critical files deployed to the agent's runtime directories.
+// These are copies from ~/hornet/ that the agent must not modify.
+const PROTECTED_RUNTIME_FILES = [
+  "/home/hornet_agent/.pi/agent/extensions/tool-guard.ts",
+  "/home/hornet_agent/.pi/agent/extensions/tool-guard.test.mjs",
+  "/home/hornet_agent/runtime/slack-bridge/security.mjs",
+  "/home/hornet_agent/runtime/slack-bridge/security.test.mjs",
 ];
 
-function isProtectedHornetPath(filePath: string): boolean {
-  for (const prefix of PROTECTED_HORNET_PREFIXES) {
-    if (filePath.startsWith(prefix)) return true;
+function isProtectedPath(filePath: string): boolean {
+  // Entire source repo is read-only
+  if (filePath.startsWith(HORNET_DIR + "/") || filePath === HORNET_DIR) {
+    return true;
   }
-  for (const file of PROTECTED_HORNET_FILES) {
+  // Protected runtime security files
+  for (const file of PROTECTED_RUNTIME_FILES) {
     if (filePath === file) return true;
   }
-  // Also block .git/hooks/ modification
-  if (filePath.startsWith(`${HORNET_DIR}/.git/hooks/`)) return true;
   return false;
 }
 
@@ -332,25 +360,29 @@ export default function (pi: ExtensionAPI) {
           reason: `🛡️ Blocked by tool-guard: Cannot write to ${filePath}. Only /home/hornet_agent/ is allowed.`,
         };
       }
-      // Then check protected hornet paths
-      if (isProtectedHornetPath(filePath)) {
+      // Block writes to read-only source repo and protected runtime files
+      if (isProtectedPath(filePath)) {
+        const rule = filePath.startsWith(HORNET_DIR)
+          ? "readonly-source"
+          : "protected-runtime";
         auditLog({
           tool: "write",
           path: filePath,
           blocked: true,
-          rule: "protected-hornet",
+          rule,
         });
-        console.error(
-          `🛡️ TOOL-GUARD BLOCKED [write-protected-hornet]: ${filePath}`,
-        );
+        const desc = filePath.startsWith(HORNET_DIR)
+          ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
+          : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
+        console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
         return {
           block: true,
-          reason: `🛡️ Blocked by tool-guard: ${filePath} is a protected security file. Only the admin can modify it.`,
+          reason: `🛡️ Blocked by tool-guard: ${desc}`,
         };
       }
     }
 
-    // Guard edit tool — same workspace confinement + protected hornet files
+    // Guard edit tool — same workspace confinement + protected paths
     if (isToolCallEventType("edit", event)) {
       const filePath = (event.input as { path?: string }).path ?? "";
 
@@ -373,20 +405,24 @@ export default function (pi: ExtensionAPI) {
           reason: `🛡️ Blocked by tool-guard: Cannot edit ${filePath}. Only /home/hornet_agent/ is allowed.`,
         };
       }
-      // Then check protected hornet paths
-      if (isProtectedHornetPath(filePath)) {
+      // Block edits to read-only source repo and protected runtime files
+      if (isProtectedPath(filePath)) {
+        const rule = filePath.startsWith(HORNET_DIR)
+          ? "readonly-source"
+          : "protected-runtime";
         auditLog({
           tool: "edit",
           path: filePath,
           blocked: true,
-          rule: "protected-hornet",
+          rule,
         });
-        console.error(
-          `🛡️ TOOL-GUARD BLOCKED [edit-protected-hornet]: ${filePath}`,
-        );
+        const desc = filePath.startsWith(HORNET_DIR)
+          ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
+          : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
+        console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
         return {
           block: true,
-          reason: `🛡️ Blocked by tool-guard: ${filePath} is a protected security file. Only the admin can modify it.`,
+          reason: `🛡️ Blocked by tool-guard: ${desc}`,
         };
       }
     }

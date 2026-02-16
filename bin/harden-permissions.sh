@@ -65,6 +65,9 @@ fix_file "$HOME/.config/.env" "600"
 fix_dir "$HOME/.ssh" "700"
 find "$HOME/.ssh" -name 'id_*' -not -name '*.pub' -exec chmod 600 {} + 2>/dev/null
 
+# Runtime directories
+fix_dir "$HOME/runtime" "750"
+
 if [ "$changed" -eq 0 ]; then
   echo "  ✓ All permissions already correct"
 fi

