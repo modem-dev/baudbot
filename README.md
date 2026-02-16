@@ -12,34 +12,43 @@ hornet_agent (uid)
 │   ├── settings.json       # pi config
 │   ├── skills/ → ~/hornet/pi/skills/
 │   └── extensions/ → ~/hornet/pi/extensions/
-└── ~/hornet/               # this repo
-    ├── start.sh            # launch script
-    ├── setup.sh            # install from scratch
-    ├── SECURITY.md         # trust boundaries & threat model
-    ├── bin/
-    │   ├── hornet-docker         # Docker wrapper (blocks escalation)
-    │   ├── harden-permissions.sh # Lock down pi state files
-    │   ├── security-audit.sh     # Check security posture
-    │   └── setup-firewall.sh     # Port-based network lockdown
-    ├── slack-bridge/
-    │   ├── bridge.mjs            # Slack ↔ pi bridge (Socket Mode)
-    │   └── package.json
-    └── pi/
-        ├── settings.json
-        ├── skills/
-        │   ├── control-agent/SKILL.md
-        │   └── dev-agent/SKILL.md
-        └── extensions/
-            ├── zen-provider.ts
-            ├── auto-name.ts
-            ├── control.ts
-            ├── todos.ts
-            ├── agentmail/
-            ├── email-monitor/
-            ├── kernel/
-            ├── files.ts
-            ├── context.ts
-            └── loop.ts
+├── ~/hornet/               # this repo
+│   ├── start.sh            # launch script
+│   ├── setup.sh            # install from scratch
+│   ├── SECURITY.md         # trust boundaries & threat model
+│   ├── hooks/
+│   │   └── pre-commit      # self-modification guardrail (installed root-owned)
+│   ├── bin/                # security scripts (all protected)
+│   │   ├── hornet-docker         # Docker wrapper (blocks escalation)
+│   │   ├── hornet-safe-bash      # Bash wrapper (blocks dangerous commands)
+│   │   ├── harden-permissions.sh # Lock down pi state files
+│   │   ├── security-audit.sh     # 24-check security audit
+│   │   ├── scan-extensions.mjs   # Cross-pattern static analysis
+│   │   ├── setup-firewall.sh     # Port-based network lockdown
+│   │   └── redact-logs.sh        # Secret scrubber for session logs
+│   ├── slack-bridge/
+│   │   ├── bridge.mjs            # Slack ↔ pi bridge (Socket Mode)
+│   │   ├── security.mjs          # Security functions (protected)
+│   │   └── package.json
+│   └── pi/
+│       ├── settings.json
+│       ├── skills/
+│       │   ├── control-agent/SKILL.md
+│       │   ├── dev-agent/SKILL.md
+│       │   └── sentry-agent/SKILL.md
+│       └── extensions/
+│           ├── tool-guard.ts     # Tool call interception (protected)
+│           ├── sentry-monitor.ts # Sentry API integration
+│           ├── zen-provider.ts   # OpenCode Zen LLM provider
+│           ├── auto-name.ts      # Session naming via env var
+│           ├── control.ts, context.ts, files.ts, loop.ts, todos.ts
+│           ├── agentmail/, email-monitor/, kernel/
+│           └── ...
+├── ~/workspace/            # project repos + worktrees
+│   ├── modem/              # product app
+│   ├── website/            # marketing site
+│   └── worktrees/          # git worktrees for dev-agent branches
+└── ~/scripts/              # agent-authored operational scripts
 ```
 
 ## Identity
@@ -50,7 +59,7 @@ hornet_agent (uid)
 | **GitHub** | [hornet-fw](https://github.com/hornet-fw) |
 | **Email** | hornet@modem.codes → hornet@agentmail.to |
 | **LLM** | Claude Opus 4.6 via OpenCode Zen |
-| **Pi agent** | control-agent (spawns dev-agent) |
+| **Pi agent** | control-agent (spawns dev-agent + sentry-agent) |
 
 ## Security
 
@@ -63,6 +72,7 @@ See [SECURITY.md](SECURITY.md) for full trust boundaries and threat model.
 - Prompt injection detection logging in the Slack bridge
 - Secrets in `~/.config/.env` (600 perms, not in repo)
 - SSH key owner-only (700/600 perms)
+- **Self-modification guardrails**: root-owned pre-commit hook + tool-guard rules prevent agent from weakening its own security tooling
 
 ### Security Scripts
 
@@ -94,6 +104,11 @@ sudo su - hornet_agent -c 'vim ~/.config/.env'
 # AGENTMAIL_API_KEY=...
 # KERNEL_API_KEY=...
 # HORNET_SECRET=...
+# SLACK_BOT_TOKEN=xoxb-...
+# SLACK_APP_TOKEN=xapp-...
+# SLACK_ALLOWED_USERS=U01234,U56789
+# SENTRY_AUTH_TOKEN=...
+# HORNET_ALLOWED_EMAILS=you@example.com
 ```
 
 ## Launch
@@ -102,7 +117,7 @@ sudo su - hornet_agent -c 'vim ~/.config/.env'
 sudo -u hornet_agent /home/hornet_agent/hornet/start.sh
 ```
 
-This starts the **control-agent**, which automatically spawns a **dev-agent** in a tmux session.
+This starts the **control-agent**, which automatically spawns a **dev-agent** and **sentry-agent** in tmux sessions, and starts the Slack bridge.
 
 ## Monitoring
 
@@ -118,10 +133,11 @@ sudo -u hornet_agent tmux ls
 
 The control-agent runs in the foreground terminal where you launched `start.sh`.
 
-### Watch the dev-agent
+### Watch the dev-agent / sentry-agent
 
 ```bash
 sudo -u hornet_agent tmux attach -t dev-agent
+sudo -u hornet_agent tmux attach -t sentry-agent
 ```
 
 Detach without killing: `Ctrl+b` then `d`
@@ -129,7 +145,6 @@ Detach without killing: `Ctrl+b` then `d`
 ### Kill everything
 
 ```bash
-# Kill all hornet processes (pi sessions + tmux)
 sudo -u hornet_agent pkill -u hornet_agent
 ```
 
