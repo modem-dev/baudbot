@@ -140,19 +140,17 @@ sudo -u hornet_agent cat ~/.pi/agent/hornet-version.json
 ## Tests
 
 ```bash
-# All tests (run from source as admin — agent can't read source)
-cd ~/hornet && \
-  node slack-bridge/security.test.mjs && \
-  node pi/extensions/tool-guard.test.mjs && \
-  node bin/scan-extensions.test.mjs && \
-  bash bin/hornet-safe-bash.test.sh && \
-  bash bin/redact-logs.test.sh
+# All 207 tests across 5 suites
+bin/test.sh
 
-# Or from deployed copies (as agent)
-sudo -u hornet_agent bash -c '
-  export PATH=~/opt/node-v22.14.0-linux-x64/bin:$PATH
-  cd ~/.pi/agent/extensions && node --test tool-guard.test.mjs
-'
+# JS/TS only
+bin/test.sh js
+
+# Shell only
+bin/test.sh shell
+
+# Lint + typecheck
+npm run lint && npm run typecheck
 ```
 
 ## How It Works
