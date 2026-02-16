@@ -2,12 +2,17 @@
 # Port-based network lockdown for hornet_agent
 # Run as root: sudo ~/hornet/bin/setup-firewall.sh
 #
-# Allows: HTTP (80), HTTPS (443), SSH (22), DNS (53), localhost
-# Blocks: everything else (reverse shells, raw sockets, non-standard ports)
+# OUTBOUND (internet):
+#   Allows: HTTP (80), HTTPS (443), SSH (22), DNS (53)
+#   Blocks: everything else (reverse shells, raw sockets, non-standard ports)
 #
-# Web browsing and all HTTPS APIs still work. The agent cannot:
+# LOCALHOST:
+#   Allows: Slack bridge (7890), Ollama (11434), DNS (53)
+#   Blocks: everything else (Steam, CUPS, Tailscale admin, unknown services)
+#
+# The agent cannot:
 # - Open reverse shells on non-standard ports
-# - Use raw/ICMP sockets for covert channels
+# - Talk to localhost services it doesn't need (Steam, CUPS, Tailscale UI)
 # - Bind to ports (no inbound listeners/backdoors)
 # - Do DNS tunneling over non-53 UDP
 
@@ -36,8 +41,26 @@ iptables -X "$CHAIN" 2>/dev/null || true
 # Create a dedicated chain for hornet_agent
 iptables -N "$CHAIN"
 
-# Allow localhost (bridge API, postgres, ollama, pi sockets)
-iptables -A "$CHAIN" -o lo -j ACCEPT
+# ── Localhost: allow only specific services ──────────────────────────────────
+
+# Allow Slack bridge (outbound API)
+iptables -A "$CHAIN" -o lo -p tcp --dport 7890 -j ACCEPT
+
+# Allow Ollama (local LLM inference)
+iptables -A "$CHAIN" -o lo -p tcp --dport 11434 -j ACCEPT
+
+# Allow DNS on localhost
+iptables -A "$CHAIN" -o lo -p udp --dport 53 -j ACCEPT
+iptables -A "$CHAIN" -o lo -p tcp --dport 53 -j ACCEPT
+
+# Allow localhost responses (established connections back to us)
+iptables -A "$CHAIN" -o lo -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Block everything else on localhost
+iptables -A "$CHAIN" -o lo -j LOG --log-prefix "HORNET_LOCAL_BLOCKED: " --log-level 4
+iptables -A "$CHAIN" -o lo -j DROP
+
+# ── Internet: allow only standard ports ──────────────────────────────────────
 
 # Allow DNS (UDP + TCP)
 iptables -A "$CHAIN" -p udp --dport 53 -j ACCEPT
@@ -63,6 +86,10 @@ iptables -A OUTPUT -m owner --uid-owner "$UID_HORNET" -j "$CHAIN"
 echo "✅ Firewall active. Rules:"
 echo ""
 iptables -L "$CHAIN" -n -v --line-numbers
+echo ""
+echo "Localhost allowed: 7890 (bridge), 11434 (ollama), 53 (dns)"
+echo "Internet allowed:  80, 443, 22, 53"
+echo "Everything else:   BLOCKED + LOGGED"
 echo ""
 echo "To remove: sudo iptables -D OUTPUT -m owner --uid-owner $UID_HORNET -j $CHAIN && sudo iptables -F $CHAIN && sudo iptables -X $CHAIN"
 echo ""

@@ -244,6 +244,14 @@ fi
 if command -v iptables &>/dev/null; then
   if iptables -L HORNET_OUTPUT -n 2>/dev/null | grep -q 'DROP'; then
     ok "Firewall rules active (HORNET_OUTPUT chain)"
+
+    # Check localhost isolation (blanket -o lo ACCEPT = bad)
+    if iptables -L HORNET_OUTPUT -n 2>/dev/null | grep -qE 'ACCEPT.*lo\s+0\.0\.0\.0/0\s+0\.0\.0\.0/0\s*$'; then
+      finding "WARN" "Firewall allows ALL localhost traffic" \
+        "Agent can reach every local service (Steam, CUPS, Tailscale, etc.). Update setup-firewall.sh"
+    else
+      ok "Localhost traffic restricted to specific ports"
+    fi
   else
     finding "WARN" "No firewall rules for hornet_agent" \
       "Run: sudo ~/hornet/bin/setup-firewall.sh"
