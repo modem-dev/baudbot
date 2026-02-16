@@ -87,27 +87,17 @@ tmux new-window -n hornet 'sudo -u hornet_agent ~/runtime/start.sh'
 ## Running Tests
 
 ```bash
-# Tool-guard tests (86 tests)
-cd pi/extensions && node --test tool-guard.test.mjs
+# All tests (207 across 5 suites)
+bin/test.sh
 
-# Bridge security tests
-cd slack-bridge && node --test security.test.mjs
+# Only JS/TS tests
+bin/test.sh js
 
-# Extension scanner tests
-cd bin && node --test scan-extensions.test.mjs
-
-# Shell deny list tests
-cd bin && bash hornet-safe-bash.test.sh
-
-# Log redaction tests
-cd bin && bash redact-logs.test.sh
-
-# From deployed copies (as agent)
-sudo -u hornet_agent bash -c '
-  export PATH=~/opt/node-v22.14.0-linux-x64/bin:$PATH
-  cd ~/.pi/agent/extensions && node --test tool-guard.test.mjs
-'
+# Only shell tests
+bin/test.sh shell
 ```
+
+Add new test files to `bin/test.sh` — don't scatter test invocations across CI or docs.
 
 ## Conventions
 
