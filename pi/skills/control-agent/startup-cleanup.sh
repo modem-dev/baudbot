@@ -76,7 +76,7 @@ fi
 # Start fresh slack-bridge
 echo "Starting slack-bridge with PI_SESSION_ID=$MY_UUID..."
 tmux new-session -d -s slack-bridge \
-  "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/hornet/slack-bridge && exec node bridge.mjs"
+  "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
 
 # Wait for bridge to come up
 sleep 3

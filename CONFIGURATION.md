@@ -2,6 +2,12 @@
 
 All secrets and configuration live in `~/.config/.env` on the agent's home directory (`/home/hornet_agent/.config/.env`). This file is `600` permissions and never committed to the repo.
 
+## Schema Validation
+
+Hornet uses [Varlock](https://varlock.dev) to validate environment variables at startup. The schema (`.env.schema`) is committed to the repo and deployed to `~/.config/.env.schema` alongside the secrets file. It defines types, required/optional status, and sensitivity for each variable.
+
+`start.sh` runs `varlock load` to validate before launching — the agent won't start with missing or malformed variables. The bridge uses `varlock run` to inject validated env vars. Varlock must be installed on the agent system (`brew install dmno-dev/tap/varlock` or `curl -sSfL https://varlock.dev/install.sh | sh -s`).
+
 ## Required Variables
 
 ### LLM Access
@@ -123,4 +129,4 @@ sudo -u hornet_agent pkill -u hornet_agent
 sudo -u hornet_agent ~/runtime/start.sh
 ```
 
-The bridge and all sub-agents source `~/.config/.env` on startup via `set -a && source ~/.config/.env && set +a`.
+The bridge and all sub-agents load `~/.config/.env` on startup. If varlock is installed, variables are validated against `.env.schema` before injection.

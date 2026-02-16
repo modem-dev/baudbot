@@ -176,6 +176,13 @@ done
 echo "=== Installing Slack bridge dependencies ==="
 (cd "$REPO_DIR/slack-bridge" && npm install)
 
+echo "=== Installing varlock ==="
+if command -v varlock &>/dev/null; then
+  echo "varlock already installed, skipping"
+else
+  curl -sSfL https://varlock.dev/install.sh | sh -s
+fi
+
 echo "=== Deploying from source to runtime ==="
 # deploy.sh runs as admin (needs read access to source, write+chown to agent home).
 # It copies extensions, skills, bridge, and utility scripts to runtime dirs.
