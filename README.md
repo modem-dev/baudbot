@@ -1,174 +1,151 @@
-# Hornet
+# 🐝 Hornet
 
-Autonomous coding agent running as an isolated Linux user.
+**Hardened autonomous agent infrastructure. Careful — you might get stung.**
+
+Hornet is an open framework for running AI coding agents as isolated Linux processes with defense-in-depth security. It assumes the worst: that the agent *will* be prompt-injected, and builds kernel-level walls that hold even when the LLM is fully compromised.
+
+## Why
+
+Every AI agent framework gives the model shell access and hopes for the best. Hornet doesn't hope — it enforces:
+
+- **OS-level isolation** — dedicated Unix user, no sudo, can't see other processes
+- **Kernel-enforced network control** — iptables per-UID egress allowlist
+- **Tamper-proof security** — root-owned hooks prevent the agent from weakening its own defenses
+- **Dual-layer command blocking** — dangerous shell patterns caught before execution at two independent layers
+- **Self-healing** — permissions hardened on every boot, secrets redacted from logs automatically
+
+## Security Stack
+
+| Layer | What | Survives prompt injection? |
+|-------|------|---------------------------|
+| **iptables egress** | Per-UID firewall chain. Allowlisted ports only, no listeners, no reverse shells. | ✅ Kernel-enforced |
+| **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel-enforced |
+| **Self-modification guard** | Root-owned pre-commit hook + tool-guard extension. Agent can't edit security files. | ✅ Root-owned |
+| **Shell deny list** | `hornet-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. | ✅ Root-owned |
+| **Tool call interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Compiled into runtime |
+| **Content wrapping** | External messages wrapped with security boundaries + Unicode homoglyph sanitization. | ⚠️ LLM-dependent |
+| **Injection detection** | 12 regex patterns flag suspicious content. Log-only. | ⚠️ Detection, not prevention |
+| **Filesystem hardening** | 700 dirs, 600 secrets, enforced on every boot. | ✅ Cron/boot script |
+| **Log redaction** | Scrubs API keys, tokens, private keys from session logs. | ✅ Boot script |
+| **Extension scanning** | Static analysis for exfiltration, obfuscation, crypto-mining patterns. | ✅ Audit-time |
+
+**202 tests** across 6 test suites. CI runs all tests + `detect-secrets` on every push.
 
 ## Architecture
 
 ```
-hornet_agent (uid)
-├── ~/.config/.env          # secrets (not in repo)
-├── ~/.ssh/                 # SSH key for GitHub (not in repo)
-├── ~/.pi/agent/
-│   ├── settings.json       # pi config
-│   ├── skills/ → ~/hornet/pi/skills/
-│   └── extensions/ → ~/hornet/pi/extensions/
-├── ~/hornet/               # this repo
-│   ├── start.sh            # launch script
-│   ├── setup.sh            # install from scratch
-│   ├── SECURITY.md         # trust boundaries & threat model
-│   ├── hooks/
-│   │   └── pre-commit      # self-modification guardrail (installed root-owned)
-│   ├── bin/                # security scripts (all protected)
-│   │   ├── hornet-docker         # Docker wrapper (blocks escalation)
-│   │   ├── hornet-safe-bash      # Bash wrapper (blocks dangerous commands)
-│   │   ├── harden-permissions.sh # Lock down pi state files
-│   │   ├── security-audit.sh     # 24-check security audit
-│   │   ├── scan-extensions.mjs   # Cross-pattern static analysis
-│   │   ├── setup-firewall.sh     # Port-based network lockdown
-│   │   └── redact-logs.sh        # Secret scrubber for session logs
+hornet_agent (unprivileged uid)
+│
+├── ~/hornet/                    ← this repo
+│   ├── bin/                     ← 🔒 security scripts (all root-protected)
+│   │   ├── security-audit.sh         24-check security audit
+│   │   ├── setup-firewall.sh         iptables per-UID lockdown
+│   │   ├── hornet-safe-bash           shell command deny list
+│   │   ├── hornet-docker              Docker wrapper (blocks escalation)
+│   │   ├── harden-permissions.sh      filesystem hardening
+│   │   ├── scan-extensions.mjs        extension static analysis
+│   │   └── redact-logs.sh             secret scrubber for logs
+│   ├── hooks/pre-commit         ← 🔒 self-modification guardrail
+│   ├── pi/extensions/
+│   │   ├── tool-guard.ts        ← 🔒 tool call interception
+│   │   └── ...                       agent-modifiable extensions
+│   ├── pi/skills/                    agent-modifiable operational knowledge
 │   ├── slack-bridge/
-│   │   ├── bridge.mjs            # Slack ↔ pi bridge (Socket Mode)
-│   │   ├── security.mjs          # Security functions (protected)
-│   │   └── package.json
-│   └── pi/
-│       ├── settings.json
-│       ├── skills/
-│       │   ├── control-agent/SKILL.md
-│       │   ├── dev-agent/SKILL.md
-│       │   └── sentry-agent/SKILL.md
-│       └── extensions/
-│           ├── tool-guard.ts     # Tool call interception (protected)
-│           ├── sentry-monitor.ts # Sentry API integration
-│           ├── zen-provider.ts   # OpenCode Zen LLM provider
-│           ├── auto-name.ts      # Session naming via env var
-│           ├── control.ts, context.ts, files.ts, loop.ts, todos.ts
-│           ├── agentmail/, email-monitor/, kernel/
-│           └── ...
-├── ~/workspace/            # project repos + worktrees
-│   ├── modem/              # product app
-│   ├── website/            # marketing site
-│   └── worktrees/          # git worktrees for dev-agent branches
-└── ~/scripts/              # agent-authored operational scripts
+│   │   ├── bridge.mjs                Slack ↔ agent bridge
+│   │   └── security.mjs        ← 🔒 content wrapping, rate limiting, auth
+│   ├── setup.sh                 ← 🔒 system setup (creates user, firewall, etc.)
+│   └── SECURITY.md              ← 🔒 threat model
+│
+├── ~/workspace/                      project repos + git worktrees
+└── ~/.config/.env                    secrets (600 perms, not in repo)
 ```
 
-## Identity
+🔒 = protected by root-owned pre-commit hook + tool-guard rules. Agent cannot modify.
 
-| | |
-|---|---|
-| **Unix user** | `hornet_agent` |
-| **GitHub** | [hornet-fw](https://github.com/hornet-fw) |
-| **Email** | hornet@modem.codes → hornet@agentmail.to |
-| **LLM** | Claude Opus 4.6 via OpenCode Zen |
-| **Pi agent** | control-agent (spawns dev-agent + sentry-agent) |
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for full trust boundaries and threat model.
-
-- Runs as unprivileged `hornet_agent` user — no sudo
-- Cannot read admin home directory
-- Docker access via wrapper that blocks privilege escalation
-- External content (Slack, email) wrapped with security boundaries before reaching LLM
-- Prompt injection detection logging in the Slack bridge
-- Secrets in `~/.config/.env` (600 perms, not in repo)
-- SSH key owner-only (700/600 perms)
-- **Self-modification guardrails**: root-owned pre-commit hook + tool-guard rules prevent agent from weakening its own security tooling
-
-### Security Scripts
+## Quick Start
 
 ```bash
-# Check security posture
-~/hornet/bin/security-audit.sh
-
-# Lock down pi state file permissions (run on startup)
-~/hornet/bin/harden-permissions.sh
-
-# Apply port-based network restrictions (run as root)
-sudo ~/hornet/bin/setup-firewall.sh
-```
-
-## Setup
-
-```bash
-# Clone the repo (need SSH key + known_hosts first)
-sudo su - hornet_agent -c 'ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null'
+# Clone
 sudo su - hornet_agent -c 'git clone git@github.com:modem-dev/hornet.git ~/hornet'
 
-# Run setup (as root)
+# Setup (creates user, firewall, permissions — run as root)
 sudo bash /home/hornet_agent/hornet/setup.sh <admin_username>
 
 # Add secrets
 sudo su - hornet_agent -c 'vim ~/.config/.env'
-# GITHUB_TOKEN=...
-# OPENCODE_ZEN_API_KEY=...
-# AGENTMAIL_API_KEY=...
-# KERNEL_API_KEY=...
-# HORNET_SECRET=...
-# SLACK_BOT_TOKEN=xoxb-...
-# SLACK_APP_TOKEN=xapp-...
-# SLACK_ALLOWED_USERS=U01234,U56789
-# SENTRY_AUTH_TOKEN=...
-# HORNET_ALLOWED_EMAILS=you@example.com
-```
 
-## Launch
-
-```bash
+# Launch
 sudo -u hornet_agent /home/hornet_agent/hornet/start.sh
 ```
 
-This starts the **control-agent**, which automatically spawns a **dev-agent** and **sentry-agent** in tmux sessions, and starts the Slack bridge.
+## Configuration
 
-## Monitoring
-
-Hornet uses tmux to manage sub-agent sessions. All commands run as `hornet_agent`.
-
-### List sessions
+Secrets live in `~/.config/.env` (not in repo, 600 perms):
 
 ```bash
+GITHUB_TOKEN=...
+OPENCODE_ZEN_API_KEY=...
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+SLACK_ALLOWED_USERS=U01234,U56789   # fail-closed: bridge exits if empty
+AGENTMAIL_API_KEY=...
+KERNEL_API_KEY=...
+SENTRY_AUTH_TOKEN=...
+HORNET_SECRET=...
+HORNET_ALLOWED_EMAILS=you@example.com
+```
+
+## Operations
+
+```bash
+# Check security posture (24 checks + optional deep extension scan)
+sudo -u hornet_agent ~/hornet/bin/security-audit.sh --deep
+
+# Harden file permissions (runs on every boot)
+sudo -u hornet_agent ~/hornet/bin/harden-permissions.sh
+
+# Apply network firewall (run as root)
+sudo ~/hornet/bin/setup-firewall.sh
+
+# Redact secrets from session logs
+sudo -u hornet_agent ~/hornet/bin/redact-logs.sh
+
+# Monitor agent sessions
 sudo -u hornet_agent tmux ls
-```
+sudo -u hornet_agent tmux attach -t dev-agent    # Ctrl+b d to detach
 
-### Watch the control-agent
-
-The control-agent runs in the foreground terminal where you launched `start.sh`.
-
-### Watch the dev-agent / sentry-agent
-
-```bash
-sudo -u hornet_agent tmux attach -t dev-agent
-sudo -u hornet_agent tmux attach -t sentry-agent
-```
-
-Detach without killing: `Ctrl+b` then `d`
-
-### Kill everything
-
-```bash
+# Kill everything
 sudo -u hornet_agent pkill -u hornet_agent
-```
 
-### Restart
-
-```bash
-sudo -u hornet_agent pkill -u hornet_agent
+# Restart
 sudo -u hornet_agent /home/hornet_agent/hornet/start.sh
 ```
 
-## Updating
-
-Changes to skills, extensions, or config are tracked in this repo. After pulling:
+## Tests
 
 ```bash
-# settings.json needs to be copied (not symlinked, pi writes to it)
-sudo -u hornet_agent cp ~/hornet/pi/settings.json ~/.pi/agent/settings.json
-
-# Extension deps (if package.json changed)
-sudo -u hornet_agent bash -c '
-  export PATH=~/opt/node-v22.14.0-linux-x64/bin:$PATH
-  cd ~/hornet/pi/extensions/kernel && npm install
-  cd ~/hornet/pi/extensions/agentmail && npm install
-'
+# All 202 tests
+sudo -u hornet_agent bash -c "export PATH=~/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
+  cd ~/hornet/slack-bridge && node --test security.test.mjs && \
+  cd ~/hornet/pi/extensions && node --test tool-guard.test.mjs && \
+  cd ~/hornet/bin && node --test scan-extensions.test.mjs && \
+  bash hornet-safe-bash.test.sh && bash redact-logs.test.sh && bash security-audit.test.sh"
 ```
 
-Skills and extensions are symlinked and update automatically.
+## How It Works
+
+Hornet runs a **control-agent** that spawns sub-agents (dev-agent, sentry-agent) in tmux sessions and starts a Slack bridge. Messages flow:
+
+```
+Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
+```
+
+Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is somehow evaded. The firewall blocks exfiltration even if all software layers fail. Defense in depth, all the way down.
+
+## Security Details
+
+See [SECURITY.md](SECURITY.md) for the full threat model and trust boundary diagram.
+
+## License
+
+MIT
