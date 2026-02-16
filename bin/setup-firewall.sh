@@ -7,7 +7,8 @@
 #   Blocks: everything else (reverse shells, raw sockets, non-standard ports)
 #
 # LOCALHOST:
-#   Allows: Slack bridge (7890), Ollama (11434), PostgreSQL (54322), DNS (53)
+#   Allows: Dev servers (3000-3999, 5173, 6006, 8787-8800, 9229-9260),
+#           Slack bridge (7890), Ollama (11434), PostgreSQL (54322), DNS (53)
 #   Blocks: everything else (Steam, CUPS, Tailscale admin, unknown services)
 #
 # The agent cannot:
@@ -43,14 +44,25 @@ iptables -w -N "$CHAIN"
 
 # ── Localhost: allow only specific services ──────────────────────────────────
 
-# Allow Slack bridge (outbound API)
+# ── Infrastructure ────────────────────────────────────────────────────────
+# Slack bridge (outbound API)
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 7890 -j ACCEPT
-
-# Allow Ollama (local LLM inference)
+# Ollama (local LLM inference)
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 11434 -j ACCEPT
-
-# Allow PostgreSQL in Docker (modem app dev/test)
+# PostgreSQL in Docker (modem app)
 iptables -w -A "$CHAIN" -o lo -p tcp --dport 54322 -j ACCEPT
+
+# ── Dev servers (for running/testing modem app locally) ──────────────────
+# Next.js (dashboard, website)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 3000:3999 -j ACCEPT
+# Vite
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 5173 -j ACCEPT
+# Storybook
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 6006 -j ACCEPT
+# Wrangler dev servers (Cloudflare Workers)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 8787:8800 -j ACCEPT
+# Node/Wrangler inspector (debugging)
+iptables -w -A "$CHAIN" -o lo -p tcp --dport 9229:9260 -j ACCEPT
 
 # Allow DNS on localhost
 iptables -w -A "$CHAIN" -o lo -p udp --dport 53 -j ACCEPT
@@ -90,7 +102,9 @@ echo "✅ Firewall active. Rules:"
 echo ""
 iptables -w -L "$CHAIN" -n -v --line-numbers
 echo ""
-echo "Localhost allowed: 7890 (bridge), 11434 (ollama), 54322 (postgres), 53 (dns)"
+echo "Localhost allowed: 3000-3999 (next), 5173 (vite), 6006 (storybook),"
+echo "                   7890 (bridge), 8787-8800 (wrangler), 9229-9260 (inspector),"
+echo "                   11434 (ollama), 54322 (postgres), 53 (dns)"
 echo "Internet allowed:  80, 443, 22, 53"
 echo "Everything else:   BLOCKED + LOGGED"
 echo ""
