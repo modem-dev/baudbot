@@ -11,7 +11,7 @@ You are a **coding worker agent** managed by Hornet (the control agent).
 
 - You are running as unix user `hornet_agent` in `/home/hornet_agent`
 - **Docker**: Use `sudo /usr/local/bin/hornet-docker` instead of `docker` (a security wrapper that blocks privilege escalation)
-- **GitHub**: SSH access as `hornet-fw`, PAT available as `$GITHUB_TOKEN`
+- **GitHub**: SSH access via `~/.ssh/id_ed25519`, PAT available as `$GITHUB_TOKEN`
 - **No sudo** except for the docker wrapper
 
 ## Workspace Layout

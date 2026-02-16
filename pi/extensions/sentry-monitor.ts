@@ -13,19 +13,18 @@ import { StringEnum } from "@mariozechner/pi-ai";
  * Investigation: Sentry API for deep-dive on flagged issues
  *
  * Requires:
- *   SLACK_BOT_TOKEN  — Slack bot OAuth token (xoxb-...)
- *   SENTRY_AUTH_TOKEN — Sentry API bearer token
- *   SENTRY_CHANNEL_ID — (optional) Slack channel ID for #bots-sentry
- *
- * Uses SENTRY_ORG (default: modem-labs).
+ *   SLACK_BOT_TOKEN    — Slack bot OAuth token
+ *   SENTRY_AUTH_TOKEN  — Sentry API bearer token
+ *   SENTRY_ORG         — Sentry organization slug
+ *   SENTRY_CHANNEL_ID  — Slack channel ID for #bots-sentry
  */
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const SENTRY_ORG = process.env.SENTRY_ORG || "modem-labs";
+const SENTRY_ORG = process.env.SENTRY_ORG || "";
 const SENTRY_AUTH_TOKEN = process.env.SENTRY_AUTH_TOKEN || "";
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
-let SENTRY_CHANNEL_ID = process.env.SENTRY_CHANNEL_ID || "C0984PQD6NT";
+let SENTRY_CHANNEL_ID = process.env.SENTRY_CHANNEL_ID || "";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,6 +224,7 @@ export default function (pi: ExtensionAPI) {
 
   async function sentryGet(path: string): Promise<any> {
     if (!SENTRY_AUTH_TOKEN) throw new Error("SENTRY_AUTH_TOKEN not set — add it to ~/.config/.env");
+    if (!SENTRY_ORG) throw new Error("SENTRY_ORG not set — add it to ~/.config/.env (your Sentry organization slug)");
     const url = `https://sentry.io/api/0/${path}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${SENTRY_AUTH_TOKEN}` },

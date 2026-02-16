@@ -38,6 +38,8 @@ start.sh                    agent launcher (deployed to ~/runtime/start.sh)
 
 🔒 = security-critical files. Protected at runtime (read-only perms + tool-guard blocks writes).
 
+See [CONFIGURATION.md](CONFIGURATION.md) for all env vars and how to obtain them.
+
 ## Architecture: Source / Runtime Separation
 
 The admin owns the source (`~/hornet/`). The agent (`hornet_agent` user) owns the runtime. The agent **cannot read the source repo** — admin home is `700`.

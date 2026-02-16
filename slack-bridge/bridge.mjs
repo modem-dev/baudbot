@@ -6,13 +6,14 @@
  * Uses Socket Mode (no public URL needed).
  *
  * Required env vars:
- *   SLACK_BOT_TOKEN        - xoxb-... bot token
- *   SLACK_APP_TOKEN        - xapp-... app-level token (for Socket Mode)
+ *   SLACK_BOT_TOKEN        - Slack bot OAuth token
+ *   SLACK_APP_TOKEN        - Slack app-level token (for Socket Mode)
  *   SLACK_ALLOWED_USERS    - comma-separated Slack user IDs (REQUIRED, fail-closed)
  *
  * Optional:
  *   PI_SESSION_ID          - target pi session ID (defaults to auto-detect control-agent)
  *   SLACK_CHANNEL_ID       - if set, also responds to all messages in this channel (not just @mentions)
+ *   SENTRY_CHANNEL_ID      - Slack channel ID for Sentry alerts (forwarded to agent)
  *   BRIDGE_API_PORT        - outbound API port (default: 7890)
  */
 
@@ -279,7 +280,7 @@ app.event("app_mention", async ({ event, say }) => {
 // Handle DMs and optional channel messages
 app.event("message", async ({ event, say }) => {
   const targetChannel = process.env.SLACK_CHANNEL_ID;
-  const sentryChannel = process.env.SENTRY_CHANNEL_ID || "C0984PQD6NT";
+  const sentryChannel = process.env.SENTRY_CHANNEL_ID || "";
   const isDM = event.channel_type === "im";
   const isTargetChannel = targetChannel && event.channel === targetChannel;
   const isSentryChannel = event.channel === sentryChannel;

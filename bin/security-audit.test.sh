@@ -435,7 +435,7 @@ output=$(run_audit "$HOME20")
 if [ "$(whoami)" = "hornet_agent" ]; then
   expect_contains "flags agent-owned protected file" "$output" "Protected file owned by hornet_agent"
 else
-  # Running as admin (bentlegen) — file is admin-owned, should pass
+  # Running as admin — file is admin-owned, should pass
   expect_contains "protected files pass" "$output" "All protected files are admin-owned"
 fi
 

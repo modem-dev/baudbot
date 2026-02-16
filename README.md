@@ -35,7 +35,7 @@ Agents work on real files in real repos — no sandbox friction. They make real 
 ## Architecture
 
 ```
-admin (e.g. bentlegen)
+admin_user (your account)
 ├── ~/hornet/                         ← source repo (agent CANNOT read this)
 │   ├── bin/
 │   │   ├── deploy.sh                     stages source → /tmp → agent runtime
@@ -90,7 +90,7 @@ The agent can verify its own integrity via the manifest without needing source a
 
 ```bash
 # Clone (as admin — source lives in admin's home, not agent's)
-git clone git@github.com:modem-dev/hornet.git ~/hornet
+git clone <your-hornet-repo-url> ~/hornet
 
 # Setup (creates user, firewall, permissions — run as root)
 sudo bash ~/hornet/setup.sh <admin_username>
@@ -107,20 +107,8 @@ sudo -u hornet_agent ~/runtime/start.sh
 
 ## Configuration
 
-Secrets live in `~hornet_agent/.config/.env` (not in repo, 600 perms):
-
-```bash
-GITHUB_TOKEN=...
-OPENCODE_ZEN_API_KEY=...
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
-SLACK_ALLOWED_USERS=U01234,U56789   # fail-closed: bridge exits if empty
-AGENTMAIL_API_KEY=...
-KERNEL_API_KEY=...
-SENTRY_AUTH_TOKEN=...
-HORNET_SECRET=...
-HORNET_ALLOWED_EMAILS=you@example.com
-```
+Secrets and configuration live in `~hornet_agent/.config/.env` (not in repo, 600 perms).
+See [CONFIGURATION.md](CONFIGURATION.md) for the full list and how to obtain each value.
 
 ## Operations
 

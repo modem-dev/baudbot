@@ -554,7 +554,8 @@ echo ""
 echo "Extension & Skill Safety"
 
 # Check pi extensions for suspicious patterns (deployed copies only)
-suspicious_extension_patterns='(eval\s*\(|new\s+Function\s*\(|child_process|execSync|execFile|spawn\s*\(|writeFileSync.*\/etc|writeFileSync.*\/home\/(?!hornet_agent))'
+AGENT_USER="${HORNET_AGENT_USER:-hornet_agent}"
+suspicious_extension_patterns="(eval\s*\(|new\s+Function\s*\(|child_process|execSync|execFile|spawn\s*\(|writeFileSync.*\/etc|writeFileSync.*\/home\/(?!${AGENT_USER}))"
 ext_dirs=(
   "$HORNET_HOME/.pi/agent/extensions"
 )

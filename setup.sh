@@ -21,8 +21,8 @@
 #
 # After running, you still need to:
 #   - Set the hornet_agent password: sudo passwd hornet_agent
-#   - Add secrets to ~/.config/.env (see list at end of script output)
-#   - Add the SSH public key to the hornet-fw GitHub account
+#   - Add secrets to ~/.config/.env (see CONFIGURATION.md)
+#   - Add the SSH public key to your GitHub account
 #   - Add the admin user to hornet_agent group (for file access): sudo usermod -aG hornet_agent <admin_user>
 
 set -euo pipefail
@@ -53,7 +53,7 @@ if [ ! -f "$HORNET_HOME/.ssh/id_ed25519" ]; then
   sudo -u hornet_agent bash -c '
     mkdir -p ~/.ssh
     ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-    ssh-keygen -t ed25519 -C "hornet-fw" -f ~/.ssh/id_ed25519 -N ""
+    ssh-keygen -t ed25519 -C "hornet-agent" -f ~/.ssh/id_ed25519 -N ""
     cat > ~/.ssh/config << SSHEOF
 Host github.com
   IdentityFile ~/.ssh/id_ed25519
@@ -65,7 +65,7 @@ SSHEOF
   '
   echo "SSH public key:"
   cat "$HORNET_HOME/.ssh/id_ed25519.pub"
-  echo "Add this to https://github.com/settings/keys for the hornet-fw account"
+  echo "Add this to https://github.com/settings/keys for your agent's GitHub account"
 else
   echo "SSH key already exists, skipping"
 fi
@@ -89,8 +89,8 @@ sudo -u hornet_agent bash -c "
 "
 
 echo "=== Configuring git identity ==="
-GIT_USER_NAME="${GIT_USER_NAME:-hornet-fw}"
-GIT_USER_EMAIL="${GIT_USER_EMAIL:-hornet-fw@users.noreply.github.com}"
+GIT_USER_NAME="${GIT_USER_NAME:-hornet-agent}"
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-hornet-agent@users.noreply.github.com}"
 sudo -u hornet_agent bash -c "
   git config --global user.name '$GIT_USER_NAME'
   git config --global user.email '$GIT_USER_EMAIL'
@@ -236,11 +236,16 @@ echo "     OPENCODE_ZEN_API_KEY=..."
 echo "     AGENTMAIL_API_KEY=..."
 echo "     KERNEL_API_KEY=..."
 echo "     HORNET_SECRET=..."
-echo "     SLACK_BOT_TOKEN=xoxb-..."
-echo "     SLACK_APP_TOKEN=xapp-..."
-echo "     SLACK_ALLOWED_USERS=U01234,U56789  (REQUIRED — bridge refuses to start without this)"
-echo "     HORNET_ALLOWED_EMAILS=you@example.com  (comma-separated, for email monitor sender allowlist)"
-echo "  3. Add SSH key to hornet-fw GitHub account"
+echo "     SLACK_BOT_TOKEN=..."
+echo "     SLACK_APP_TOKEN=..."
+echo "     SLACK_ALLOWED_USERS=U...  (REQUIRED — bridge refuses to start without this)"
+echo "     SENTRY_CHANNEL_ID=C...  (Slack channel ID for Sentry alerts)"
+echo "     SLACK_DEV_CHANNEL_ID=C...  (Slack channel ID for dev updates)"
+echo "     SENTRY_ORG=...  (Sentry organization slug)"
+echo "     HORNET_EMAIL=...  (AgentMail address for email monitor)"
+echo "     HORNET_ALLOWED_EMAILS=you@example.com  (comma-separated sender allowlist)"
+echo "     HORNET_SOURCE_DIR=$REPO_DIR  (admin source repo path, for tool-guard)"
+echo "  3. Add SSH key to your agent's GitHub account"
 echo "  4. Log out and back in for group membership to take effect"
 echo "     (both hornet_agent group and procview group)"
 echo "  5. Launch: sudo -u hornet_agent ~/runtime/start.sh"

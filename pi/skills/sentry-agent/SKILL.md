@@ -24,7 +24,7 @@ You do **NOT** poll — you are idle until the control-agent sends you an alert.
 When this skill is loaded:
 
 1. Verify `SENTRY_AUTH_TOKEN` is set (needed for `sentry_monitor get`)
-2. The `#bots-sentry` channel ID is **`C0984PQD6NT`** (for reference)
+2. The `#bots-sentry` channel ID is configured via `SENTRY_CHANNEL_ID` env var
 3. Acknowledge readiness to the control-agent
 4. Stand by for incoming alerts
 
@@ -95,9 +95,9 @@ sentry_monitor list count=50          — Show more messages
 
 Required in `~/.config/.env` (must be sourced with `set -a` so vars are exported):
 
-- `SLACK_BOT_TOKEN` — Slack bot OAuth token (xoxb-...)
+- `SLACK_BOT_TOKEN` — Slack bot OAuth token
 - `SENTRY_AUTH_TOKEN` — Sentry API bearer token
-- `SENTRY_CHANNEL_ID` — (optional) channel ID for `#bots-sentry` (hardcoded fallback: `C0984PQD6NT`)
-- `SENTRY_ORG` — (optional) Sentry org slug (default: modem-labs)
+- `SENTRY_CHANNEL_ID` — Slack channel ID for Sentry alerts
+- `SENTRY_ORG` — Sentry organization slug
 
 **Note**: The tmux launch command must use `set -a && source ~/.config/.env && set +a` to ensure env vars are exported to child processes. Plain `source` without `set -a` will NOT export the vars, and tools like `sentry_monitor` won't see the tokens.

@@ -104,11 +104,11 @@ Slack @mention
 | Secret | Location | Perms | Purpose |
 |--------|----------|-------|---------|
 | `OPENCODE_ZEN_API_KEY` | `~/.config/.env` | `600` | LLM API access |
-| `GITHUB_TOKEN` | `~/.config/.env` | `600` | GitHub PAT (scoped to hornet-fw) |
+| `GITHUB_TOKEN` | `~/.config/.env` | `600` | GitHub PAT (scoped to agent account) |
 | `AGENTMAIL_API_KEY` | `~/.config/.env` | `600` | AgentMail inbox access |
 | `KERNEL_API_KEY` | `~/.config/.env` | `600` | Kernel cloud browsers |
 | `HORNET_SECRET` | `~/.config/.env` | `600` | Email authentication shared secret |
-| SSH key | `~/.ssh/id_ed25519` | `600` | Git push as hornet-fw |
+| SSH key | `~/.ssh/id_ed25519` | `600` | Git push (agent GitHub account) |
 | `SLACK_BOT_TOKEN` | Bridge `.env` | `600` | Slack bot OAuth token |
 | `SLACK_APP_TOKEN` | Bridge `.env` | `600` | Slack Socket Mode token |
 
