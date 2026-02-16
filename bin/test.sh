@@ -26,9 +26,9 @@ run() {
   output=$("$@" 2>&1) || rc=$?
   if [ "$rc" -eq 0 ]; then
     # Extract test count if available
-    count=$(echo "$output" | grep -oP '(?<=ℹ pass )\d+' | tail -1)
+    count=$(echo "$output" | awk '/ℹ pass [0-9]/ {for(i=1;i<=NF;i++) if($i=="pass") print $(i+1)}' | tail -1)
     if [ -z "$count" ]; then
-      count=$(echo "$output" | grep -oP '\d+(?= passed)' | tail -1)
+      count=$(echo "$output" | awk '/[0-9]+ passed/ {for(i=1;i<=NF;i++) if($(i+1)=="passed," || $(i+1)=="passed") print $i}' | tail -1)
     fi
     if [ -n "$count" ]; then
       echo "✓ ($count tests)"
