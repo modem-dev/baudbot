@@ -19,6 +19,8 @@
 #  10. Enables /proc hidepid isolation (process visibility)
 #  11. Makes ~/hornet/ read-only to the agent
 #
+# ⚠️  If you add a step here, add the reverse to bin/uninstall.sh!
+#
 # After running, you still need to:
 #   - Set the hornet_agent password: sudo passwd hornet_agent
 #   - Add secrets to ~/.config/.env (see CONFIGURATION.md)
@@ -191,7 +193,7 @@ echo "=== Setting up firewall ==="
 "$REPO_DIR/bin/setup-firewall.sh"
 
 echo "=== Making firewall persistent ==="
-cp "$REPO_DIR/bin/hornet-firewall.service" /etc/systemd/system/hornet-firewall.service
+sed "s|__REPO_DIR__|$REPO_DIR|g" "$REPO_DIR/bin/hornet-firewall.service" > /etc/systemd/system/hornet-firewall.service
 systemctl daemon-reload
 systemctl enable hornet-firewall
 echo "Firewall will be restored on boot via systemd"

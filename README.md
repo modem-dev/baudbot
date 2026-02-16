@@ -129,6 +129,10 @@ sudo -u hornet_agent tmux ls
 # Kill everything
 sudo -u hornet_agent pkill -u hornet_agent
 
+# Uninstall (reverses setup.sh)
+sudo ~/hornet/bin/uninstall.sh --dry-run   # preview
+sudo ~/hornet/bin/uninstall.sh             # for real
+
 # Check deployed version
 sudo -u hornet_agent cat ~/.pi/agent/hornet-version.json
 ```
