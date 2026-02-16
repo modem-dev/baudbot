@@ -3,8 +3,8 @@
 # Run as root: sudo ~/hornet/bin/setup-firewall.sh
 #
 # OUTBOUND (internet):
-#   Allows: HTTP (80), HTTPS (443), SSH (22), DNS (53)
-#   Blocks: everything else (reverse shells, raw sockets, non-standard ports)
+#   Allows: HTTP/S, SSH, DNS, cloud databases (pg, mysql, redis, mongo), OTLP
+#   Blocks: reverse shells, raw sockets, SMTP, non-standard ports
 #
 # LOCALHOST:
 #   Allows: Dev servers & databases on common ports (see rules below)
@@ -82,18 +82,28 @@ iptables -w -A "$CHAIN" -o lo -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -w -A "$CHAIN" -o lo -j LOG --log-prefix "HORNET_LOCAL_BLOCKED: " --log-level 4
 iptables -w -A "$CHAIN" -o lo -j DROP
 
-# ── Internet: allow only standard ports ──────────────────────────────────────
+# ── Internet: allow standard + dev ports ─────────────────────────────────────
 
-# Allow DNS (UDP + TCP)
+# DNS (UDP + TCP)
 iptables -w -A "$CHAIN" -p udp --dport 53 -j ACCEPT
 iptables -w -A "$CHAIN" -p tcp --dport 53 -j ACCEPT
 
-# Allow HTTP/HTTPS (web browsing, all APIs)
+# HTTP/HTTPS (web, APIs, cloud services)
 iptables -w -A "$CHAIN" -p tcp --dport 80 -j ACCEPT
 iptables -w -A "$CHAIN" -p tcp --dport 443 -j ACCEPT
 
-# Allow SSH (git push/pull)
+# SSH (git push/pull)
 iptables -w -A "$CHAIN" -p tcp --dport 22 -j ACCEPT
+
+# Cloud databases (Neon, Supabase, RDS, PlanetScale, Atlas, Upstash, etc.)
+iptables -w -A "$CHAIN" -p tcp --dport 3306 -j ACCEPT    # MySQL / PlanetScale
+iptables -w -A "$CHAIN" -p tcp --dport 5432:5433 -j ACCEPT  # PostgreSQL / Neon
+iptables -w -A "$CHAIN" -p tcp --dport 6543 -j ACCEPT    # Supabase pooler
+iptables -w -A "$CHAIN" -p tcp --dport 6379 -j ACCEPT    # Redis Cloud / Upstash
+iptables -w -A "$CHAIN" -p tcp --dport 27017 -j ACCEPT   # MongoDB Atlas
+
+# Observability (OpenTelemetry OTLP)
+iptables -w -A "$CHAIN" -p tcp --dport 4317:4318 -j ACCEPT
 
 # Allow established/related (responses to allowed outbound)
 iptables -w -A "$CHAIN" -m state --state ESTABLISHED,RELATED -j ACCEPT
@@ -113,7 +123,9 @@ echo "Localhost allowed: 3000-5999 (dev servers), 5432 (pg), 6006 (storybook),"
 echo "                   6379 (redis), 7890 (bridge), 8000-9999 (wrangler/inspector),"
 echo "                   11434 (ollama), 24678 (vite hmr), 27017 (mongo),"
 echo "                   54322 (pg docker), 53 (dns)"
-echo "Internet allowed:  80, 443, 22, 53"
+echo "Internet allowed:  22 (ssh), 53 (dns), 80/443 (http/s),"
+echo "                   3306 (mysql), 4317-4318 (otlp), 5432-5433 (pg),"
+echo "                   6379 (redis), 6543 (supabase), 27017 (mongo)"
 echo "Everything else:   BLOCKED + LOGGED"
 echo ""
 echo "To remove: sudo iptables -w -D OUTPUT -m owner --uid-owner $UID_HORNET -j $CHAIN && sudo iptables -w -F $CHAIN && sudo iptables -w -X $CHAIN"
