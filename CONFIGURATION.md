@@ -49,7 +49,6 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
-| `SLACK_DEV_CHANNEL_ID` | Slack channel for dev updates | Channel ID where the agent posts development updates (PR links, investigation results). Find it the same way as `SENTRY_CHANNEL_ID`. |
 | `SLACK_CHANNEL_ID` | Additional monitored channel | If set, the bridge responds to all messages in this channel (not just @mentions). |
 
 ### Kernel (Cloud Browsers)
@@ -95,7 +94,6 @@ GITHUB_TOKEN=ghp_...
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 SLACK_ALLOWED_USERS=U01ABCDEF,U02GHIJKL
-SLACK_DEV_CHANNEL_ID=C0123456789
 SENTRY_CHANNEL_ID=C0987654321
 
 # Email

@@ -75,11 +75,12 @@ tmux new-session -d -s dev-agent "set -a && source ~/.config/.env && set +a && e
 
 ### Known Channels
 
-Channel IDs are configured via env vars:
+Channel IDs are configured via env vars (set in `~/.config/.env`):
 | Channel | Env Var |
 |---------|---------|
-| Dev channel | `SLACK_DEV_CHANNEL_ID` |
 | Sentry alerts | `SENTRY_CHANNEL_ID` |
+
+For posting results back to Slack, use whatever channel the original request came from (the thread context includes the channel ID).
 
 ### Sending Messages
 
@@ -235,7 +236,7 @@ When a Sentry alert arrives (via the Slack bridge from `#bots-sentry`), **take p
 2. When sentry-agent reports back with findings:
    a. **Create a todo** (status: `in-progress`, tags: `sentry`, project name)
    b. **Dispatch dev-agent** to investigate the root cause in the codebase (if code fix needed)
-   c. **Post findings to the dev channel** (`SLACK_DEV_CHANNEL_ID`) on Slack with:
+   c. **Post findings to the originating Slack thread** with:
       - Issue summary (title, project, event count, severity)
       - Root cause analysis
       - Recommended fix or PR link if a fix was made
