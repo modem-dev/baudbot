@@ -2,6 +2,9 @@
   "name": "hornet",
   "private": true,
   "scripts": {
+    "test": "bin/test.sh",
+    "test:js": "bin/test.sh js",
+    "test:shell": "bin/test.sh shell",
     "lint": "biome lint",
     "lint:fix": "biome lint --write --unsafe",
     "typecheck": "tsc --noEmit"
