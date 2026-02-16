@@ -68,7 +68,7 @@ const BASH_DENY_RULES: DenyRule[] = [
   },
   {
     id: "revshell-perl",
-    pattern: /perl\s+-e\s+.*socket.*INET.*exec/s,
+    pattern: /perl\s+-e\s+.*socket.*INET.*exec/si,
     label: "Reverse shell (perl)",
     severity: "block",
   },
