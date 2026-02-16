@@ -124,3 +124,29 @@ Extract the **Channel** and **Thread** values from the metadata. Use the Thread 
   3. If not found, launch with tmux (see Spawning Sub-Agents above)
   4. Wait a few seconds for the session to initialize before sending messages
 - [ ] Send role assignment to the `dev-agent` session
+- [ ] Find or create sentry agent:
+  1. Use `list_sessions` to look for a session named `sentry-agent`
+  2. If found, use that session
+  3. If not found, launch with tmux (see below)
+  4. Wait a few seconds, then send role assignment
+- [ ] Send role assignment to the `sentry-agent` session
+
+### Spawning sentry-agent
+
+The sentry-agent monitors `#bots-sentry` in Slack for Sentry alerts, investigates critical issues via the Sentry API, and reports triaged findings back to you. It uses the `sentry-monitor.ts` extension (provides the `sentry_monitor` tool) and the `sentry-agent` skill.
+
+```bash
+tmux new-session -d -s sentry-agent "source ~/.config/.env && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && pi --session-control --skill ~/.pi/agent/skills/sentry-agent"
+```
+
+The sentry-agent will:
+- Poll `#bots-sentry` every 3 minutes for new Sentry alerts
+- Triage alerts by severity (critical, warning, info)
+- Use `sentry_monitor get <issue_id>` to fetch stack traces for critical issues
+- Report critical issues to you immediately via `send_to_session`
+- Batch low-priority alerts into periodic summaries
+
+When you receive a report from sentry-agent, decide whether to:
+- Notify the team via Slack
+- Create a todo and delegate to dev-agent for a fix
+- Acknowledge and track silently
