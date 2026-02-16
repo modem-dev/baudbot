@@ -208,7 +208,7 @@ If you need to restart the bridge manually:
 MY_UUID=$(readlink ~/.pi/session-control/control-agent.alias | sed 's/.sock$//')
 tmux kill-session -t slack-bridge 2>/dev/null || true
 tmux new-session -d -s slack-bridge \
-  "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/hornet/slack-bridge && exec node bridge.mjs"
+  "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec node bridge.mjs"
 ```
 
 Verify: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}'` → should return `400`.
