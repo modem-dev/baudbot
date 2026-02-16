@@ -11,12 +11,15 @@
 #   2. Installs Node.js and pi
 #   3. Sets up SSH key for GitHub
 #   4. Installs the Docker wrapper
-#   5. Configures sudoers
-#   6. Symlinks pi config from the repo
+#   5. Installs the safe bash wrapper (tool deny list)
+#   6. Configures sudoers
+#   7. Symlinks pi config from the repo
+#   8. Installs Slack bridge dependencies
+#   9. Sets up firewall and makes it persistent
 #
 # After running, you still need to:
 #   - Set the hornet_agent password: sudo passwd hornet_agent
-#   - Add secrets to ~/.config/.env (GITHUB_TOKEN, OPENCODE_ZEN_API_KEY, etc.)
+#   - Add secrets to ~/.config/.env (see list at end of script output)
 #   - Add the SSH public key to the hornet-fw GitHub account
 #   - Add the admin user to hornet_agent group (for file access): sudo usermod -aG hornet_agent <admin_user>
 
@@ -106,6 +109,12 @@ cp "$REPO_DIR/bin/hornet-docker" /usr/local/bin/hornet-docker
 chown root:root /usr/local/bin/hornet-docker
 chmod 755 /usr/local/bin/hornet-docker
 
+echo "=== Installing safe bash wrapper ==="
+cp "$REPO_DIR/bin/hornet-safe-bash" /usr/local/bin/hornet-safe-bash
+chown root:root /usr/local/bin/hornet-safe-bash
+chmod 755 /usr/local/bin/hornet-safe-bash
+echo "Installed /usr/local/bin/hornet-safe-bash (root-owned, not agent-writable)"
+
 echo "=== Adding docker alias ==="
 if ! grep -q "hornet-docker" "$HORNET_HOME/.bashrc"; then
   sudo -u hornet_agent bash -c 'echo "alias docker=\"sudo /usr/local/bin/hornet-docker\"" >> ~/.bashrc'
@@ -141,6 +150,24 @@ sudo -u hornet_agent bash -c "
   done
 "
 
+echo "=== Installing Slack bridge dependencies ==="
+sudo -u hornet_agent bash -c "
+  export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
+  cd ~/hornet/slack-bridge && npm install
+"
+
+echo "=== Setting up firewall ==="
+"$REPO_DIR/bin/setup-firewall.sh"
+
+echo "=== Making firewall persistent ==="
+cp "$REPO_DIR/bin/hornet-firewall.service" /etc/systemd/system/hornet-firewall.service
+systemctl daemon-reload
+systemctl enable hornet-firewall
+echo "Firewall will be restored on boot via systemd"
+
+echo "=== Hardening permissions ==="
+sudo -u hornet_agent "$REPO_DIR/bin/harden-permissions.sh"
+
 echo ""
 echo "=== Setup complete ==="
 echo ""
@@ -152,6 +179,12 @@ echo "     OPENCODE_ZEN_API_KEY=..."
 echo "     AGENTMAIL_API_KEY=..."
 echo "     KERNEL_API_KEY=..."
 echo "     HORNET_SECRET=..."
+echo "     SLACK_BOT_TOKEN=xoxb-..."
+echo "     SLACK_APP_TOKEN=xapp-..."
+echo "     SLACK_ALLOWED_USERS=U01234,U56789  (REQUIRED — bridge refuses to start without this)"
 echo "  3. Add SSH key to hornet-fw GitHub account"
 echo "  4. Log out and back in for group membership to take effect"
 echo "  5. Launch: sudo -u hornet_agent $HORNET_HOME/hornet/start.sh"
+echo ""
+echo "To verify security posture:"
+echo "  sudo -u hornet_agent $REPO_DIR/bin/security-audit.sh"
