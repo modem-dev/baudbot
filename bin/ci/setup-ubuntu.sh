@@ -31,7 +31,7 @@ sudo -u baudbot_admin bash -c 'cd ~/baudbot && git init -q && git config user.em
 
 echo "=== Running install.sh ==="
 # Simulate interactive input: admin user, required secrets, skip optionals, decline launch
-printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nghp_testtoken\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\n\nn\n' \
+printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nghp_testtoken\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\nn\n' \
   | bash /home/baudbot_admin/baudbot/install.sh
 
 echo "=== Verifying install ==="

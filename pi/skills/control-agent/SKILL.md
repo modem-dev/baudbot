@@ -193,7 +193,7 @@ tmux new-session -d -s $SESSION_NAME \
 - Wait **~10 seconds** after spawning before sending messages (agent needs time to initialize)
 - Do NOT use `--name` (not a real pi CLI flag)
 
-**Model note**: Dev agents use the default model (no `--model` override needed). For cheaper tasks (e.g. read-only analysis), you can add `--model opencode-zen/claude-haiku-4-5`.
+**Model note**: Dev agents use the top-tier model from the table above. For cheaper tasks (e.g. read-only analysis), use the cheap model from the sentry-agent table instead.
 
 ## Cleanup
 
@@ -218,13 +218,22 @@ If the agent's worktree has unpushed changes you want to preserve, skip worktree
 
 ## Sentry Agent
 
-The sentry-agent is a **persistent, long-lived** session (unlike dev agents). It triages Sentry alerts and investigates critical issues via the Sentry API. It runs on **Haiku 4.5** (cheap) via OpenCode Zen.
+The sentry-agent is a **persistent, long-lived** session (unlike dev agents). It triages Sentry alerts and investigates critical issues via the Sentry API. It runs on a cheap model to save tokens.
+
+Pick the model based on which API key is available (check env vars in this order):
+
+| API key | Model |
+|---------|-------|
+| `ANTHROPIC_API_KEY` | `anthropic/claude-haiku-4-5` |
+| `OPENAI_API_KEY` | `openai/gpt-5-mini` |
+| `GEMINI_API_KEY` | `google/gemini-3-flash-preview` |
+| `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-haiku-4-5` |
 
 ```bash
-tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model opencode-zen/claude-haiku-4-5"
+tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model <MODEL_FROM_TABLE_ABOVE>"
 ```
 
-**Model note**: Use `opencode-zen/*` models for headless agents. `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
+**Model note**: `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
 
 The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry alerts arrive via the Slack bridge in real-time and are forwarded by you. The sentry-agent uses `sentry_monitor get <issue_id>` to investigate when asked.
 
