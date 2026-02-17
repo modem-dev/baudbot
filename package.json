@@ -1,6 +1,5 @@
 {
   "name": "baudbot",
-  "private": true,
   "scripts": {
     "test": "bin/test.sh",
     "test:js": "bin/test.sh js",
