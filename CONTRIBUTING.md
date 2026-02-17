@@ -26,7 +26,7 @@ npm run lint && npm run typecheck
 ## Branches and PRs
 
 - Don't commit directly to `main`. Open a PR from a feature branch.
-- Branch names: `<your-gh-username>/<description>` (e.g. `benvinegar/fix-firewall-rules`)
+- Branch names: `<your-gh-username>/<description>` (e.g. `youruser/fix-firewall-rules`)
 - Commit messages: prefix with area. Examples: `security: add rate limiting`, `bridge: fix reconnect`, `docs: update README`
 - One branch per change. Keep PRs focused.
 

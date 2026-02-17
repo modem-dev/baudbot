@@ -179,7 +179,7 @@ The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run `install.s
 ## Git Workflow
 
 - **Never commit directly to `main`.** All changes go on feature branches with PRs.
-- One branch per todo/task. Branch names: `<gh-username>/<description>` (e.g. `benvinegar/add-uninstall-script`).
+- One branch per todo/task. Branch names: `<gh-username>/<description>` (e.g. `youruser/add-uninstall-script`).
 - Use `gh pr create` to open PRs (not the GitHub API with tokens).
 - Concise, action-oriented commit messages: `security: add rate limiting to bridge API`
 - Prefix with area: `security:`, `bridge:`, `deploy:`, `docs:`, `arch:`, `tests:`

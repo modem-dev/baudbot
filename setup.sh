@@ -116,7 +116,7 @@ if [ -d "$REPO_DIR/.git" ]; then
 fi
 
 # Agent workspace repos — set as agent
-for repo in "$BAUDBOT_HOME/workspace/modem" "$BAUDBOT_HOME/workspace/website"; do
+for repo in "$BAUDBOT_HOME"/workspace/*/; do
   if [ -d "$repo/.git" ]; then
     sudo -u baudbot_agent git -C "$repo" config core.sharedRepository group
     echo "  ✓ $repo"

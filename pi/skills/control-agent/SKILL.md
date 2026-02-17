@@ -117,7 +117,7 @@ Dev agents are **ephemeral and task-scoped**. Each agent:
 - Is spun up for a specific task, then cleaned up when done
 - Starts in the root of a **git worktree** for the repo it's working on
 - Reads project context (`CODEX.md`) from its working directory on startup
-- Is named `dev-agent-<repo>-<todo-short>` (e.g. `dev-agent-modem-a8b7b331`)
+- Is named `dev-agent-<repo>-<todo-short>` (e.g. `dev-agent-myapp-a8b7b331`)
 
 ### Concurrency Limits
 
@@ -129,9 +129,9 @@ Dev agents are **ephemeral and task-scoped**. Each agent:
 
 | Repo | Path | GitHub |
 |------|------|--------|
-| modem | `~/workspace/modem` | modem-dev/modem |
-| website | `~/workspace/website` | modem-dev/website |
-| baudbot | `~/workspace/baudbot` | modem-dev/baudbot |
+| myapp | `~/workspace/myapp` | your-org/myapp |
+| website | `~/workspace/website` | your-org/website |
+| baudbot | `~/workspace/baudbot` | your-org/baudbot |
 
 ## Task Lifecycle
 
@@ -152,10 +152,10 @@ Reply in the original channel ("On it 👍") so the user knows you received it.
 ### 3. Determine which repo(s) are needed
 
 Analyze the request to decide which repo(s) the task involves:
-- Code changes to the product → `modem`
+- Code changes to the product → `myapp`
 - Website/blog changes → `website`
 - Agent infra changes → `baudbot`
-- Some tasks need multiple repos (e.g. "review modem commits, write a blog post on website")
+- Some tasks need multiple repos (e.g. "review myapp commits, write a blog post on website")
 
 ### 4. Spawn dev agent(s)
 
@@ -219,7 +219,7 @@ Full procedure for spinning up a task-scoped dev agent:
 
 ```bash
 # Variables
-REPO=modem                          # repo name
+REPO=myapp                          # repo name
 REPO_PATH=~/workspace/$REPO         # repo checkout path
 TODO_SHORT=a8b7b331                 # short todo ID (hex part)
 BRANCH=fix/some-descriptive-name    # descriptive branch name
@@ -254,8 +254,8 @@ tmux new-session -d -s $SESSION_NAME \
 After a dev agent reports completion:
 
 ```bash
-SESSION_NAME=dev-agent-modem-a8b7b331
-REPO=modem
+SESSION_NAME=dev-agent-myapp-a8b7b331
+REPO=myapp
 BRANCH=fix/some-descriptive-name
 
 # 1. Kill the tmux session (agent should have already exited, but ensure it)
@@ -361,7 +361,7 @@ Extract the **Channel** and **Thread** values from the metadata. Use the Thread 
 
 6. **Error handling** — if something fails, tell the user in the thread. Don't silently fail.
 
-7. **Vercel preview links** — when a PR is opened on a repo with Vercel deployments (e.g. `website`, `modem`), watch for the Vercel preview deployment to complete and share the preview URL in the Slack thread so the user can test quickly. Dev agents should include preview URLs in their completion reports.
+7. **Vercel preview links** — when a PR is opened on a repo with Vercel deployments (e.g. `website`, `myapp`), watch for the Vercel preview deployment to complete and share the preview URL in the Slack thread so the user can test quickly. Dev agents should include preview URLs in their completion reports.
 
 ## Startup
 

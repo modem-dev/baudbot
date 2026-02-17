@@ -4,7 +4,7 @@ Per-repo knowledge: build quirks, CI gotchas, architecture notes, common failure
 
 **DO NOT store secrets, API keys, or tokens in this file.**
 
-## modem
+## myapp
 
 <!-- Example:
 - Uses Next.js 15, needs Node 22+

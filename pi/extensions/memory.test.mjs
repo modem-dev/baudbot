@@ -136,12 +136,12 @@ describe("memory: seed file content", () => {
 });
 
 describe("memory: repos.md has known repo sections", () => {
-  it("contains modem section", () => {
+  it("contains myapp section", () => {
     const content = fs.readFileSync(
       path.join(MEMORY_SEED_DIR, "repos.md"),
       "utf-8"
     );
-    assert.ok(content.includes("## modem"), "should have modem section");
+    assert.ok(content.includes("## myapp"), "should have myapp section");
   });
 
   it("contains website section", () => {
@@ -227,7 +227,7 @@ describe("memory: deploy seeding logic", () => {
     fs.mkdirSync(destDir, { recursive: true });
 
     // Only repos.md exists
-    const customRepos = "# Repos\n\n## modem\n- Uses Next.js 15\n";
+    const customRepos = "# Repos\n\n## myapp\n- Uses Next.js 15\n";
     fs.writeFileSync(path.join(destDir, "repos.md"), customRepos);
 
     for (const file of EXPECTED_SEED_FILES) {
