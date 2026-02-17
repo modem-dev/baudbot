@@ -2,9 +2,9 @@
 # Hornet Interactive Installer
 #
 # One-command setup:
-#   curl -sSf https://raw.githubusercontent.com/modem-dev/hornet/main/install.sh | sudo bash
+#   git clone https://github.com/modem-dev/hornet.git ~/hornet && sudo ~/hornet/install.sh
 #
-# Or from a clone:
+# Or if already cloned:
 #   sudo ./install.sh
 #
 # What this does:
@@ -109,7 +109,7 @@ if ! id "$ADMIN_USER" &>/dev/null; then
   die "User '$ADMIN_USER' does not exist."
 fi
 
-ADMIN_HOME=$(eval echo "~$ADMIN_USER")
+ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
 info "Admin user: ${BOLD}$ADMIN_USER${RESET} ($ADMIN_HOME)"
 
 # ── Install prerequisites ────────────────────────────────────────────────────
