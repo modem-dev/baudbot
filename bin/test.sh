@@ -53,6 +53,7 @@ if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
   run "memory"            node --test pi/extensions/memory.test.mjs
   run "bridge security"   node --test slack-bridge/security.test.mjs
   run "extension scanner" node --test bin/scan-extensions.test.mjs
+  run "control-plane"     node --test control-plane/server.test.mjs
   echo ""
 fi
 

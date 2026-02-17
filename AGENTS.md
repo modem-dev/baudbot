@@ -35,6 +35,9 @@ pi/
     dev-agent/              coding agent
     sentry-agent/           monitoring/triage agent
   settings.json             pi agent settings
+control-plane/
+  server.mjs                admin-owned web dashboard + API (port 28800)
+  server.test.mjs           control plane tests
 slack-bridge/
   bridge.mjs                Slack ↔ agent bridge
   security.mjs              🔒 content wrapping, rate limiting, auth
@@ -99,7 +102,7 @@ tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 ## Running Tests
 
 ```bash
-# All tests (207 across 5 suites)
+# All tests (8 suites)
 bin/test.sh
 
 # Only JS/TS tests

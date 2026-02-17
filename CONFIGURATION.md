@@ -76,6 +76,17 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | `BAUDBOT_AGENT_HOME` | Agent's home directory | `/home/$BAUDBOT_AGENT_USER` |
 | `BAUDBOT_SOURCE_DIR` | Path to admin-owned source repo | *(empty — set this to enable source repo write protection)* |
 
+### Control Plane
+
+The control plane runs as the admin user, not `baudbot_agent`. These env vars are for the admin's environment.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BAUDBOT_CP_PORT` | Control plane listen port | `28800` |
+| `BAUDBOT_CP_TOKEN` | Bearer token for API auth | *(empty — no auth, localhost only)* |
+
+Port 28800 is intentionally outside the agent's firewall allowlist — the agent cannot reach the control plane.
+
 ### Git Identity
 
 Set during `setup.sh` via env vars (or edit `~/.gitconfig` after):
