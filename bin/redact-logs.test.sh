@@ -25,7 +25,8 @@ check() {
   local expected_pattern="$3"
   local not_expected="${4:-}"
 
-  local logfile="$SESSION_DIR/test-$(date +%s%N).jsonl"
+  local logfile
+  logfile="$SESSION_DIR/test-$(date +%s%N).jsonl"
   echo "$input" > "$logfile"
 
   HOME="$TMPDIR" bash "$SCRIPT" >/dev/null 2>&1
@@ -65,7 +66,8 @@ check_unchanged() {
   local desc="$1"
   local input="$2"
 
-  local logfile="$SESSION_DIR/test-unchanged-$(date +%s%N).jsonl"
+  local logfile
+  logfile="$SESSION_DIR/test-unchanged-$(date +%s%N).jsonl"
   echo "$input" > "$logfile"
 
   HOME="$TMPDIR" bash "$SCRIPT" >/dev/null 2>&1

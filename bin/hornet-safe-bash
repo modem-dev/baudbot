@@ -5,6 +5,9 @@
 #
 # This is defense-in-depth — the agent's instructions also prohibit these,
 # but a successful injection might override soft instructions.
+#
+# NOTE: Avoid grep -P (Perl regex) — not available on all distros.
+# Use grep -E (extended regex) or awk instead.
 
 # Patterns that should NEVER be executed by the agent
 COMMAND="$*"
@@ -16,64 +19,67 @@ block() {
 }
 
 # Fork bomb
-if echo "$COMMAND" | grep -qP ':\(\)\s*\{.*\|.*&.*\}'; then
+if echo "$COMMAND" | grep -qE ':\(\)[[:space:]]*\{.*\|.*&.*\}'; then
   block "fork bomb"
 fi
 
 # rm -rf / or rm -rf /* (root filesystem deletion)
-if echo "$COMMAND" | grep -qP 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?(\/\s*$|\/\*|\/\s+)'; then
+if echo "$COMMAND" | grep -qE 'rm[[:space:]]+(-[a-zA-Z]*f[a-zA-Z]*[[:space:]]+)?(-[a-zA-Z]*r[a-zA-Z]*[[:space:]]+)?(/[[:space:]]*$|/\*|/[[:space:]]+)'; then
   block "recursive delete of root filesystem"
 fi
-if echo "$COMMAND" | grep -qP 'rm\s+(-[a-zA-Z]*r[a-zA-Z]*\s+)?(-[a-zA-Z]*f[a-zA-Z]*\s+)?(\/\s*$|\/\*|\/\s+)'; then
+if echo "$COMMAND" | grep -qE 'rm[[:space:]]+(-[a-zA-Z]*r[a-zA-Z]*[[:space:]]+)?(-[a-zA-Z]*f[a-zA-Z]*[[:space:]]+)?(/[[:space:]]*$|/\*|/[[:space:]]+)'; then
   block "recursive delete of root filesystem"
 fi
 
 # dd writing to block devices
-if echo "$COMMAND" | grep -qP 'dd\s+.*of=/dev/(sd|vd|nvme|xvd)'; then
+if echo "$COMMAND" | grep -qE 'dd[[:space:]]+.*of=/dev/(sd|vd|nvme|xvd)'; then
   block "dd write to block device"
 fi
 
 # mkfs on block devices
-if echo "$COMMAND" | grep -qP 'mkfs\b.*\/dev\/'; then
+if echo "$COMMAND" | grep -qE 'mkfs[^a-zA-Z].*/dev/'; then
   block "mkfs on block device"
 fi
 
 # chmod 777 on sensitive paths
-if echo "$COMMAND" | grep -qP 'chmod\s+(-[a-zA-Z]*\s+)?777\s+(\/|\/etc|\/home|\/root|\/var)'; then
+if echo "$COMMAND" | grep -qE 'chmod[[:space:]]+(-[a-zA-Z]*[[:space:]]+)?777[[:space:]]+(/|/etc|/home|/root|/var)'; then
   block "chmod 777 on sensitive path"
 fi
 
 # Curl/wget piped to shell
-if echo "$COMMAND" | grep -qP '(curl|wget)\s+.*\|\s*(ba)?sh'; then
+if echo "$COMMAND" | grep -qE '(curl|wget)[[:space:]]+.*\|[[:space:]]*(ba)?sh'; then
   block "piping download to shell"
 fi
 
 # Reverse shell patterns
-if echo "$COMMAND" | grep -qP 'bash\s+-i\s+>(&|\|)\s*/dev/tcp/'; then
+if echo "$COMMAND" | grep -qE 'bash[[:space:]]+-i[[:space:]]+>[&|][[:space:]]*/dev/tcp/'; then
   block "reverse shell (bash /dev/tcp)"
 fi
-if echo "$COMMAND" | grep -qP 'nc\s+(-[a-zA-Z]*\s+)*[0-9]+.*-e\s*(\/bin\/)?(ba)?sh'; then
+if echo "$COMMAND" | grep -qE 'nc[[:space:]]+(-[a-zA-Z]*[[:space:]]+)*[0-9]+.*-e[[:space:]]*(\/bin\/)?(ba)?sh'; then
   block "reverse shell (netcat)"
 fi
-if echo "$COMMAND" | grep -qP 'python[23]?\s+-c.*socket.*connect.*subprocess'; then
+if echo "$COMMAND" | grep -qE 'python[23]?[[:space:]]+-c.*socket.*connect.*subprocess'; then
   block "reverse shell (python)"
 fi
 
 # crontab modification (persistence)
-if echo "$COMMAND" | grep -qP '(crontab\s+-[erl]|echo.*>\s*/etc/cron)'; then
+if echo "$COMMAND" | grep -qE '(crontab[[:space:]]+-[erl]|echo.*>[[:space:]]*/etc/cron)'; then
   block "crontab modification"
 fi
 
 # Modifying /etc/passwd or /etc/shadow
-if echo "$COMMAND" | grep -qP '>\s*/etc/(passwd|shadow|sudoers)'; then
+if echo "$COMMAND" | grep -qE '>[[:space:]]*/etc/(passwd|shadow|sudoers)'; then
   block "write to system auth files"
 fi
 
 # SSH key injection to other users
-if echo "$COMMAND" | grep -qP '>\s*/home/(?!hornet_agent).*/\.ssh/authorized_keys'; then
-  block "SSH key injection to another user"
+# Can't use negative lookahead without grep -P, so match broadly then exclude our user
+if echo "$COMMAND" | grep -qE '>[[:space:]]*/home/.*/.ssh/authorized_keys'; then
+  if ! echo "$COMMAND" | grep -qE '>[[:space:]]*/home/hornet_agent/.ssh/authorized_keys'; then
+    block "SSH key injection to another user"
+  fi
 fi
-if echo "$COMMAND" | grep -qP '>\s*/root/\.ssh/authorized_keys'; then
+if echo "$COMMAND" | grep -qE '>[[:space:]]*/root/.ssh/authorized_keys'; then
   block "SSH key injection to root"
 fi
 

@@ -51,9 +51,11 @@ if [ -d "$HOME/.pi/agent/sessions" ]; then
 fi
 
 # Session logs (full conversation history)
-find "$HOME/.pi/agent/sessions" -name '*.jsonl' -not -perm 600 -exec chmod 600 {} + 2>/dev/null && \
-  count=$(find "$HOME/.pi/agent/sessions" -name '*.jsonl' 2>/dev/null | wc -l) && \
+if [ -d "$HOME/.pi/agent/sessions" ]; then
+  find "$HOME/.pi/agent/sessions" -name '*.jsonl' -not -perm 600 -exec chmod 600 {} + 2>/dev/null || true
+  count=$(find "$HOME/.pi/agent/sessions" -name '*.jsonl' 2>/dev/null | wc -l)
   [ "$count" -gt 0 ] && echo "  ✓ $count session log(s) → 600"
+fi
 
 # Pi settings
 fix_file "$HOME/.pi/agent/settings.json" "600"
