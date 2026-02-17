@@ -40,7 +40,7 @@ export PI_SESSION_NAME="control-agent"
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   MODEL="anthropic/claude-opus-4-6"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then
-  MODEL="openai/gpt-5.3-codex"
+  MODEL="openai/gpt-5.2-codex"
 elif [ -n "${GEMINI_API_KEY:-}" ]; then
   MODEL="google/gemini-3-pro-preview"
 elif [ -n "${OPENCODE_ZEN_API_KEY:-}" ]; then
