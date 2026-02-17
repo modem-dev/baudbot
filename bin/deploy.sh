@@ -156,6 +156,8 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 else
   log "would copy: HEARTBEAT.md"
+fi
+
 # ── Memory Seeds ─────────────────────────────────────────────────────────────
 
 echo "Deploying memory seeds..."
