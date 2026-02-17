@@ -109,6 +109,18 @@ The control agent runs a periodic heartbeat loop (default: every 10 minutes) tha
 - Are there stale worktrees or stuck todos?
 
 The checklist lives in `HEARTBEAT.md` — edit it to add custom checks. The heartbeat extension (`heartbeat.ts`) handles scheduling, error backoff, and the `heartbeat` tool for runtime control. If the checklist is empty, no heartbeat fires (saves tokens).
+### Persistent Memory
+
+Agents maintain persistent memory across session restarts via Markdown files in `~/.pi/agent/memory/`:
+
+| File | What it stores |
+|------|---------------|
+| `operational.md` | Infrastructure learnings, common errors and fixes |
+| `repos.md` | Per-repo build quirks, CI gotchas, architecture notes |
+| `users.md` | User preferences, timezone, communication style |
+| `incidents.md` | Past incidents: what broke, root cause, how it was fixed |
+
+Memory files are agent-owned — agents read them on startup and update them as they learn. Deploy seeds the files on first install but never overwrites existing content.
 
 ## Architecture
 
@@ -127,6 +139,7 @@ baudbot_agent (unprivileged uid)
 │   ├── extensions/                  deployed extensions (read-only)
 │   ├── skills/                      agent-owned (can modify)
 │   ├── HEARTBEAT.md                 periodic health check checklist
+│   ├── memory/                      persistent agent memory (agent-owned)
 │   └── baudbot-manifest.json        SHA256 integrity hashes
 ├── ~/workspace/                     project repos + worktrees
 └── ~/.config/.env                   secrets (600 perms)

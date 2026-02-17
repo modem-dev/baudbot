@@ -59,6 +59,42 @@ You can control the heartbeat with the `heartbeat` tool:
 - `heartbeat trigger` — fire one immediately
 
 The checklist is admin-managed (`HEARTBEAT.md` is deployed by `deploy.sh`). If you need to add checks, note the request for the admin.
+## Memory
+
+You have persistent memory that survives across session restarts. Memory files live in `~/.pi/agent/memory/` — read them on startup and update them as you learn.
+
+### Reading Memory
+
+On startup (after the checklist items), read all memory files to restore context:
+```bash
+ls ~/.pi/agent/memory/
+# Then read each .md file
+```
+
+### Memory Files
+
+| File | Purpose |
+|------|---------|
+| `operational.md` | Infrastructure learnings, common errors and fixes |
+| `repos.md` | Per-repo knowledge: build quirks, CI gotchas, architecture notes |
+| `users.md` | User preferences: communication style, timezone, priorities |
+| `incidents.md` | Past incidents: what broke, root cause, how it was fixed |
+
+### Updating Memory
+
+When you learn something new, append it to the appropriate file under a dated heading:
+```markdown
+## 2026-02-17
+- Learned that XYZ causes ABC — fix is to do DEF
+```
+
+**Update memory when you:**
+- Discover a new operational quirk or fix
+- Learn a user preference from their feedback
+- Resolve an incident (add root cause + fix)
+- Discover a repo-specific build/CI/deploy detail
+
+**Never store secrets, API keys, or tokens in memory files.**
 
 ## Core Principles
 
@@ -356,6 +392,7 @@ The script:
 
 - [ ] Run `list_sessions` — note live UUIDs, confirm `control-agent` is listed
 - [ ] Run `startup-cleanup.sh` with live UUIDs (cleans sockets + restarts Slack bridge)
+- [ ] **Read memory files** — `ls ~/.pi/agent/memory/` then read each `.md` file to restore context from previous sessions
 - [ ] Verify `BAUDBOT_SECRET` env var is set
 - [ ] Create/verify inbox for `BAUDBOT_EMAIL` env var exists
 - [ ] Start email monitor (inline mode, **300s / 5 min**)

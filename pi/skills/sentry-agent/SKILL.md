@@ -19,14 +19,31 @@ Triage and investigate Sentry alerts on demand. You receive alerts forwarded by 
 
 You do **NOT** poll — you are idle until the control-agent sends you an alert. This saves tokens.
 
+## Memory
+
+On startup, check for past incident history:
+```bash
+cat ~/.pi/agent/memory/incidents.md 2>/dev/null || true
+```
+
+This file contains records of past incidents — what broke, root cause, and how it was fixed. Use this to:
+- Recognize recurring patterns (e.g. "this same null access error happened before in PR #142")
+- Avoid re-investigating known issues
+- Provide richer triage context to the control-agent
+
+When you investigate a new incident and find a root cause, append it to `~/.pi/agent/memory/incidents.md` with the date, issue title, root cause, fix, and what to watch for.
+
+**Never store secrets, API keys, or tokens in memory files.**
+
 ## Startup
 
 When this skill is loaded:
 
-1. Verify `SENTRY_AUTH_TOKEN` is set (needed for `sentry_monitor get`)
-2. The `#bots-sentry` channel ID is configured via `SENTRY_CHANNEL_ID` env var
-3. Acknowledge readiness to the control-agent
-4. Stand by for incoming alerts
+1. **Read incident history** — `cat ~/.pi/agent/memory/incidents.md 2>/dev/null || true`
+2. Verify `SENTRY_AUTH_TOKEN` is set (needed for `sentry_monitor get`)
+3. The `#bots-sentry` channel ID is configured via `SENTRY_CHANNEL_ID` env var
+4. Acknowledge readiness to the control-agent
+5. Stand by for incoming alerts
 
 ## Triage Guidelines
 

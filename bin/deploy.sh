@@ -156,6 +156,26 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 else
   log "would copy: HEARTBEAT.md"
+# ── Memory Seeds ─────────────────────────────────────────────────────────────
+
+echo "Deploying memory seeds..."
+
+MEMORY_SEED_DIR="$STAGE_DIR/skills/control-agent/memory"
+MEMORY_DEST="$BAUDBOT_HOME/.pi/agent/memory"
+
+if [ "$DRY_RUN" -eq 0 ]; then
+  # Memory seeds — only copy if files don't already exist (agent-owned, don't clobber)
+  as_agent mkdir -p "$MEMORY_DEST"
+  if [ -d "$MEMORY_SEED_DIR" ]; then
+    for seed in "$MEMORY_SEED_DIR"/*.md; do
+      [ -f "$seed" ] || continue
+      base=$(basename "$seed")
+      as_agent bash -c "[ -f '$MEMORY_DEST/$base' ] || cp '$seed' '$MEMORY_DEST/$base'"
+      log "✓ memory/$base (seed, won't overwrite)"
+    done
+  fi
+else
+  log "would seed: memory/*.md (only if missing)"
 fi
 
 # ── Slack Bridge ─────────────────────────────────────────────────────────────

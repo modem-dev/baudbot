@@ -174,6 +174,7 @@ echo "=== Setting up runtime directories ==="
 sudo -u baudbot_agent bash -c '
   mkdir -p ~/.pi/agent/extensions
   mkdir -p ~/.pi/agent/skills
+  mkdir -p ~/.pi/agent/memory
   mkdir -p ~/runtime/slack-bridge
 '
 

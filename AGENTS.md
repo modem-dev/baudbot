@@ -31,6 +31,7 @@ pi/
   skills/                   source of truth for agent skill templates
     control-agent/          orchestration agent
       HEARTBEAT.md          health check checklist (deployed to ~/.pi/agent/)
+      memory/               seed files for persistent memory
     dev-agent/              coding agent
     sentry-agent/           monitoring/triage agent
   settings.json             pi agent settings
@@ -70,6 +71,7 @@ Agent runtime layout:
 │   ├── extensions/             deployed extensions
 │   ├── skills/                 agent-owned (can modify freely)
 │   ├── HEARTBEAT.md            periodic health check checklist (admin-managed)
+│   ├── memory/                 persistent agent memory (agent-owned, survives deploys)
 │   ├── baudbot-version.json     deploy version (git SHA, timestamp)
 │   └── baudbot-manifest.json    SHA256 hashes of all deployed files
 ├── workspace/                  project repos + git worktrees

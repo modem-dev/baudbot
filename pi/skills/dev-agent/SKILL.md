@@ -56,6 +56,19 @@ These are enforced by three layers:
 2. **Tool-guard** — blocks write/edit tool calls to protected paths
 3. **Pre-commit hook** — blocks git commits of protected files
 
+## Memory
+
+Before starting work, check for repo-specific knowledge in the shared memory store:
+```bash
+cat ~/.pi/agent/memory/repos.md 2>/dev/null || true
+```
+
+This file contains per-repo build quirks, CI gotchas, and architecture notes learned by previous agents. Use this context to avoid known pitfalls.
+
+When you discover something new about a repo (build quirk, CI gotcha, dependency issue), append it to `~/.pi/agent/memory/repos.md` under the appropriate repo heading before reporting completion to Baudbot.
+
+**Never store secrets, API keys, or tokens in memory files.**
+
 ## Startup
 
 On startup, immediately:
