@@ -16,10 +16,9 @@ fi
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
   BOLD='\033[1m'
-  DIM='\033[2m'
   RESET='\033[0m'
 else
-  BOLD='' DIM='' RESET=''
+  BOLD='' RESET=''
 fi
 
 version() {
