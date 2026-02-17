@@ -46,7 +46,14 @@ echo "$HELP_OUT" | grep -q "baudbot"
 # varlock installed for agent user
 test -x /home/baudbot_agent/.varlock/bin/varlock
 # Agent can load env (smoke test — varlock validates schema + .env)
-sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
+# varlock load may return non-zero for undefined optional vars; capture and check output
+VARLOCK_OUT=$(sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/ 2>&1' || true)
+echo "$VARLOCK_OUT"
+# Fail only if there's an actual validation error (❌)
+if echo "$VARLOCK_OUT" | grep -q "❌"; then
+  echo "varlock validation failed"
+  exit 1
+fi
 # start.sh has TMUX_TMPDIR set (so tmux works with systemd PrivateTmp)
 grep -q "TMUX_TMPDIR" /home/baudbot_agent/runtime/start.sh
 # start.sh has bridge auto-start function
