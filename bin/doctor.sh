@@ -79,9 +79,9 @@ ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$ADMIN_HOME/.baudbot/.env"
 
 if [ -n "$ADMIN_HOME" ] && [ -f "$ADMIN_CONFIG" ]; then
-  pass "~/.baudbot/.env exists ($ADMIN_CONFIG)"
+  pass "admin config exists ($ADMIN_CONFIG)"
 else
-  warn "~/.baudbot/.env not found (run: baudbot config)"
+  warn "admin config not found at $ADMIN_CONFIG (run: baudbot config)"
 fi
 
 echo ""
