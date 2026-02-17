@@ -43,6 +43,10 @@ test -L /usr/local/bin/baudbot
 baudbot --version
 HELP_OUT=$(baudbot --help)
 echo "$HELP_OUT" | grep -q "baudbot"
+# varlock installed for agent user
+test -x /home/baudbot_agent/.varlock/bin/varlock
+# Agent can load env (smoke test — varlock validates schema + .env)
+sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
 echo "  ✓ install.sh verification passed"
 
 echo "=== Installing test dependencies ==="

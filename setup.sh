@@ -191,10 +191,13 @@ echo "=== Installing Slack bridge dependencies ==="
 (cd "$REPO_DIR/slack-bridge" && npm install)
 
 echo "=== Installing varlock ==="
-if command -v varlock &>/dev/null; then
-  echo "varlock already installed, skipping"
+# varlock must be available to the agent user (start.sh adds ~/.varlock/bin to PATH).
+# Install as agent user so it lands in the right home directory.
+AGENT_VARLOCK="$BAUDBOT_HOME/.varlock/bin/varlock"
+if [ -x "$AGENT_VARLOCK" ]; then
+  echo "varlock already installed for baudbot_agent, skipping"
 else
-  curl -sSfL https://varlock.dev/install.sh | sh -s
+  sudo -u baudbot_agent bash -c 'curl -sSfL https://varlock.dev/install.sh | sh -s'
 fi
 
 echo "=== Deploying from source to runtime ==="
