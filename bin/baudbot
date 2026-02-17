@@ -214,8 +214,17 @@ case "${1:-}" in
       if [ -n "$FIRST_SESSION" ]; then
         TARGET="$FIRST_SESSION"
       else
-        echo "No tmux sessions running. Start the agent first:"
-        echo "  sudo baudbot start"
+        echo "No tmux sessions found for $AGENT_USER."
+        if has_systemd && systemctl is-active baudbot &>/dev/null; then
+          echo ""
+          echo "The agent is running via systemd but hasn't started any tmux sessions yet."
+          echo "The slack-bridge tmux session starts after the agent boots. Try:"
+          echo "  sudo baudbot logs      # view agent output"
+          echo "  sudo baudbot sessions  # list all sessions"
+        else
+          echo "Start the agent first:"
+          echo "  sudo baudbot start"
+        fi
         exit 1
       fi
     fi
