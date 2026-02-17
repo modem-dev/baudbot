@@ -33,14 +33,21 @@ Agents work on real files in real repos — no sandbox friction. They make real 
 ## Quick Start
 
 ```bash
-# Clone (as admin — source lives in admin's home, not agent's)
-git clone <your-hornet-repo-url> ~/hornet
+git clone https://github.com/modem-dev/hornet.git ~/hornet
+sudo ~/hornet/install.sh
+```
 
+The installer detects your distro, installs dependencies, creates the agent user, sets up the firewall, and walks you through API keys interactively. Takes ~2 minutes.
+
+<details>
+<summary>Manual setup (without installer)</summary>
+
+```bash
 # Setup (creates user, firewall, permissions — run as root)
 sudo bash ~/hornet/setup.sh <admin_username>
 
 # Add secrets
-sudo su - hornet_agent -c 'vim ~/.config/.env'
+sudo -u hornet_agent vim ~/.config/.env
 
 # Deploy source → agent runtime
 ~/hornet/bin/deploy.sh
@@ -48,6 +55,9 @@ sudo su - hornet_agent -c 'vim ~/.config/.env'
 # Launch
 sudo -u hornet_agent ~/runtime/start.sh
 ```
+
+See [CONFIGURATION.md](CONFIGURATION.md) for the full list of secrets and how to obtain them.
+</details>
 
 ## Configuration
 
