@@ -141,6 +141,8 @@ Extract the **Channel** and **Thread** values from the metadata. Use the Thread 
 
 6. **Error handling** — if something fails, tell the user in the thread. Don't silently fail.
 
+7. **Vercel preview links** — when a PR is opened on a repo with Vercel deployments (e.g. `website`, `modem`), watch for the Vercel preview deployment to complete and share the preview URL in the Slack thread so the user can test quickly. Use the GitHub API to check deployment/check-run statuses on the PR, or ask the dev-agent to fetch the preview URL after the build finishes.
+
 ## Startup
 
 ### Step 0: Clean stale sockets + restart Slack bridge
