@@ -48,7 +48,7 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to a tmux session (default: control-agent)"
+  echo "  attach         Attach to a tmux session (default: first available)"
   echo "  sessions       List agent tmux and pi sessions"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
@@ -148,6 +148,7 @@ case "${1:-}" in
 
   sessions)
     shift
+    require_root "sessions"
     AGENT_USER="baudbot_agent"
     echo -e "${BOLD}tmux sessions:${RESET}"
     if sudo -u "$AGENT_USER" tmux ls 2>/dev/null; then
@@ -165,15 +166,24 @@ case "${1:-}" in
         sess_id=$(basename "$sess_dir")
         name=""
         status="unknown"
-        # Check if control socket exists (session is live)
-        if [ -e "$sess_dir/control.sock" ]; then
-          status="running"
-        elif [ -f "$sess_dir/pid" ]; then
+        # Check if the session process is alive via pid file
+        if [ -f "$sess_dir/pid" ]; then
           pid=$(cat "$sess_dir/pid" 2>/dev/null || echo "")
           if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             status="running"
           else
             status="stopped"
+          fi
+        elif [ -S "$sess_dir/control.sock" ]; then
+          # Socket exists but no pid file — try connecting
+          if command -v socat &>/dev/null; then
+            if socat -u OPEN:/dev/null UNIX-CONNECT:"$sess_dir/control.sock" 2>/dev/null; then
+              status="running"
+            else
+              status="stopped (stale socket)"
+            fi
+          else
+            status="unknown (no pid file)"
           fi
         else
           status="stopped"
@@ -199,6 +209,7 @@ case "${1:-}" in
 
   attach)
     shift
+    require_root "attach"
     AGENT_USER="baudbot_agent"
     TARGET="${1:-}"
     if [ -z "$TARGET" ]; then
