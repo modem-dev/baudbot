@@ -14,6 +14,9 @@ bin/                        security & operations scripts
   harden-permissions.sh     filesystem hardening (runs on boot)
   scan-extensions.mjs       extension static analysis
   redact-logs.sh            secret scrubber for session logs
+  ci/                       CI integration scripts
+    droplet.sh              ephemeral DigitalOcean droplet lifecycle (create/destroy/ssh)
+    setup-ubuntu.sh         Ubuntu droplet: prereqs + setup + tests
 hooks/
   pre-commit                blocks agent from modifying security files in git
 pi/
