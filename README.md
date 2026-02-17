@@ -99,6 +99,17 @@ Slack → bridge (access control + content wrapping) → pi agent → tools (too
 
 Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks non-standard ports even if all software layers fail.
 
+### Heartbeat
+
+The control agent runs a periodic heartbeat loop (default: every 10 minutes) that checks system health:
+
+- Are all agent sessions alive?
+- Is the Slack bridge responsive?
+- Is the email monitor running?
+- Are there stale worktrees or stuck todos?
+
+The checklist lives in `HEARTBEAT.md` — edit it to add custom checks. The heartbeat extension (`heartbeat.ts`) handles scheduling, error backoff, and the `heartbeat` tool for runtime control. If the checklist is empty, no heartbeat fires (saves tokens).
+
 ## Architecture
 
 ```
@@ -115,6 +126,7 @@ baudbot_agent (unprivileged uid)
 ├── ~/.pi/agent/
 │   ├── extensions/                  deployed extensions (read-only)
 │   ├── skills/                      agent-owned (can modify)
+│   ├── HEARTBEAT.md                 periodic health check checklist
 │   └── baudbot-manifest.json        SHA256 integrity hashes
 ├── ~/workspace/                     project repos + worktrees
 └── ~/.config/.env                   secrets (600 perms)

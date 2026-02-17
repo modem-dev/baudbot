@@ -140,6 +140,24 @@ else
   log "would copy: skills/"
 fi
 
+# ── Heartbeat ────────────────────────────────────────────────────────────────
+
+echo "Deploying heartbeat checklist..."
+
+HEARTBEAT_SRC="$STAGE_DIR/skills/control-agent/HEARTBEAT.md"
+HEARTBEAT_DEST="$BAUDBOT_HOME/.pi/agent/HEARTBEAT.md"
+
+if [ "$DRY_RUN" -eq 0 ]; then
+  # HEARTBEAT.md — always overwrite (admin-managed checklist)
+  if [ -f "$HEARTBEAT_SRC" ]; then
+    as_agent cp "$HEARTBEAT_SRC" "$HEARTBEAT_DEST"
+    as_agent chmod 644 "$HEARTBEAT_DEST"
+    log "✓ HEARTBEAT.md"
+  fi
+else
+  log "would copy: HEARTBEAT.md"
+fi
+
 # ── Slack Bridge ─────────────────────────────────────────────────────────────
 
 echo "Deploying slack-bridge..."

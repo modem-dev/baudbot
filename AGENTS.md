@@ -24,11 +24,13 @@ pi/
   extensions/               source of truth for pi agent extensions
     tool-guard.ts           🔒 tool call interception (blocks dangerous patterns)
     tool-guard.test.mjs     🔒 86 tests for tool-guard
+    heartbeat.ts            periodic health check loop
     auto-name.ts            session naming
     control.ts              inter-session communication
     ...
   skills/                   source of truth for agent skill templates
     control-agent/          orchestration agent
+      HEARTBEAT.md          health check checklist (deployed to ~/.pi/agent/)
     dev-agent/              coding agent
     sentry-agent/           monitoring/triage agent
   settings.json             pi agent settings
@@ -67,6 +69,7 @@ Agent runtime layout:
 ├── .pi/agent/
 │   ├── extensions/             deployed extensions
 │   ├── skills/                 agent-owned (can modify freely)
+│   ├── HEARTBEAT.md            periodic health check checklist (admin-managed)
 │   ├── baudbot-version.json     deploy version (git SHA, timestamp)
 │   └── baudbot-manifest.json    SHA256 hashes of all deployed files
 ├── workspace/                  project repos + git worktrees

@@ -85,6 +85,14 @@ Set during `setup.sh` via env vars (or edit `~/.gitconfig` after):
 | `GIT_USER_NAME` | Git commit author name | `baudbot-agent` |
 | `GIT_USER_EMAIL` | Git commit author email | `baudbot-agent@users.noreply.github.com` |
 
+### Heartbeat
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HEARTBEAT_INTERVAL_MS` | Interval between heartbeat checks (milliseconds) | `600000` (10 min) |
+| `HEARTBEAT_FILE` | Path to heartbeat checklist file | `~/.pi/agent/HEARTBEAT.md` |
+| `HEARTBEAT_ENABLED` | Set to `0` or `false` to disable heartbeats | enabled |
+
 ### Bridge
 
 | Variable | Description | Default |
