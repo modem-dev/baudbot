@@ -225,6 +225,34 @@ if [ -f "$STAGE_DIR/.env.schema" ]; then
   fi
 fi
 
+# ── Admin config (secrets) ────────────────────────────────────────────────────
+
+echo "Deploying config..."
+
+# Determine who invoked this (the admin user)
+DEPLOY_USER="${SUDO_USER:-$(whoami)}"
+DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
+ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
+
+if [ -f "$ADMIN_CONFIG" ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
+    as_agent bash -c "mkdir -p '$BAUDBOT_HOME/.config'"
+    cp "$ADMIN_CONFIG" "$BAUDBOT_HOME/.config/.env"
+    chown "$AGENT_USER:$AGENT_USER" "$BAUDBOT_HOME/.config/.env"
+    chmod 600 "$BAUDBOT_HOME/.config/.env"
+    log "✓ .env → ~/.config/.env (600)"
+  else
+    log "would copy: $ADMIN_CONFIG → ~/.config/.env"
+  fi
+else
+  # Fallback: check if agent already has a .env (written directly by old install.sh)
+  if as_agent test -f "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
+    log "- .env: using existing agent config (no ~/.baudbot/.env found)"
+  else
+    log "⚠ no config found — run: baudbot config"
+  fi
+fi
+
 # ── Version stamp + integrity manifest ────────────────────────────────────────
 
 echo "Stamping version..."

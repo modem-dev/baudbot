@@ -71,7 +71,21 @@ fi
 # ── Secrets ──────────────────────────────────────────────────────────────────
 
 echo ""
-echo "Secrets:"
+echo "Admin config:"
+
+# Check for admin config dir
+ADMIN_USER="${SUDO_USER:-$(whoami)}"
+ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6 2>/dev/null || echo "")
+ADMIN_CONFIG="$ADMIN_HOME/.baudbot/.env"
+
+if [ -n "$ADMIN_HOME" ] && [ -f "$ADMIN_CONFIG" ]; then
+  pass "~/.baudbot/.env exists ($ADMIN_CONFIG)"
+else
+  warn "~/.baudbot/.env not found (run: baudbot config)"
+fi
+
+echo ""
+echo "Agent secrets:"
 
 ENV_FILE="$BAUDBOT_HOME/.config/.env"
 if [ -f "$ENV_FILE" ]; then

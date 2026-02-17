@@ -31,7 +31,10 @@ test "$(stat -c '%U' /home/baudbot_agent/.config/.env)" = "baudbot_agent"
 # Runtime deployed
 test -f /home/baudbot_agent/runtime/start.sh
 test -d /home/baudbot_agent/.pi/agent/extensions
-# Required secrets written
+# Admin config written
+test -f /home/baudbot_admin/.baudbot/.env
+grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" /home/baudbot_admin/.baudbot/.env
+# Deployed to agent
 grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" /home/baudbot_agent/.config/.env
 grep -q "SLACK_BOT_TOKEN=xoxb-test" /home/baudbot_agent/.config/.env
 grep -q "BAUDBOT_SOURCE_DIR=" /home/baudbot_agent/.config/.env

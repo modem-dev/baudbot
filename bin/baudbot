@@ -152,11 +152,7 @@ case "${1:-}" in
 
   config)
     shift
-    # config writes to ~/.baudbot/ on the calling user
-    # For now, point to install.sh's config section
-    echo "Config management is not yet extracted into a standalone command."
-    echo "Use: sudo $BAUDBOT_ROOT/install.sh"
-    exit 1
+    exec "$BAUDBOT_ROOT/bin/config.sh" "$@"
     ;;
 
   deploy)
