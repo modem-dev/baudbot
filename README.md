@@ -5,7 +5,7 @@
 [![CI](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml)
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
 
-**Like Openclaw, but paranoid.**
+**Like Openclaw, but for paranoid developer teams.**
 
 Baudbot runs AI agents as isolated Linux processes with defense-in-depth security. Agents code, test, deploy, monitor, and triage. They work on real repos with real tools. The infrastructure assumes agents *will* be prompt-injected and layers OS-level isolation so damage is contained even when the LLM is compromised.
 
