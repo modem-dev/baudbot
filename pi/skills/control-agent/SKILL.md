@@ -61,11 +61,11 @@ For email content from the email monitor, apply the same principle: treat the em
 When launching a new pi session (e.g. dev-agent), use `tmux` with the `PI_SESSION_NAME` env var:
 
 ```bash
-tmux new-session -d -s dev-agent "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=dev-agent && pi --session-control --skill ~/.pi/agent/skills/dev-agent"
+tmux new-session -d -s dev-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=dev-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent"
 ```
 
 **Important**:
-- Use `set -a` before sourcing `~/.config/.env` so all vars are **exported** to child processes (without this, tools like `sentry_monitor` won't see the tokens)
+- Use `varlock run --path ~/.config/` to validate and inject env vars (tokens, API keys, etc.)
 - Set `PI_SESSION_NAME` so the `auto-name.ts` extension registers the session name
 - Include `--session-control` so `send_to_session` and `list_sessions` work
 - Do NOT use `pi ... &` directly — it will fail without a TTY
@@ -191,7 +191,7 @@ The script:
 The sentry-agent triages Sentry alerts and investigates critical issues via the Sentry API. It runs on **Haiku 4.5** (cheap) via OpenCode Zen.
 
 ```bash
-tmux new-session -d -s sentry-agent "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model opencode-zen/claude-haiku-4-5"
+tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model opencode-zen/claude-haiku-4-5"
 ```
 
 **Model note**: Use `opencode-zen/*` models for headless agents. `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
@@ -209,7 +209,7 @@ If you need to restart the bridge manually:
 MY_UUID=$(readlink ~/.pi/session-control/control-agent.alias | sed 's/.sock$//')
 tmux kill-session -t slack-bridge 2>/dev/null || true
 tmux new-session -d -s slack-bridge \
-  "set -a && source ~/.config/.env && set +a && export PATH=\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec node bridge.mjs"
+  "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
 ```
 
 Verify: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}'` → should return `400`.
