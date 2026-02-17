@@ -79,4 +79,5 @@ jobs:
         run: |
           bash bin/ci/droplet.sh destroy \
             "${{ steps.droplet.outputs.DROPLET_ID }}" \
-            "${{ steps.droplet.outputs.SSH_KEY_ID }}"
+            "${{ steps.droplet.outputs.SSH_KEY_ID }}" \
+            "ci-${{ matrix.distro }}-${{ github.run_id }}"
