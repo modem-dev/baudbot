@@ -193,7 +193,7 @@ BAUDBOT_CONFIG_USER="$ADMIN_USER" bash "$REPO_DIR/bin/config.sh"
 # Deploy the config (and everything else) to the agent runtime.
 # This copies ~/.baudbot/.env → agent's ~/.config/.env with correct perms.
 header "Deploy"
-bash "$REPO_DIR/bin/deploy.sh"
+BAUDBOT_CONFIG_USER="$ADMIN_USER" bash "$REPO_DIR/bin/deploy.sh"
 
 # ── Launch ───────────────────────────────────────────────────────────────────
 

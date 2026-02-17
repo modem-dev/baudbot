@@ -230,7 +230,8 @@ fi
 echo "Deploying config..."
 
 # Determine who invoked this (the admin user)
-DEPLOY_USER="${SUDO_USER:-$(whoami)}"
+# BAUDBOT_CONFIG_USER env var overrides detection (used by install.sh)
+DEPLOY_USER="${BAUDBOT_CONFIG_USER:-${SUDO_USER:-$(whoami)}}"
 DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
 
