@@ -3,7 +3,7 @@
 ## Architecture: Source / Runtime Separation
 
 ```
-~/hornet/                              ← READ-ONLY source repo (admin-managed)
+~/baudbot/                              ← READ-ONLY source repo (admin-managed)
   ├── pi/extensions/                   ← source of truth for extensions
   ├── pi/skills/                       ← source of truth for skill templates
   ├── bin/                             ← admin scripts (deploy.sh, audit, firewall)
@@ -38,16 +38,16 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 ┌─────────────────────────────────────────────────────────────────┐
 │               BOUNDARY 1: Access Control                         │
 │   Slack bridge: SLACK_ALLOWED_USERS allowlist                    │
-│   Email: allowed senders + shared secret (HORNET_SECRET)         │
+│   Email: allowed senders + shared secret (BAUDBOT_SECRET)         │
 │   Content wrapping: external messages get security boundaries    │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               BOUNDARY 2: OS User Isolation                      │
-│   hornet_agent (uid 1001) — separate home, no sudo              │
+│   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   Cannot read admin home directory (admin home is 700)           │
-│   Source repo ~/hornet/ is read-only (permissions + tool-guard)  │
+│   Source repo ~/baudbot/ is read-only (permissions + tool-guard)  │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -64,8 +64,8 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 
 | Layer | What | Bypassed by |
 |-------|------|-------------|
-| **Read-only source** | ~/hornet/ has no write permissions for agent; bind mount (if applied via setup.sh) is kernel-enforced | Root access |
-| **Tool-guard rules** | Blocks write/edit to ~/hornet/ AND runtime security files; blocks chmod/chown on ~/hornet/ | None (compiled into extension) |
+| **Read-only source** | ~/baudbot/ has no write permissions for agent; bind mount (if applied via setup.sh) is kernel-enforced | Root access |
+| **Tool-guard rules** | Blocks write/edit to ~/baudbot/ AND runtime security files; blocks chmod/chown on ~/baudbot/ | None (compiled into extension) |
 | **Integrity checks** | security-audit.sh compares runtime file hashes against source | None (detection, not prevention) |
 | **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
 
@@ -76,12 +76,12 @@ the admin can re-deploy from the untampered source at any time.
 
 | User | Role | Sudo | Groups |
 |------|------|------|--------|
-| `<admin_user>` | Admin (human) | `(ALL) ALL`, `(hornet_agent) NOPASSWD: ALL` | \<admin_user\>, wheel, docker, hornet_agent |
-| `hornet_agent` | Agent (automated) | Only `/usr/local/bin/hornet-docker` as root | hornet_agent |
+| `<admin_user>` | Admin (human) | `(ALL) ALL`, `(baudbot_agent) NOPASSWD: ALL` | \<admin_user\>, wheel, docker, baudbot_agent |
+| `baudbot_agent` | Agent (automated) | Only `/usr/local/bin/baudbot-docker` as root | baudbot_agent |
 
-**Admin → hornet_agent access**: The admin user is in the `hornet_agent` group and has `NOPASSWD: ALL` as hornet_agent via sudo. This is intentional for management. Run `bin/harden-permissions.sh` to ensure pi state files are owner-only (prevents passive group-level reads).
+**Admin → baudbot_agent access**: The admin user is in the `baudbot_agent` group and has `NOPASSWD: ALL` as baudbot_agent via sudo. This is intentional for management. Run `bin/harden-permissions.sh` to ensure pi state files are owner-only (prevents passive group-level reads).
 
-**hornet_agent → admin access**: None. Admin home is `700`, hornet_agent is not in the admin user's group.
+**baudbot_agent → admin access**: None. Admin home is `700`, baudbot_agent is not in the admin user's group.
 
 ## Data Flows
 
@@ -90,9 +90,9 @@ Slack @mention
   → slack-bridge (Socket Mode, admin user)
     → content wrapping (security boundaries added)
       → Unix socket (~/.pi/session-control/*.sock)
-        → control-agent (pi session, hornet_agent user)
+        → control-agent (pi session, baudbot_agent user)
           → creates todo
-          → delegates to dev-agent (pi session, hornet_agent user)
+          → delegates to dev-agent (pi session, baudbot_agent user)
             → git worktree → code changes → git push
           → dev-agent reports back
         → control-agent replies via curl → bridge HTTP API (127.0.0.1:7890)
@@ -107,7 +107,7 @@ Slack @mention
 | `GITHUB_TOKEN` | `~/.config/.env` | `600` | GitHub PAT (scoped to agent account) |
 | `AGENTMAIL_API_KEY` | `~/.config/.env` | `600` | AgentMail inbox access |
 | `KERNEL_API_KEY` | `~/.config/.env` | `600` | Kernel cloud browsers |
-| `HORNET_SECRET` | `~/.config/.env` | `600` | Email authentication shared secret |
+| `BAUDBOT_SECRET` | `~/.config/.env` | `600` | Email authentication shared secret |
 | SSH key | `~/.ssh/id_ed25519` | `600` | Git push (agent GitHub account) |
 | `SLACK_BOT_TOKEN` | Bridge `.env` | `600` | Slack bot OAuth token |
 | `SLACK_APP_TOKEN` | Bridge `.env` | `600` | Slack Socket Mode token |
@@ -115,18 +115,18 @@ Slack @mention
 ## Deploy Workflow
 
 ```bash
-# Admin edits source files in ~/hornet/
+# Admin edits source files in ~/baudbot/
 # Then deploys to runtime:
-sudo ~/hornet/bin/deploy.sh
+sudo ~/baudbot/bin/deploy.sh
 
 # If bridge is running, restart it:
-sudo -u hornet_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'
+sudo -u baudbot_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'
 ```
 
 ## Known Risks
 
 ### Agent has unrestricted shell
-Within its own user permissions, `hornet_agent` can run any command. The tool-guard and safe-bash wrapper block known-dangerous patterns, but a prompt injection could attempt novel commands.
+Within its own user permissions, `baudbot_agent` can run any command. The tool-guard and safe-bash wrapper block known-dangerous patterns, but a prompt injection could attempt novel commands.
 
 ### Agent can modify its own runtime files
 The deployed copies of non-security files (bridge.mjs, skills, most extensions) are agent-writable by design. The agent could modify these. Security-critical files (tool-guard.ts, security.mjs) are write-protected at the filesystem level and monitored via integrity checks.
@@ -144,9 +144,9 @@ Pi session logs (`.jsonl` files) contain the complete conversation history. If p
 
 | Script | Purpose | Run as |
 |--------|---------|--------|
-| `bin/security-audit.sh` | Check current security posture + integrity checks | hornet_agent or admin |
+| `bin/security-audit.sh` | Check current security posture + integrity checks | baudbot_agent or admin |
 | `bin/deploy.sh` | Deploy from source to runtime with correct permissions | root or admin |
-| `bin/harden-permissions.sh` | Lock down pi state file permissions | hornet_agent |
+| `bin/harden-permissions.sh` | Lock down pi state file permissions | baudbot_agent |
 | `bin/setup-firewall.sh` | Apply port-based network restrictions | root |
 
 ## Reporting

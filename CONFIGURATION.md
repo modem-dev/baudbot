@@ -1,10 +1,10 @@
 # Configuration
 
-All secrets and configuration live in `~/.config/.env` on the agent's home directory (`/home/hornet_agent/.config/.env`). This file is `600` permissions and never committed to the repo.
+All secrets and configuration live in `~/.config/.env` on the agent's home directory (`/home/baudbot_agent/.config/.env`). This file is `600` permissions and never committed to the repo.
 
 ## Schema Validation
 
-Hornet uses [Varlock](https://varlock.dev) to validate environment variables at startup. The schema (`.env.schema`) is committed to the repo and deployed to `~/.config/.env.schema` alongside the secrets file. It defines types, required/optional status, and sensitivity for each variable.
+Baudbot uses [Varlock](https://varlock.dev) to validate environment variables at startup. The schema (`.env.schema`) is committed to the repo and deployed to `~/.config/.env.schema` alongside the secrets file. It defines types, required/optional status, and sensitivity for each variable.
 
 `start.sh` runs `varlock load` to validate before launching — the agent won't start with missing or malformed variables. The bridge uses `varlock run` to inject validated env vars. Varlock must be installed on the agent system (`brew install dmno-dev/tap/varlock` or `curl -sSfL https://varlock.dev/install.sh | sh -s`).
 
@@ -37,9 +37,9 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
 | `AGENTMAIL_API_KEY` | AgentMail API key | [app.agentmail.to](https://app.agentmail.to) — sign up and create an API key |
-| `HORNET_EMAIL` | Agent's email address | The email address the control agent monitors (e.g. `your-agent@agentmail.to`). Create the inbox via the AgentMail dashboard or let the agent create it on startup. |
-| `HORNET_SECRET` | Shared secret for email authentication | Generate a random string: `openssl rand -hex 32`. Senders must include this in their email for it to be processed. |
-| `HORNET_ALLOWED_EMAILS` | Comma-separated sender allowlist | Email addresses allowed to send tasks. Example: `you@example.com,teammate@example.com` |
+| `BAUDBOT_EMAIL` | Agent's email address | The email address the control agent monitors (e.g. `your-agent@agentmail.to`). Create the inbox via the AgentMail dashboard or let the agent create it on startup. |
+| `BAUDBOT_SECRET` | Shared secret for email authentication | Generate a random string: `openssl rand -hex 32`. Senders must include this in their email for it to be processed. |
+| `BAUDBOT_ALLOWED_EMAILS` | Comma-separated sender allowlist | Email addresses allowed to send tasks. Example: `you@example.com,teammate@example.com` |
 
 ## Optional Variables
 
@@ -67,9 +67,9 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HORNET_AGENT_USER` | Unix username of the agent | `hornet_agent` |
-| `HORNET_AGENT_HOME` | Agent's home directory | `/home/$HORNET_AGENT_USER` |
-| `HORNET_SOURCE_DIR` | Path to admin-owned source repo | *(empty — set this to enable source repo write protection)* |
+| `BAUDBOT_AGENT_USER` | Unix username of the agent | `baudbot_agent` |
+| `BAUDBOT_AGENT_HOME` | Agent's home directory | `/home/$BAUDBOT_AGENT_USER` |
+| `BAUDBOT_SOURCE_DIR` | Path to admin-owned source repo | *(empty — set this to enable source repo write protection)* |
 
 ### Git Identity
 
@@ -77,8 +77,8 @@ Set during `setup.sh` via env vars (or edit `~/.gitconfig` after):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GIT_USER_NAME` | Git commit author name | `hornet-agent` |
-| `GIT_USER_EMAIL` | Git commit author email | `hornet-agent@users.noreply.github.com` |
+| `GIT_USER_NAME` | Git commit author name | `baudbot-agent` |
+| `GIT_USER_EMAIL` | Git commit author email | `baudbot-agent@users.noreply.github.com` |
 
 ### Bridge
 
@@ -104,9 +104,9 @@ SENTRY_CHANNEL_ID=C0987654321
 
 # Email
 AGENTMAIL_API_KEY=...
-HORNET_EMAIL=my-agent@agentmail.to
-HORNET_SECRET=<openssl rand -hex 32>
-HORNET_ALLOWED_EMAILS=you@example.com
+BAUDBOT_EMAIL=my-agent@agentmail.to
+BAUDBOT_SECRET=<openssl rand -hex 32>
+BAUDBOT_ALLOWED_EMAILS=you@example.com
 
 # Sentry (optional)
 SENTRY_AUTH_TOKEN=sntrys_...
@@ -116,7 +116,7 @@ SENTRY_ORG=my-org
 KERNEL_API_KEY=...
 
 # Tool guard
-HORNET_SOURCE_DIR=/home/your_username/hornet
+BAUDBOT_SOURCE_DIR=/home/your_username/baudbot
 ```
 
 ## Applying Configuration
@@ -125,8 +125,8 @@ After editing `~/.config/.env`:
 
 ```bash
 # Restart the agent to pick up changes
-sudo -u hornet_agent pkill -u hornet_agent
-sudo -u hornet_agent ~/runtime/start.sh
+sudo -u baudbot_agent pkill -u baudbot_agent
+sudo -u baudbot_agent ~/runtime/start.sh
 ```
 
 The bridge and all sub-agents load `~/.config/.env` on startup. If varlock is installed, variables are validated against `.env.schema` before injection.

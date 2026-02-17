@@ -13,7 +13,7 @@
  * Ported from OpenClaw's skill-scanner.ts.
  *
  * Usage: node scan-extensions.mjs [dir1] [dir2] ...
- *        Defaults to ~/hornet/pi/extensions ~/hornet/pi/skills
+ *        Defaults to ~/baudbot/pi/extensions ~/baudbot/pi/skills
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -228,7 +228,7 @@ async function main() {
   const home = homedir();
   const dirs = process.argv.slice(2);
   if (dirs.length === 0) {
-    dirs.push(join(home, "hornet/pi/extensions"), join(home, "hornet/pi/skills"));
+    dirs.push(join(home, "baudbot/pi/extensions"), join(home, "baudbot/pi/skills"));
   }
 
   let totalScanned = 0;

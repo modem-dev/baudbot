@@ -1,19 +1,19 @@
 #!/bin/bash
-# Security audit for Hornet agent infrastructure
-# Run as hornet_agent or admin user to check security posture
+# Security audit for Baudbot agent infrastructure
+# Run as baudbot_agent or admin user to check security posture
 #
-# Usage: ~/hornet/bin/security-audit.sh [--deep] [--fix]
-#        sudo -u hornet_agent ~/hornet/bin/security-audit.sh --deep
-#        sudo -u hornet_agent ~/hornet/bin/security-audit.sh --fix
+# Usage: ~/baudbot/bin/security-audit.sh [--deep] [--fix]
+#        sudo -u baudbot_agent ~/baudbot/bin/security-audit.sh --deep
+#        sudo -u baudbot_agent ~/baudbot/bin/security-audit.sh --fix
 #
 # --deep: Run the Node.js extension scanner for cross-pattern analysis
 # --fix:  Auto-remediate findings where possible
 
 set -euo pipefail
 
-HORNET_HOME="${HORNET_HOME:-/home/hornet_agent}"
+BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
 # Source repo — auto-detect from this script's location, or use env override
-HORNET_SRC="${HORNET_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
+BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
 DEEP=0
 FIX=0
 for arg in "$@"; do
@@ -80,7 +80,7 @@ fix_skip() {
 }
 
 echo ""
-echo "🔒 Hornet Security Audit"
+echo "🔒 Baudbot Security Audit"
 echo "========================"
 if [ "$FIX" -eq 1 ]; then
   echo "   Mode: auto-fix enabled"
@@ -90,19 +90,19 @@ echo ""
 # ── Docker group ─────────────────────────────────────────────────────────────
 
 echo "Docker Access"
-if id hornet_agent 2>/dev/null | grep -q '(docker)'; then
-  finding "CRITICAL" "hornet_agent is in docker group" \
-    "Can bypass hornet-docker wrapper via /usr/bin/docker directly"
-  fix_skip "Remove from docker group" "Requires root: sudo gpasswd -d hornet_agent docker"
+if id baudbot_agent 2>/dev/null | grep -q '(docker)'; then
+  finding "CRITICAL" "baudbot_agent is in docker group" \
+    "Can bypass baudbot-docker wrapper via /usr/bin/docker directly"
+  fix_skip "Remove from docker group" "Requires root: sudo gpasswd -d baudbot_agent docker"
 else
-  ok "hornet_agent not in docker group"
+  ok "baudbot_agent not in docker group"
 fi
 
-if [ -f /usr/local/bin/hornet-docker ]; then
-  ok "Docker wrapper installed at /usr/local/bin/hornet-docker"
+if [ -f /usr/local/bin/baudbot-docker ]; then
+  ok "Docker wrapper installed at /usr/local/bin/baudbot-docker"
 else
   finding "WARN" "Docker wrapper not found" \
-    "Expected /usr/local/bin/hornet-docker"
+    "Expected /usr/local/bin/baudbot-docker"
 fi
 echo ""
 
@@ -137,23 +137,23 @@ check_perms() {
   fi
 }
 
-check_perms "$HORNET_HOME/.config/.env" "600" "Secrets file"
-check_perms "$HORNET_HOME/.ssh" "700" "SSH directory"
-check_perms "$HORNET_HOME/.pi" "700" "Pi state directory"
-check_perms "$HORNET_HOME/.pi/agent" "700" "Pi agent directory"
-check_perms "$HORNET_HOME/.pi/session-control" "700" "Pi session-control directory"
-check_perms "$HORNET_HOME/.pi/agent/settings.json" "600" "Pi settings"
+check_perms "$BAUDBOT_HOME/.config/.env" "600" "Secrets file"
+check_perms "$BAUDBOT_HOME/.ssh" "700" "SSH directory"
+check_perms "$BAUDBOT_HOME/.pi" "700" "Pi state directory"
+check_perms "$BAUDBOT_HOME/.pi/agent" "700" "Pi agent directory"
+check_perms "$BAUDBOT_HOME/.pi/session-control" "700" "Pi session-control directory"
+check_perms "$BAUDBOT_HOME/.pi/agent/settings.json" "600" "Pi settings"
 
 # Check session logs
-if [ -d "$HORNET_HOME/.pi/agent/sessions" ]; then
-  leaky_logs=$(find "$HORNET_HOME/.pi/agent/sessions" -name '*.jsonl' -perm /044 2>/dev/null | wc -l)
+if [ -d "$BAUDBOT_HOME/.pi/agent/sessions" ]; then
+  leaky_logs=$(find "$BAUDBOT_HOME/.pi/agent/sessions" -name '*.jsonl' -perm /044 2>/dev/null | wc -l)
   if [ "$leaky_logs" -gt 0 ]; then
     if fix_action "Fix $leaky_logs session log permissions" \
-      find "$HORNET_HOME/.pi/agent/sessions" -name '*.jsonl' -perm /044 -exec chmod 600 {} +; then
+      find "$BAUDBOT_HOME/.pi/agent/sessions" -name '*.jsonl' -perm /044 -exec chmod 600 {} +; then
       ok "Session logs fixed to owner-only"
     else
       finding "WARN" "$leaky_logs session log(s) are group/world-readable" \
-        "Run: ~/hornet/bin/harden-permissions.sh"
+        "Run: ~/baudbot/bin/harden-permissions.sh"
     fi
   else
     ok "Session logs are owner-only"
@@ -161,11 +161,11 @@ if [ -d "$HORNET_HOME/.pi/agent/sessions" ]; then
 fi
 
 # Check control sockets
-if [ -d "$HORNET_HOME/.pi/session-control" ]; then
-  leaky_socks=$(find "$HORNET_HOME/.pi/session-control" -name '*.sock' -perm /044 2>/dev/null | wc -l)
+if [ -d "$BAUDBOT_HOME/.pi/session-control" ]; then
+  leaky_socks=$(find "$BAUDBOT_HOME/.pi/session-control" -name '*.sock' -perm /044 2>/dev/null | wc -l)
   if [ "$leaky_socks" -gt 0 ]; then
     if fix_action "Fix $leaky_socks control socket permissions" \
-      find "$HORNET_HOME/.pi/session-control" -name '*.sock' -perm /044 -exec chmod 600 {} +; then
+      find "$BAUDBOT_HOME/.pi/session-control" -name '*.sock' -perm /044 -exec chmod 600 {} +; then
       ok "Control sockets fixed to owner-only"
     else
       finding "WARN" "$leaky_socks control socket(s) are group/world-accessible" \
@@ -182,12 +182,12 @@ echo ""
 echo "Source Isolation & Integrity"
 
 # Source repo lives outside agent's home — agent should not be able to read it
-if [ -r "$HORNET_SRC/setup.sh" ] 2>/dev/null; then
+if [ -r "$BAUDBOT_SRC/setup.sh" ] 2>/dev/null; then
   # If we're running as admin, this is expected — check agent can't
-  agent_can_read=$(sudo -u hornet_agent test -r "$HORNET_SRC/setup.sh" 2>/dev/null && echo "yes" || echo "no")
+  agent_can_read=$(sudo -u baudbot_agent test -r "$BAUDBOT_SRC/setup.sh" 2>/dev/null && echo "yes" || echo "no")
   if [ "$agent_can_read" = "yes" ]; then
-    finding "WARN" "Agent can read source repo at $HORNET_SRC" \
-      "Ensure admin home is 700: chmod 700 $(dirname "$HORNET_SRC")"
+    finding "WARN" "Agent can read source repo at $BAUDBOT_SRC" \
+      "Ensure admin home is 700: chmod 700 $(dirname "$BAUDBOT_SRC")"
   else
     ok "Source repo not readable by agent"
   fi
@@ -195,7 +195,7 @@ fi
 
 # Check extensions/skills are real dirs, not symlinks into source
 # shellcheck disable=SC2088  # tildes in log messages are intentional
-if [ -L "$HORNET_HOME/.pi/agent/extensions" ]; then
+if [ -L "$BAUDBOT_HOME/.pi/agent/extensions" ]; then
   finding "CRITICAL" "~/.pi/agent/extensions is a symlink (should be a real dir)" \
     "Run: rm ~/.pi/agent/extensions && mkdir ~/.pi/agent/extensions && deploy.sh"
 else
@@ -203,7 +203,7 @@ else
 fi
 
 # shellcheck disable=SC2088
-if [ -L "$HORNET_HOME/.pi/agent/skills" ]; then
+if [ -L "$BAUDBOT_HOME/.pi/agent/skills" ]; then
   finding "CRITICAL" "~/.pi/agent/skills is a symlink (should be a real dir)" \
     "Run: rm ~/.pi/agent/skills && mkdir ~/.pi/agent/skills && deploy.sh"
 else
@@ -212,7 +212,7 @@ fi
 
 # Check runtime bridge exists
 # shellcheck disable=SC2088
-if [ -d "$HORNET_HOME/runtime/slack-bridge" ]; then
+if [ -d "$BAUDBOT_HOME/runtime/slack-bridge" ]; then
   ok "Runtime bridge directory exists"
 else
   finding "WARN" "~/runtime/slack-bridge/ not found" \
@@ -220,8 +220,8 @@ else
 fi
 
 # Check version stamp exists
-VERSION_FILE="$HORNET_HOME/.pi/agent/hornet-version.json"
-MANIFEST_FILE="$HORNET_HOME/.pi/agent/hornet-manifest.json"
+VERSION_FILE="$BAUDBOT_HOME/.pi/agent/baudbot-version.json"
+MANIFEST_FILE="$BAUDBOT_HOME/.pi/agent/baudbot-manifest.json"
 
 if [ -f "$VERSION_FILE" ]; then
   deploy_sha=$(grep '"short"' "$VERSION_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "?")
@@ -243,7 +243,7 @@ if [ -f "$MANIFEST_FILE" ]; then
     "runtime/slack-bridge/security.mjs" \
     "runtime/slack-bridge/security.test.mjs"; do
 
-    full_path="$HORNET_HOME/$critical_file"
+    full_path="$BAUDBOT_HOME/$critical_file"
     if [ ! -f "$full_path" ]; then
       finding "WARN" "Missing critical file: $critical_file" "Run deploy.sh"
       missing=$((missing + 1))
@@ -261,7 +261,7 @@ if [ -f "$MANIFEST_FILE" ]; then
       ok "$critical_file: integrity OK"
     else
       finding "CRITICAL" "$critical_file: HASH MISMATCH (possibly tampered)" \
-        "Re-deploy: ~/hornet/bin/deploy.sh"
+        "Re-deploy: ~/baudbot/bin/deploy.sh"
       tampered=$((tampered + 1))
     fi
   done
@@ -279,7 +279,7 @@ echo ""
 echo "Secret Exposure"
 # Check for secrets in group-readable files (skip .env which should be 600)
 secret_patterns='(sk-[a-zA-Z0-9]{20,}|xoxb-|xapp-|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)'
-leaked_files=$(find "$HORNET_HOME" -maxdepth 3 \
+leaked_files=$(find "$BAUDBOT_HOME" -maxdepth 3 \
   -not -path '*/.ssh/*' \
   -not -path '*/node_modules/*' \
   -not -path '*/.git/*' \
@@ -305,16 +305,16 @@ else
 fi
 
 # Check git config for tokens
-if [ -f "$HORNET_HOME/.gitconfig" ]; then
-  if grep -qiE '(token|password|secret)' "$HORNET_HOME/.gitconfig" 2>/dev/null; then
-    finding "WARN" "Possible credentials in .gitconfig" "$HORNET_HOME/.gitconfig"
+if [ -f "$BAUDBOT_HOME/.gitconfig" ]; then
+  if grep -qiE '(token|password|secret)' "$BAUDBOT_HOME/.gitconfig" 2>/dev/null; then
+    finding "WARN" "Possible credentials in .gitconfig" "$BAUDBOT_HOME/.gitconfig"
   else
     ok "No credentials in .gitconfig"
   fi
 fi
 
 # Check for stale .env copies outside .config
-stale_envs=$(find "$HORNET_HOME" -maxdepth 3 \
+stale_envs=$(find "$BAUDBOT_HOME" -maxdepth 3 \
   -name '.env' -not -path '*/.config/*' \
   -not -path '*/node_modules/*' \
   -not -path '*/.git/*' \
@@ -327,8 +327,8 @@ else
 fi
 
 # Check git history for committed secrets (admin-only — needs source access)
-if [ -d "$HORNET_SRC/.git" ] && [ -r "$HORNET_SRC/.git/HEAD" ]; then
-  git_secrets=$(cd "$HORNET_SRC" && git log --all -p --diff-filter=A 2>/dev/null \
+if [ -d "$BAUDBOT_SRC/.git" ] && [ -r "$BAUDBOT_SRC/.git/HEAD" ]; then
+  git_secrets=$(cd "$BAUDBOT_SRC" && git log --all -p --diff-filter=A 2>/dev/null \
     | grep -cE '(sk-[a-zA-Z0-9]{20,}|xoxb-[0-9]|xapp-[0-9]|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16})' 2>/dev/null || true)
   git_secrets="${git_secrets:-0}"
   if [ "$git_secrets" -gt 0 ]; then
@@ -342,22 +342,22 @@ else
 fi
 
 # Check .gitignore excludes .env (admin-only — needs source access)
-if [ -f "$HORNET_SRC/.gitignore" ] && [ -r "$HORNET_SRC/.gitignore" ]; then
-  if grep -q '\.env' "$HORNET_SRC/.gitignore" 2>/dev/null; then
+if [ -f "$BAUDBOT_SRC/.gitignore" ] && [ -r "$BAUDBOT_SRC/.gitignore" ]; then
+  if grep -q '\.env' "$BAUDBOT_SRC/.gitignore" 2>/dev/null; then
     ok ".gitignore excludes .env files"
   else
     finding "WARN" ".gitignore does not exclude .env files" \
-      "Add '*.env' or '.env' to $HORNET_SRC/.gitignore"
+      "Add '*.env' or '.env' to $BAUDBOT_SRC/.gitignore"
   fi
 fi
 
 # Scan session logs for accidentally logged secrets
-if [ -d "$HORNET_HOME/.pi/agent/sessions" ]; then
-  log_secrets=$(find "$HORNET_HOME/.pi/agent/sessions" -name '*.jsonl' \
+if [ -d "$BAUDBOT_HOME/.pi/agent/sessions" ]; then
+  log_secrets=$(find "$BAUDBOT_HOME/.pi/agent/sessions" -name '*.jsonl' \
     -exec grep -lE '(sk-[a-zA-Z0-9]{20,}|xoxb-[0-9]{10,}|xapp-[0-9]{10,})' {} \; 2>/dev/null | wc -l || true)
   log_secrets="${log_secrets:-0}"
   if [ "$log_secrets" -gt 0 ]; then
-    REDACT_SCRIPT="${HORNET_SRC}/bin/redact-logs.sh"
+    REDACT_SCRIPT="${BAUDBOT_SRC}/bin/redact-logs.sh"
     if [ "$FIX" -eq 1 ] && [ -x "$REDACT_SCRIPT" ]; then
       echo "  🔧 Running log redaction..."
       "$REDACT_SCRIPT" 2>/dev/null && {
@@ -382,10 +382,10 @@ echo ""
 echo "Process Isolation"
 proc_mount=$(grep '^proc /proc' /proc/mounts 2>/dev/null || true)
 if echo "$proc_mount" | grep -q 'hidepid=2'; then
-  ok "/proc mounted with hidepid=2 (hornet_agent can only see own processes)"
+  ok "/proc mounted with hidepid=2 (baudbot_agent can only see own processes)"
 else
   finding "WARN" "/proc not mounted with hidepid=2" \
-    "hornet_agent can see all system processes — run setup.sh or: sudo mount -o remount,hidepid=2,gid=<procview_gid> /proc"
+    "baudbot_agent can see all system processes — run setup.sh or: sudo mount -o remount,hidepid=2,gid=<procview_gid> /proc"
   fix_skip "Remount /proc with hidepid=2" "Requires root"
 fi
 echo ""
@@ -409,41 +409,41 @@ fi
 
 # Check firewall rules
 if command -v iptables &>/dev/null; then
-  if iptables -L HORNET_OUTPUT -n 2>/dev/null | grep -q 'DROP'; then
-    ok "Firewall rules active (HORNET_OUTPUT chain)"
+  if iptables -L BAUDBOT_OUTPUT -n 2>/dev/null | grep -q 'DROP'; then
+    ok "Firewall rules active (BAUDBOT_OUTPUT chain)"
 
     # Check localhost isolation (blanket -o lo ACCEPT = bad)
-    if iptables -L HORNET_OUTPUT -n 2>/dev/null | grep -qE 'ACCEPT.*lo\s+0\.0\.0\.0/0\s+0\.0\.0\.0/0\s*$'; then
+    if iptables -L BAUDBOT_OUTPUT -n 2>/dev/null | grep -qE 'ACCEPT.*lo\s+0\.0\.0\.0/0\s+0\.0\.0\.0/0\s*$'; then
       finding "WARN" "Firewall allows ALL localhost traffic" \
         "Agent can reach every local service (Steam, CUPS, Tailscale, etc.). Update setup-firewall.sh"
     else
       ok "Localhost traffic restricted to specific ports"
     fi
   else
-    finding "WARN" "No firewall rules for hornet_agent" \
-      "Run: sudo ~/hornet/bin/setup-firewall.sh"
-    fix_skip "Install firewall rules" "Requires root: sudo ~/hornet/bin/setup-firewall.sh"
+    finding "WARN" "No firewall rules for baudbot_agent" \
+      "Run: sudo ~/baudbot/bin/setup-firewall.sh"
+    fix_skip "Install firewall rules" "Requires root: sudo ~/baudbot/bin/setup-firewall.sh"
   fi
 fi
 
 # Check for firewall persistence
-if [ -f /etc/systemd/system/hornet-firewall.service ]; then
+if [ -f /etc/systemd/system/baudbot-firewall.service ]; then
   ok "Firewall persistence configured (systemd)"
-elif [ -f /etc/iptables/rules.v4 ] && grep -q 'HORNET_OUTPUT' /etc/iptables/rules.v4 2>/dev/null; then
+elif [ -f /etc/iptables/rules.v4 ] && grep -q 'BAUDBOT_OUTPUT' /etc/iptables/rules.v4 2>/dev/null; then
   ok "Firewall persistence configured (iptables-save)"
 else
   finding "WARN" "Firewall rules are NOT persistent across reboots" \
-    "Install: sudo cp ~/hornet/bin/hornet-firewall.service /etc/systemd/system/ && sudo systemctl enable hornet-firewall"
+    "Install: sudo cp ~/baudbot/bin/baudbot-firewall.service /etc/systemd/system/ && sudo systemctl enable baudbot-firewall"
 fi
 echo ""
 
 # Check for network logging rules
 if command -v iptables &>/dev/null; then
-  if iptables -L HORNET_OUTPUT -n 2>/dev/null | grep -qE "LOG.*hornet-(out|dns):"; then
+  if iptables -L BAUDBOT_OUTPUT -n 2>/dev/null | grep -qE "LOG.*baudbot-(out|dns):"; then
     ok "Network logging active (SYN + DNS)"
   else
     finding "WARN" "No network logging in firewall rules" \
-      "Run: sudo ~/hornet/bin/setup-firewall.sh to add LOG rules"
+      "Run: sudo ~/baudbot/bin/setup-firewall.sh to add LOG rules"
   fi
 fi
 echo ""
@@ -452,8 +452,8 @@ echo ""
 
 echo "Audit Log"
 
-AUDIT_LOG_PRIMARY="/var/log/hornet/commands.log"
-AUDIT_LOG_FALLBACK="$HORNET_HOME/logs/commands.log"
+AUDIT_LOG_PRIMARY="/var/log/baudbot/commands.log"
+AUDIT_LOG_FALLBACK="$BAUDBOT_HOME/logs/commands.log"
 
 if [ -f "$AUDIT_LOG_PRIMARY" ]; then
   ok "Audit log exists ($AUDIT_LOG_PRIMARY)"
@@ -478,12 +478,12 @@ if [ -f "$AUDIT_LOG_PRIMARY" ]; then
   fi
 elif [ -f "$AUDIT_LOG_FALLBACK" ]; then
   finding "WARN" "Audit log using fallback location ($AUDIT_LOG_FALLBACK)" \
-    "For tamper-proof logging, set up /var/log/hornet/ as root with chattr +a"
+    "For tamper-proof logging, set up /var/log/baudbot/ as root with chattr +a"
 else
   finding "WARN" "No audit log file found" \
-    "Create: mkdir -p $HORNET_HOME/logs && touch $HORNET_HOME/logs/commands.log"
+    "Create: mkdir -p $BAUDBOT_HOME/logs && touch $BAUDBOT_HOME/logs/commands.log"
   if [ "$FIX" -eq 1 ]; then
-    if mkdir -p "$HORNET_HOME/logs" && touch "$HORNET_HOME/logs/commands.log" && chmod 600 "$HORNET_HOME/logs/commands.log" 2>/dev/null; then
+    if mkdir -p "$BAUDBOT_HOME/logs" && touch "$BAUDBOT_HOME/logs/commands.log" && chmod 600 "$BAUDBOT_HOME/logs/commands.log" 2>/dev/null; then
       echo "  🔧 FIXED:    Created fallback audit log at $AUDIT_LOG_FALLBACK"
       fixed=$((fixed + 1))
     else
@@ -498,8 +498,8 @@ echo ""
 
 echo "Pre-commit Hook"
 
-if [ -d "$HORNET_SRC/.git" ] && [ -r "$HORNET_SRC/.git/hooks" ]; then
-  hook_path="$HORNET_SRC/.git/hooks/pre-commit"
+if [ -d "$BAUDBOT_SRC/.git" ] && [ -r "$BAUDBOT_SRC/.git/hooks" ]; then
+  hook_path="$BAUDBOT_SRC/.git/hooks/pre-commit"
   if [ -f "$hook_path" ]; then
     ok "Pre-commit hook installed"
     hook_owner=$(stat -c '%U' "$hook_path" 2>/dev/null || echo "unknown")
@@ -512,7 +512,7 @@ if [ -d "$HORNET_SRC/.git" ] && [ -r "$HORNET_SRC/.git/hooks" ]; then
     fi
   else
     finding "WARN" "Pre-commit hook not installed" \
-      "Run: sudo cp ~/hornet/hooks/pre-commit $hook_path && sudo chown root:root $hook_path"
+      "Run: sudo cp ~/baudbot/hooks/pre-commit $hook_path && sudo chown root:root $hook_path"
     fix_skip "Install pre-commit hook" "Requires root"
   fi
 else
@@ -539,16 +539,16 @@ echo ""
 echo "Tool Safety"
 
 # Check bash wrapper
-if [ -f /usr/local/bin/hornet-safe-bash ]; then
-  if [ ! -w /usr/local/bin/hornet-safe-bash ]; then
+if [ -f /usr/local/bin/baudbot-safe-bash ]; then
+  if [ ! -w /usr/local/bin/baudbot-safe-bash ]; then
     ok "Safe bash wrapper installed (not agent-writable)"
   else
-    finding "WARN" "hornet-safe-bash is writable by current user" \
-      "Should be root-owned: sudo chown root:root /usr/local/bin/hornet-safe-bash"
+    finding "WARN" "baudbot-safe-bash is writable by current user" \
+      "Should be root-owned: sudo chown root:root /usr/local/bin/baudbot-safe-bash"
   fi
 else
   finding "INFO" "Safe bash wrapper not installed" \
-    "Optional defense-in-depth: install /usr/local/bin/hornet-safe-bash"
+    "Optional defense-in-depth: install /usr/local/bin/baudbot-safe-bash"
 fi
 echo ""
 
@@ -557,10 +557,10 @@ echo ""
 echo "Extension & Skill Safety"
 
 # Check pi extensions for suspicious patterns (deployed copies only)
-AGENT_USER="${HORNET_AGENT_USER:-hornet_agent}"
+AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
 suspicious_extension_patterns="(eval\s*\(|new\s+Function\s*\(|child_process|execSync|execFile|spawn\s*\(|writeFileSync.*\/etc|writeFileSync.*\/home\/(?!${AGENT_USER}))"
 ext_dirs=(
-  "$HORNET_HOME/.pi/agent/extensions"
+  "$BAUDBOT_HOME/.pi/agent/extensions"
 )
 ext_findings=0
 for ext_dir in "${ext_dirs[@]}"; do
@@ -579,7 +579,7 @@ fi
 
 # Check skills for dangerous tool instructions (deployed copies only)
 skill_dirs=(
-  "$HORNET_HOME/.pi/agent/skills"
+  "$BAUDBOT_HOME/.pi/agent/skills"
 )
 skill_findings=0
 for skill_dir in "${skill_dirs[@]}"; do
@@ -610,25 +610,25 @@ done
 
 # Deep scan: cross-pattern analysis via Node scanner (deployed copies)
 if [ "$DEEP" -eq 1 ]; then
-  NODE_BIN="$HORNET_HOME/opt/node-v22.14.0-linux-x64/bin/node"
+  NODE_BIN="$BAUDBOT_HOME/opt/node-v22.14.0-linux-x64/bin/node"
   # Try source scanner first, fall back to deployed copy
   SCANNER=""
-  [ -f "$HORNET_SRC/bin/scan-extensions.mjs" ] && [ -r "$HORNET_SRC/bin/scan-extensions.mjs" ] && SCANNER="$HORNET_SRC/bin/scan-extensions.mjs"
-  [ -z "$SCANNER" ] && [ -f "$HORNET_HOME/.pi/agent/extensions/scan-extensions.mjs" ] && SCANNER="$HORNET_HOME/.pi/agent/extensions/scan-extensions.mjs"
+  [ -f "$BAUDBOT_SRC/bin/scan-extensions.mjs" ] && [ -r "$BAUDBOT_SRC/bin/scan-extensions.mjs" ] && SCANNER="$BAUDBOT_SRC/bin/scan-extensions.mjs"
+  [ -z "$SCANNER" ] && [ -f "$BAUDBOT_HOME/.pi/agent/extensions/scan-extensions.mjs" ] && SCANNER="$BAUDBOT_HOME/.pi/agent/extensions/scan-extensions.mjs"
   if [ -x "$NODE_BIN" ] && [ -n "$SCANNER" ]; then
     echo ""
     echo "Deep Extension Scan (cross-pattern analysis)"
     deep_output=$("$NODE_BIN" "$SCANNER" \
-      "$HORNET_HOME/.pi/agent/extensions" \
-      "$HORNET_HOME/.pi/agent/skills" 2>&1 || true)
+      "$BAUDBOT_HOME/.pi/agent/extensions" \
+      "$BAUDBOT_HOME/.pi/agent/skills" 2>&1 || true)
     deep_critical=$(echo "$deep_output" | grep -c '❌ CRITICAL' || true)
     deep_warn=$(echo "$deep_output" | grep -c '⚠️' || true)
     if [ "$deep_critical" -gt 0 ]; then
       finding "WARN" "$deep_critical cross-pattern critical finding(s) in deep scan" \
-        "Run: node ~/hornet/bin/scan-extensions.mjs for details"
+        "Run: node ~/baudbot/bin/scan-extensions.mjs for details"
     elif [ "$deep_warn" -gt 0 ]; then
       finding "INFO" "$deep_warn cross-pattern warning(s) in deep scan" \
-        "Run: node ~/hornet/bin/scan-extensions.mjs for details"
+        "Run: node ~/baudbot/bin/scan-extensions.mjs for details"
     else
       ok "Deep extension scan clean"
     fi
@@ -638,9 +638,9 @@ if [ "$DEEP" -eq 1 ]; then
 fi
 
 # Check that bridge security.mjs exists and is tested
-if [ -f "$HORNET_HOME/runtime/slack-bridge/security.mjs" ]; then
+if [ -f "$BAUDBOT_HOME/runtime/slack-bridge/security.mjs" ]; then
   ok "Bridge security module exists (runtime)"
-  if [ -f "$HORNET_HOME/runtime/slack-bridge/security.test.mjs" ]; then
+  if [ -f "$BAUDBOT_HOME/runtime/slack-bridge/security.test.mjs" ]; then
     ok "Bridge security tests exist (runtime)"
   else
     finding "WARN" "No tests for bridge security module in runtime" \
@@ -657,9 +657,9 @@ echo ""
 echo "Bridge Configuration"
 
 # Check SLACK_ALLOWED_USERS is set (without reading the actual value)
-if [ -f "$HORNET_HOME/.config/.env" ]; then
-  if grep -q '^SLACK_ALLOWED_USERS=' "$HORNET_HOME/.config/.env" 2>/dev/null; then
-    allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$HORNET_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
+if [ -f "$BAUDBOT_HOME/.config/.env" ]; then
+  if grep -q '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
+    allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
     if [ "$allowed_count" -gt 0 ]; then
       ok "SLACK_ALLOWED_USERS configured ($allowed_count user(s))"
     else

@@ -1,0 +1,12 @@
+[Unit]
+Description=Baudbot agent firewall rules
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=__REPO_DIR__/bin/setup-firewall.sh
+ExecStop=/bin/sh -c 'UID_BAUDBOT=$(id -u baudbot_agent) && iptables -w -D OUTPUT -m owner --uid-owner $UID_BAUDBOT -j BAUDBOT_OUTPUT 2>/dev/null; iptables -w -F BAUDBOT_OUTPUT 2>/dev/null; iptables -w -X BAUDBOT_OUTPUT 2>/dev/null'
+
+[Install]
+WantedBy=multi-user.target
