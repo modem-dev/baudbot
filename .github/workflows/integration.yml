@@ -1,0 +1,83 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu
+            image: ubuntu-24-04-x64
+            setup_script: bin/ci/setup-ubuntu.sh
+          # To add Arch (or other distros), add entries here:
+          # - distro: arch
+          #   image: arch-linux-x64  # or a custom snapshot ID
+          #   setup_script: bin/ci/setup-arch.sh
+
+    name: ${{ matrix.distro }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate ephemeral SSH key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/ci_key -N "" -q
+
+      - name: Create droplet
+        id: droplet
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          output=$(bash bin/ci/droplet.sh create \
+            "ci-${{ matrix.distro }}-${{ github.run_id }}" \
+            "${{ matrix.image }}" \
+            ~/.ssh/ci_key.pub)
+          echo "$output" >> "$GITHUB_OUTPUT"
+          echo "$output"
+
+      - name: Wait for SSH
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          bash bin/ci/droplet.sh wait-ssh \
+            "${{ steps.droplet.outputs.DROPLET_IP }}" \
+            ~/.ssh/ci_key
+
+      - name: Upload source
+        run: |
+          tar czf /tmp/hornet-src.tar.gz \
+            --exclude=node_modules --exclude=.git .
+          scp -o StrictHostKeyChecking=no -o BatchMode=yes \
+            -i ~/.ssh/ci_key \
+            /tmp/hornet-src.tar.gz \
+            "root@${{ steps.droplet.outputs.DROPLET_IP }}:/tmp/hornet-src.tar.gz"
+
+      - name: Setup and test
+        run: |
+          bash bin/ci/droplet.sh run \
+            "${{ steps.droplet.outputs.DROPLET_IP }}" \
+            ~/.ssh/ci_key \
+            "${{ matrix.setup_script }}"
+
+      - name: Cleanup
+        if: always()
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          bash bin/ci/droplet.sh destroy \
+            "${{ steps.droplet.outputs.DROPLET_ID }}" \
+            "${{ steps.droplet.outputs.SSH_KEY_ID }}"

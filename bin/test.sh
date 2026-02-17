@@ -9,7 +9,7 @@
 # Add new test files here — don't scatter test invocations across CI/docs.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 FILTER="${1:-all}"
 FAILED=0

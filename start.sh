@@ -22,6 +22,7 @@ varlock load --path ~/.config/ || {
   exit 1
 }
 set -a
+# shellcheck disable=SC1090  # path is dynamic (agent home)
 source ~/.config/.env
 set +a
 

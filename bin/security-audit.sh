@@ -194,6 +194,7 @@ if [ -r "$HORNET_SRC/setup.sh" ] 2>/dev/null; then
 fi
 
 # Check extensions/skills are real dirs, not symlinks into source
+# shellcheck disable=SC2088  # tildes in log messages are intentional
 if [ -L "$HORNET_HOME/.pi/agent/extensions" ]; then
   finding "CRITICAL" "~/.pi/agent/extensions is a symlink (should be a real dir)" \
     "Run: rm ~/.pi/agent/extensions && mkdir ~/.pi/agent/extensions && deploy.sh"
@@ -201,6 +202,7 @@ else
   ok "~/.pi/agent/extensions/ is a real directory"
 fi
 
+# shellcheck disable=SC2088
 if [ -L "$HORNET_HOME/.pi/agent/skills" ]; then
   finding "CRITICAL" "~/.pi/agent/skills is a symlink (should be a real dir)" \
     "Run: rm ~/.pi/agent/skills && mkdir ~/.pi/agent/skills && deploy.sh"
@@ -209,6 +211,7 @@ else
 fi
 
 # Check runtime bridge exists
+# shellcheck disable=SC2088
 if [ -d "$HORNET_HOME/runtime/slack-bridge" ]; then
   ok "Runtime bridge directory exists"
 else
