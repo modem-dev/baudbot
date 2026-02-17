@@ -168,6 +168,34 @@ fi
 
 # ── 5. Remove sudoers ───────────────────────────────────────────────────────
 
+echo "=== Removing baudbot systemd unit ==="
+if systemctl is-enabled baudbot &>/dev/null 2>&1; then
+  run systemctl stop baudbot || true
+  run systemctl disable baudbot
+  removed "baudbot service (stopped + disabled)"
+else
+  skipped "baudbot service (not enabled)"
+fi
+
+if [ -f /etc/systemd/system/baudbot.service ]; then
+  run rm -f /etc/systemd/system/baudbot.service
+  run systemctl daemon-reload
+  removed "baudbot.service unit file"
+else
+  skipped "baudbot.service (not found)"
+fi
+
+echo "=== Removing baudbot CLI ==="
+if [ -L /usr/local/bin/baudbot ]; then
+  run rm -f /usr/local/bin/baudbot
+  removed "/usr/local/bin/baudbot symlink"
+elif [ -f /usr/local/bin/baudbot ]; then
+  run rm -f /usr/local/bin/baudbot
+  removed "/usr/local/bin/baudbot"
+else
+  skipped "/usr/local/bin/baudbot (not found)"
+fi
+
 echo "=== Removing sudoers ==="
 if [ -f /etc/sudoers.d/baudbot-agent ]; then
   run rm -f /etc/sudoers.d/baudbot-agent

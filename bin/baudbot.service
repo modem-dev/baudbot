@@ -1,0 +1,36 @@
+[Unit]
+Description=Baudbot AI Agent
+After=network.target
+Documentation=https://github.com/modem-dev/baudbot
+
+[Service]
+Type=simple
+User=baudbot_agent
+Group=baudbot_agent
+WorkingDirectory=/home/baudbot_agent
+
+# Pre-start: lock down perms and scrub secrets from old logs
+ExecStartPre=/home/baudbot_agent/runtime/bin/harden-permissions.sh
+ExecStartPre=/bin/bash -c '/home/baudbot_agent/runtime/bin/redact-logs.sh 2>/dev/null || true'
+
+# Main process
+ExecStart=/home/baudbot_agent/runtime/start.sh
+
+# Restart on failure, but not on clean exit (agent chose to stop)
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment=PATH=/home/baudbot_agent/.varlock/bin:/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/baudbot_agent
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/baudbot_agent
+ReadOnlyPaths=/opt/baudbot
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

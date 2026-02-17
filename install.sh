@@ -412,18 +412,27 @@ else
   ask "Start the agent now? [Y/n]: "
   read -r launch
   if [ -z "$launch" ] || [[ "$launch" =~ ^[Yy] ]]; then
-    info "Launching in tmux session 'baudbot'..."
-    sudo -u baudbot_agent tmux new-session -d -s baudbot "$BAUDBOT_HOME/runtime/start.sh" 2>/dev/null || true
-    sleep 2
-    if sudo -u baudbot_agent tmux has-session -t baudbot 2>/dev/null; then
-      info "Agent is running ✓"
+    info "Launching agent..."
+    if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
+      systemctl start baudbot 2>/dev/null || true
+      sleep 2
+      if systemctl is-active baudbot &>/dev/null 2>&1; then
+        info "Agent is running ✓"
+      else
+        warn "Agent didn't start — check: baudbot logs"
+      fi
     else
-      warn "tmux session didn't start — try manually:"
-      echo -e "  ${DIM}sudo -u baudbot_agent ~/runtime/start.sh${RESET}"
+      sudo -u baudbot_agent tmux new-session -d -s baudbot "$BAUDBOT_HOME/runtime/start.sh" 2>/dev/null || true
+      sleep 2
+      if sudo -u baudbot_agent tmux has-session -t baudbot 2>/dev/null; then
+        info "Agent is running ✓"
+      else
+        warn "Agent didn't start — try: baudbot start --direct"
+      fi
     fi
   else
     info "Skipped. Start later with:"
-    echo -e "  ${DIM}sudo -u baudbot_agent ~/runtime/start.sh${RESET}"
+    echo -e "  ${DIM}sudo baudbot start${RESET}"
   fi
 fi
 
@@ -435,11 +444,13 @@ SSH_PUB="$BAUDBOT_HOME/.ssh/id_ed25519.pub"
 
 echo -e "🐝 ${BOLD}Baudbot is installed.${RESET}"
 echo ""
+echo -e "  ${BOLD}Start agent:${RESET}     sudo baudbot start"
+echo -e "  ${BOLD}Agent status:${RESET}    sudo baudbot status"
+echo -e "  ${BOLD}View logs:${RESET}       sudo baudbot logs"
 echo -e "  ${BOLD}Edit secrets:${RESET}    sudo -u baudbot_agent vim $ENV_FILE"
-echo -e "  ${BOLD}Start agent:${RESET}     sudo -u baudbot_agent ~/runtime/start.sh"
-echo -e "  ${BOLD}Attach to tmux:${RESET}  sudo -u baudbot_agent tmux attach -t baudbot"
-echo -e "  ${BOLD}Update runtime:${RESET}  $REPO_DIR/bin/deploy.sh"
-echo -e "  ${BOLD}Security audit:${RESET}  $REPO_DIR/bin/security-audit.sh"
+echo -e "  ${BOLD}Deploy changes:${RESET}  sudo baudbot deploy"
+echo -e "  ${BOLD}Health check:${RESET}    sudo baudbot doctor"
+echo -e "  ${BOLD}Security audit:${RESET}  sudo baudbot audit"
 echo ""
 if [ -f "$SSH_PUB" ]; then
   echo -e "  ${YELLOW}⚠${RESET}  Add the agent's SSH key to GitHub:"

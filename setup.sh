@@ -218,6 +218,24 @@ systemctl daemon-reload
 systemctl enable baudbot-firewall
 echo "Firewall will be restored on boot via systemd"
 
+echo "=== Installing baudbot CLI ==="
+if [ ! -f /usr/local/bin/baudbot ] || [ "$(readlink -f /usr/local/bin/baudbot 2>/dev/null)" != "$REPO_DIR/bin/baudbot" ]; then
+  ln -sf "$REPO_DIR/bin/baudbot" /usr/local/bin/baudbot
+  echo "Installed /usr/local/bin/baudbot → $REPO_DIR/bin/baudbot"
+else
+  echo "baudbot CLI already installed, skipping"
+fi
+
+echo "=== Installing baudbot systemd unit ==="
+# Template the service file with the correct paths
+sed \
+  -e "s|/home/baudbot_agent|$BAUDBOT_HOME|g" \
+  "$REPO_DIR/bin/baudbot.service" > /etc/systemd/system/baudbot.service
+systemctl daemon-reload
+systemctl enable baudbot
+echo "Installed baudbot.service (enabled, not started)"
+echo "Start with: baudbot start"
+
 echo "=== Setting up /proc isolation (hidepid) ==="
 # Create a group whose members can still see all processes.
 # The admin user is added; baudbot_agent is NOT — it only sees its own processes.
@@ -252,27 +270,17 @@ echo "=== Setup complete ==="
 echo ""
 echo "Remaining manual steps:"
 echo "  1. sudo passwd baudbot_agent"
-echo "  2. Add secrets to $BAUDBOT_HOME/.config/.env:"
-echo "     GITHUB_TOKEN=..."
-echo "     OPENCODE_ZEN_API_KEY=..."
-echo "     AGENTMAIL_API_KEY=..."
-echo "     KERNEL_API_KEY=..."
-echo "     BAUDBOT_SECRET=..."
-echo "     SLACK_BOT_TOKEN=..."
-echo "     SLACK_APP_TOKEN=..."
-echo "     SLACK_ALLOWED_USERS=U...  (REQUIRED — bridge refuses to start without this)"
-echo "     SENTRY_CHANNEL_ID=C...  (Slack channel ID for Sentry alerts)"
-echo "     SENTRY_ORG=...  (Sentry organization slug)"
-echo "     BAUDBOT_EMAIL=...  (AgentMail address for email monitor)"
-echo "     BAUDBOT_ALLOWED_EMAILS=you@example.com  (comma-separated sender allowlist)"
-echo "     BAUDBOT_SOURCE_DIR=$REPO_DIR  (admin source repo path, for tool-guard)"
-echo "  3. Add SSH key to your agent's GitHub account"
+echo "  2. Add secrets: sudo baudbot config"
+echo "     Or manually edit: $BAUDBOT_HOME/.config/.env"
+echo "  3. Add SSH key to your agent's GitHub account:"
+echo "     cat $BAUDBOT_HOME/.ssh/id_ed25519.pub"
 echo "  4. Log out and back in for group membership to take effect"
-echo "     (both baudbot_agent group and procview group)"
-echo "  5. Launch: sudo -u baudbot_agent ~/runtime/start.sh"
 echo ""
-echo "To update runtime after editing source:"
-echo "  $REPO_DIR/bin/deploy.sh"
-echo ""
-echo "To verify security posture:"
-echo "  $REPO_DIR/bin/security-audit.sh"
+echo "Commands:"
+echo "  baudbot start        Start the agent"
+echo "  baudbot stop         Stop the agent"
+echo "  baudbot status       Check agent status"
+echo "  baudbot logs         Tail agent logs"
+echo "  baudbot deploy       Deploy source changes to agent runtime"
+echo "  baudbot doctor       Health check"
+echo "  baudbot audit        Security posture audit"

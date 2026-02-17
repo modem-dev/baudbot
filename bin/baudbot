@@ -1,0 +1,208 @@
+#!/bin/bash
+# Baudbot CLI dispatcher
+# Routes subcommands to internal scripts. Installed as /usr/local/bin/baudbot.
+#
+# Usage: baudbot <command> [options]
+
+set -euo pipefail
+
+# Find the baudbot source root. Resolution order:
+# 1. BAUDBOT_ROOT env var (explicit override)
+# 2. Resolve from this script's location (../  relative to bin/baudbot)
+if [ -z "${BAUDBOT_ROOT:-}" ]; then
+  BAUDBOT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+# Colors (disabled if not a terminal)
+if [ -t 1 ]; then
+  BOLD='\033[1m'
+  DIM='\033[2m'
+  RESET='\033[0m'
+else
+  BOLD='' DIM='' RESET=''
+fi
+
+version() {
+  if [ -f "$BAUDBOT_ROOT/package.json" ]; then
+    grep '"version"' "$BAUDBOT_ROOT/package.json" | head -1 | sed 's/.*: *"\(.*\)".*/\1/'
+  else
+    echo "unknown"
+  fi
+}
+
+usage() {
+  echo -e "${BOLD}baudbot${RESET} — hardened infrastructure for always-on AI agents"
+  echo ""
+  echo -e "${BOLD}Usage:${RESET} baudbot <command> [options]"
+  echo ""
+  echo -e "${BOLD}Lifecycle:${RESET}"
+  echo "  start          Start the agent (systemd, or --direct for foreground)"
+  echo "  stop           Stop the agent"
+  echo "  restart        Restart the agent"
+  echo "  status         Show agent status"
+  echo "  logs           Tail agent logs"
+  echo ""
+  echo -e "${BOLD}Setup:${RESET}"
+  echo "  setup          One-time system setup (user, deps, firewall, systemd)"
+  echo "  config         Interactive secrets and config setup"
+  echo "  deploy         Deploy source + config to agent runtime"
+  echo ""
+  echo -e "${BOLD}Operations:${RESET}"
+  echo "  doctor         Health check (perms, firewall, secrets, deps)"
+  echo "  audit          Security posture audit"
+  echo "  test           Run test suite"
+  echo "  update         Pull latest and redeploy"
+  echo "  uninstall      Remove everything"
+  echo ""
+  echo -e "${BOLD}Options:${RESET}"
+  echo "  --version      Show version"
+  echo "  --help, -h     Show this help"
+}
+
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "❌ baudbot $1 requires root. Run: sudo baudbot $1"
+    exit 1
+  fi
+}
+
+# Detect systemd
+has_systemd() {
+  command -v systemctl &>/dev/null && [ -d /run/systemd/system ]
+}
+
+case "${1:-}" in
+  start)
+    shift
+    if [ "${1:-}" = "--direct" ]; then
+      # Foreground mode: run start.sh directly (for dev/CI/debugging)
+      shift
+      require_root "start --direct"
+      exec sudo -u baudbot_agent "$BAUDBOT_ROOT/start.sh" "$@"
+    else
+      require_root "start"
+      if has_systemd; then
+        exec systemctl start baudbot "$@"
+      else
+        echo "systemd not available. Use: baudbot start --direct"
+        exit 1
+      fi
+    fi
+    ;;
+
+  stop)
+    shift
+    require_root "stop"
+    if has_systemd; then
+      exec systemctl stop baudbot "$@"
+    else
+      echo "systemd not available. Kill the agent process manually."
+      exit 1
+    fi
+    ;;
+
+  restart)
+    shift
+    require_root "restart"
+    if has_systemd; then
+      exec systemctl restart baudbot "$@"
+    else
+      echo "systemd not available."
+      exit 1
+    fi
+    ;;
+
+  status)
+    shift
+    if has_systemd && systemctl is-enabled baudbot &>/dev/null 2>&1; then
+      exec systemctl status baudbot "$@"
+    else
+      # Fallback: check if baudbot_agent has pi running
+      if pgrep -u baudbot_agent -f "pi --session-control" &>/dev/null; then
+        echo "baudbot is running (no systemd unit)"
+        pgrep -u baudbot_agent -af "pi --session-control"
+      else
+        echo "baudbot is not running"
+      fi
+    fi
+    ;;
+
+  logs)
+    shift
+    if has_systemd && systemctl is-enabled baudbot &>/dev/null 2>&1; then
+      exec journalctl -u baudbot -f "$@"
+    else
+      echo "No systemd unit. Check tmux sessions:"
+      echo "  sudo -u baudbot_agent tmux ls"
+    fi
+    ;;
+
+  setup)
+    shift
+    require_root "setup"
+    exec "$BAUDBOT_ROOT/setup.sh" "$@"
+    ;;
+
+  config)
+    shift
+    # config writes to ~/.baudbot/ on the calling user
+    # For now, point to install.sh's config section
+    echo "Config management is not yet extracted into a standalone command."
+    echo "Use: sudo $BAUDBOT_ROOT/install.sh"
+    exit 1
+    ;;
+
+  deploy)
+    shift
+    require_root "deploy"
+    exec "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
+    ;;
+
+  audit)
+    shift
+    exec "$BAUDBOT_ROOT/bin/security-audit.sh" "$@"
+    ;;
+
+  test)
+    shift
+    exec "$BAUDBOT_ROOT/bin/test.sh" "$@"
+    ;;
+
+  update)
+    shift
+    # For now: git pull + deploy
+    require_root "update"
+    echo "=== Pulling latest ==="
+    cd "$BAUDBOT_ROOT"
+    git pull origin main
+    echo ""
+    echo "=== Deploying ==="
+    exec "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
+    ;;
+
+  uninstall)
+    shift
+    require_root "uninstall"
+    exec "$BAUDBOT_ROOT/bin/uninstall.sh" "$@"
+    ;;
+
+  doctor)
+    shift
+    exec "$BAUDBOT_ROOT/bin/doctor.sh" "$@"
+    ;;
+
+  --version|-v)
+    echo "baudbot $(version)"
+    ;;
+
+  --help|-h|"")
+    usage
+    ;;
+
+  *)
+    echo "Unknown command: $1"
+    echo ""
+    usage
+    exit 1
+    ;;
+esac
