@@ -48,6 +48,8 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status"
   echo "  logs           Tail agent logs"
+  echo "  attach         Attach to a tmux session (default: control-agent)"
+  echo "  sessions       List agent tmux and pi sessions"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
   echo "  setup          One-time system setup (user, deps, firewall, systemd)"
@@ -142,6 +144,78 @@ case "${1:-}" in
       echo "No systemd unit. Check tmux sessions:"
       echo "  sudo -u baudbot_agent tmux ls"
     fi
+    ;;
+
+  sessions)
+    shift
+    AGENT_USER="baudbot_agent"
+    echo -e "${BOLD}tmux sessions:${RESET}"
+    if sudo -u "$AGENT_USER" tmux ls 2>/dev/null; then
+      :
+    else
+      echo "  (none)"
+    fi
+    echo ""
+    echo -e "${BOLD}pi sessions:${RESET}"
+    PI_SESSIONS_DIR="/home/$AGENT_USER/.pi/agent/sessions"
+    if [ -d "$PI_SESSIONS_DIR" ]; then
+      found=0
+      for sess_dir in "$PI_SESSIONS_DIR"/*/; do
+        [ -d "$sess_dir" ] || continue
+        sess_id=$(basename "$sess_dir")
+        name=""
+        status="unknown"
+        # Check if control socket exists (session is live)
+        if [ -e "$sess_dir/control.sock" ]; then
+          status="running"
+        elif [ -f "$sess_dir/pid" ]; then
+          pid=$(cat "$sess_dir/pid" 2>/dev/null || echo "")
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            status="running"
+          else
+            status="stopped"
+          fi
+        else
+          status="stopped"
+        fi
+        # Try to read session name
+        if [ -f "$sess_dir/name" ]; then
+          name=$(cat "$sess_dir/name" 2>/dev/null || echo "")
+        fi
+        if [ -n "$name" ]; then
+          echo "  $name ($sess_id) [$status]"
+        else
+          echo "  $sess_id [$status]"
+        fi
+        found=$((found + 1))
+      done
+      if [ "$found" -eq 0 ]; then
+        echo "  (none)"
+      fi
+    else
+      echo "  (no sessions directory)"
+    fi
+    ;;
+
+  attach)
+    shift
+    AGENT_USER="baudbot_agent"
+    TARGET="${1:-}"
+    if [ -z "$TARGET" ]; then
+      # Default: attach to first available tmux session
+      FIRST_SESSION=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
+      if [ -n "$FIRST_SESSION" ]; then
+        TARGET="$FIRST_SESSION"
+      else
+        echo "No tmux sessions running. Start the agent first:"
+        echo "  sudo baudbot start"
+        exit 1
+      fi
+    fi
+    echo "Attaching to tmux session: $TARGET"
+    echo "Detach with: Ctrl+b, d"
+    echo ""
+    exec sudo -u "$AGENT_USER" tmux attach-session -t "$TARGET"
     ;;
 
   setup)
