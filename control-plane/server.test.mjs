@@ -84,7 +84,8 @@ describe("control-plane (no auth)", () => {
     assert.equal(typeof body.agent.processCount, "number");
     assert.ok(Array.isArray(body.agent.piSessions));
     assert.equal(typeof body.system, "object");
-    assert.equal(typeof body.system.hostname, "string");
+    assert.ok(body.system.hostname === null || typeof body.system.hostname === "string");
+    assert.ok(body.system.loadAvg === null || typeof body.system.loadAvg === "string");
     assert.ok(body.system.memory === null || typeof body.system.memory === "object");
     assert.ok(body.system.disk === null || typeof body.system.disk === "object");
     assert.equal(typeof body.controlPlane, "object");
