@@ -23,7 +23,9 @@ SIZE="${DO_SIZE:-s-2vcpu-4gb}"
 
 die() { echo "❌ $1" >&2; exit 1; }
 
-[ -z "${DO_API_TOKEN:-}" ] && die "DO_API_TOKEN not set"
+require_token() {
+  [ -z "${DO_API_TOKEN:-}" ] && die "DO_API_TOKEN not set"
+}
 
 do_api() {
   local method="$1" endpoint="$2"
@@ -36,6 +38,7 @@ do_api() {
 
 # ── create <name> <image> <ssh_pub_key_file> ─────────────────────────────────
 cmd_create() {
+  require_token
   local name="${1:?Usage: droplet.sh create <name> <image> <ssh_pub_key_file>}"
   local image="${2:?}"
   local pub_key_file="${3:?}"
@@ -105,6 +108,7 @@ print(v4[0]['ip_address'] if v4 else 'none')
 
 # ── destroy <droplet_id> [ssh_key_id] ────────────────────────────────────────
 cmd_destroy() {
+  require_token
   local droplet_id="${1:-}"
   local ssh_key_id="${2:-}"
 
