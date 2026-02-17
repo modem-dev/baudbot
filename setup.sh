@@ -3,7 +3,7 @@
 # Run as root or with sudo from the admin user account
 #
 # Prerequisites:
-#   - Arch Linux (or similar)
+#   - Linux (tested on Arch and Ubuntu)
 #   - Docker installed
 #
 # This script:
@@ -34,6 +34,10 @@ HORNET_HOME="/home/hornet_agent"
 # Source repo auto-detected from this script's location (can live anywhere)
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 NODE_VERSION="22.14.0"
+
+# Work from a neutral directory — sudo -u hornet_agent inherits CWD, and
+# git/find fail if CWD is a directory the agent can't access (e.g. /root).
+cd /tmp
 
 echo "=== Creating hornet_agent user ==="
 if id hornet_agent &>/dev/null; then
@@ -103,7 +107,16 @@ echo "=== Configuring shared repo permissions ==="
 # Set core.sharedRepository=group on all repos so git creates objects
 # with group-write perms. Without this, umask 077 in start.sh causes
 # new .git/objects to be owner-only, breaking group access (admin user).
-for repo in "$REPO_DIR" "$HORNET_HOME/workspace/modem" "$HORNET_HOME/workspace/website"; do
+
+# Source repo — set as admin user (agent can't access admin home, and root
+# needs safe.directory due to different ownership)
+if [ -d "$REPO_DIR/.git" ]; then
+  sudo -u "$ADMIN_USER" git -C "$REPO_DIR" config core.sharedRepository group
+  echo "  ✓ $REPO_DIR"
+fi
+
+# Agent workspace repos — set as agent
+for repo in "$HORNET_HOME/workspace/modem" "$HORNET_HOME/workspace/website"; do
   if [ -d "$repo/.git" ]; then
     sudo -u hornet_agent git -C "$repo" config core.sharedRepository group
     echo "  ✓ $repo"
@@ -232,7 +245,7 @@ fi
 echo "Process isolation: hornet_agent can only see its own processes"
 
 echo "=== Hardening permissions ==="
-sudo -u hornet_agent bash -c "'$REPO_DIR/bin/harden-permissions.sh'"
+sudo -u hornet_agent bash -c "cd ~ && '$HORNET_HOME/runtime/bin/harden-permissions.sh'"
 
 echo ""
 echo "=== Setup complete ==="
