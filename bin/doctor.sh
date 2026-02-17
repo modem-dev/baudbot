@@ -6,13 +6,10 @@
 
 set -euo pipefail
 
-FIX=false
 for arg in "$@"; do
   case "$arg" in
-    --fix) FIX=true ;;
     -h|--help)
-      echo "Usage: baudbot doctor [--fix]"
-      echo "  --fix    Attempt to fix issues (requires root)"
+      echo "Usage: baudbot doctor"
       exit 0
       ;;
   esac

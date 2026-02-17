@@ -27,7 +27,7 @@ jobs:
 
       - name: ShellCheck
         run: |
-          find bin/ setup.sh start.sh -type f \( -name '*.sh' -o -name 'baudbot-safe-bash' -o -name 'baudbot-docker' \) \
+          find bin/ setup.sh start.sh install.sh -type f \( -name '*.sh' -o -name 'baudbot-safe-bash' -o -name 'baudbot-docker' -o -name 'baudbot' \) \
             | xargs shellcheck -s bash -S warning
 
   test:
