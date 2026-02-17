@@ -183,8 +183,8 @@ See `pi/skills/dev-agent/SKILL.md` for the pattern.
 | **iptables egress** | Per-UID port allowlist (80/443/22/53 + DB ports). Blocks non-standard ports, listeners, raw sockets. | ✅ Kernel |
 | **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel |
 | **Shell deny list** | `baudbot-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. | ✅ Root-owned |
-| **Tool interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Compiled |
-| **Integrity manifest** | Deploy stamps SHA256 hashes. Agent can verify its own runtime. | ✅ Admin-signed |
+| **Tool interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Read-only |
+| **Integrity manifest** | Deploy stamps SHA256 hashes. Security audit verifies runtime files match. | ✅ Admin-signed |
 | **Content wrapping** | External messages wrapped with security boundaries + homoglyph sanitization. | ⚠️ LLM-dependent |
 | **Injection detection** | 12 regex patterns flag suspicious content. Log-only. | ⚠️ Detection only |
 | **Filesystem hardening** | 700 dirs, 600 secrets, enforced on every boot. | ✅ Boot script |
