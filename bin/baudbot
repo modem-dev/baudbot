@@ -158,39 +158,35 @@ case "${1:-}" in
     fi
     echo ""
     echo -e "${BOLD}pi sessions:${RESET}"
-    PI_SESSIONS_DIR="/home/$AGENT_USER/.pi/agent/sessions"
-    if [ -d "$PI_SESSIONS_DIR" ]; then
+    # Pi stores live session control sockets in ~/.pi/session-control/<uuid>.sock
+    # Named sessions have symlinks: <name>.sock → <uuid>.sock
+    PI_CONTROL_DIR="/home/$AGENT_USER/.pi/session-control"
+    if [ -d "$PI_CONTROL_DIR" ]; then
       found=0
-      for sess_dir in "$PI_SESSIONS_DIR"/*/; do
-        [ -d "$sess_dir" ] || continue
-        sess_id=$(basename "$sess_dir")
-        name=""
-        status="unknown"
-        # Check if the session process is alive via pid file
-        if [ -f "$sess_dir/pid" ]; then
-          pid=$(cat "$sess_dir/pid" 2>/dev/null || echo "")
-          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            status="running"
-          else
-            status="stopped"
-          fi
-        elif [ -S "$sess_dir/control.sock" ]; then
-          # Socket exists but no pid file — try connecting
-          if command -v socat &>/dev/null; then
-            if socat -u OPEN:/dev/null UNIX-CONNECT:"$sess_dir/control.sock" 2>/dev/null; then
-              status="running"
-            else
-              status="stopped (stale socket)"
-            fi
-          else
-            status="unknown (no pid file)"
-          fi
-        else
-          status="stopped"
+      # Collect alias symlinks: name → uuid
+      declare -A ALIASES
+      for sock in "$PI_CONTROL_DIR"/*.sock; do
+        [ -e "$sock" ] || continue
+        base=$(basename "$sock" .sock)
+        if [ -L "$sock" ]; then
+          # Symlink = alias. Resolve target to get the uuid.
+          target=$(readlink "$sock")
+          target_uuid=$(basename "$target" .sock)
+          ALIASES[$target_uuid]="$base"
         fi
-        # Try to read session name
-        if [ -f "$sess_dir/name" ]; then
-          name=$(cat "$sess_dir/name" 2>/dev/null || echo "")
+      done
+      # List actual sockets (non-symlinks)
+      for sock in "$PI_CONTROL_DIR"/*.sock; do
+        [ -e "$sock" ] || continue
+        [ -L "$sock" ] && continue  # skip alias symlinks
+        sess_id=$(basename "$sock" .sock)
+        name="${ALIASES[$sess_id]:-}"
+        # Liveness check: try connecting to the socket
+        status="stopped (stale)"
+        if sudo -u "$AGENT_USER" bash -c "echo '' | socat - UNIX-CONNECT:'$sock' 2>/dev/null" 2>/dev/null; then
+          status="running"
+        elif sudo -u "$AGENT_USER" bash -c "python3 -c \"import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(0.3); s.connect('$sock'); s.close()\" 2>/dev/null" 2>/dev/null; then
+          status="running"
         fi
         if [ -n "$name" ]; then
           echo "  $name ($sess_id) [$status]"
@@ -203,7 +199,7 @@ case "${1:-}" in
         echo "  (none)"
       fi
     else
-      echo "  (no sessions directory)"
+      echo "  (no session-control directory)"
     fi
     ;;
 
