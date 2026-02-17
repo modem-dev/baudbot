@@ -47,6 +47,17 @@ echo "$HELP_OUT" | grep -q "baudbot"
 test -x /home/baudbot_agent/.varlock/bin/varlock
 # Agent can load env (smoke test — varlock validates schema + .env)
 sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
+# start.sh has TMUX_TMPDIR set (so tmux works with systemd PrivateTmp)
+grep -q "TMUX_TMPDIR" /home/baudbot_agent/runtime/start.sh
+# start.sh has bridge auto-start function
+grep -q "_start_bridge" /home/baudbot_agent/runtime/start.sh
+# baudbot sessions command works (no sessions expected, but should not error)
+SESS_OUT=$(baudbot sessions 2>&1 || true)
+echo "$SESS_OUT" | grep -q "tmux sessions"
+echo "$SESS_OUT" | grep -q "pi sessions"
+# baudbot attach gives helpful message when no sessions
+ATTACH_OUT=$(baudbot attach 2>&1 || true)
+echo "$ATTACH_OUT" | grep -qi "no tmux sessions\|start the agent"
 echo "  ✓ install.sh verification passed"
 
 echo "=== Installing test dependencies ==="
