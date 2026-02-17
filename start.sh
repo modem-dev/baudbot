@@ -16,6 +16,12 @@ cd ~
 # Set PATH
 export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
 
+# systemd's PrivateTmp=yes hides /tmp from outside the service.
+# Point tmux at a visible directory so baudbot attach/sessions work.
+export TMUX_TMPDIR="$HOME/.tmux-sock"
+mkdir -p "$TMUX_TMPDIR"
+chmod 700 "$TMUX_TMPDIR"
+
 # Validate and load secrets via varlock
 varlock load --path ~/.config/ || {
   echo "❌ Environment validation failed — check ~/.config/.env against .env.schema"

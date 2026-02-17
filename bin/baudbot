@@ -68,6 +68,14 @@ usage() {
   echo "  --help, -h     Show this help"
 }
 
+# Run tmux as the agent user with the correct socket dir.
+# systemd's PrivateTmp hides /tmp, so tmux sockets live in ~/.tmux-sock/
+agent_tmux() {
+  local agent_home
+  agent_home=$(getent passwd baudbot_agent | cut -d: -f6 2>/dev/null || echo "/home/baudbot_agent")
+  sudo -u baudbot_agent env TMUX_TMPDIR="$agent_home/.tmux-sock" tmux "$@"
+}
+
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "❌ baudbot $1 requires root. Run: sudo baudbot $1"
@@ -142,7 +150,7 @@ case "${1:-}" in
       exec journalctl -u baudbot -f "$@"
     else
       echo "No systemd unit. Check tmux sessions:"
-      echo "  sudo -u baudbot_agent tmux ls"
+      echo "  sudo baudbot sessions"
     fi
     ;;
 
@@ -151,7 +159,7 @@ case "${1:-}" in
     require_root "sessions"
     AGENT_USER="baudbot_agent"
     echo -e "${BOLD}tmux sessions:${RESET}"
-    if sudo -u "$AGENT_USER" tmux ls 2>/dev/null; then
+    if agent_tmux ls 2>/dev/null; then
       :
     else
       echo "  (none)"
@@ -210,7 +218,7 @@ case "${1:-}" in
     TARGET="${1:-}"
     if [ -z "$TARGET" ]; then
       # Default: attach to first available tmux session
-      FIRST_SESSION=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
+      FIRST_SESSION=$(agent_tmux ls -F '#{session_name}' 2>/dev/null | head -1)
       if [ -n "$FIRST_SESSION" ]; then
         TARGET="$FIRST_SESSION"
       else
@@ -222,7 +230,7 @@ case "${1:-}" in
     echo "Attaching to tmux session: $TARGET"
     echo "Detach with: Ctrl+b, d"
     echo ""
-    exec sudo -u "$AGENT_USER" tmux attach-session -t "$TARGET"
+    exec agent_tmux attach-session -t "$TARGET"
     ;;
 
   setup)
