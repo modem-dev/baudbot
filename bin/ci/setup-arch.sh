@@ -38,7 +38,8 @@ grep -q "BAUDBOT_SOURCE_DIR=" /home/baudbot_agent/.config/.env
 # CLI installed
 test -L /usr/local/bin/baudbot
 baudbot --version
-baudbot --help | grep -q "baudbot"
+HELP_OUT=$(baudbot --help)
+echo "$HELP_OUT" | grep -q "baudbot"
 echo "  ✓ install.sh verification passed"
 
 echo "=== Installing test dependencies ==="
