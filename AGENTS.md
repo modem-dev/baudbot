@@ -76,6 +76,9 @@ Agent runtime layout:
 ## Development Workflow
 
 ```bash
+# First-time install (interactive — handles everything)
+sudo ~/hornet/install.sh
+
 # Edit source files directly in ~/hornet/
 
 # Deploy to agent runtime
