@@ -17,6 +17,7 @@ bin/                        security & operations scripts
   ci/                       CI integration scripts
     droplet.sh              ephemeral DigitalOcean droplet lifecycle (create/destroy/ssh)
     setup-ubuntu.sh         Ubuntu droplet: prereqs + setup + tests
+    setup-arch.sh           Arch Linux droplet: prereqs + setup + tests
 hooks/
   pre-commit                blocks agent from modifying security files in git
 pi/

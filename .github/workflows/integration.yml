@@ -21,10 +21,9 @@ jobs:
           - distro: ubuntu
             image: ubuntu-24-04-x64
             setup_script: bin/ci/setup-ubuntu.sh
-          # To add Arch (or other distros), add entries here:
-          # - distro: arch
-          #   image: arch-linux-x64  # or a custom snapshot ID
-          #   setup_script: bin/ci/setup-arch.sh
+          - distro: arch
+            image: "217410218"
+            setup_script: bin/ci/setup-arch.sh
 
     name: ${{ matrix.distro }}
     timeout-minutes: 10
