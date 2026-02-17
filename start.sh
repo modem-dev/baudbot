@@ -67,26 +67,57 @@ _start_bridge() {
   while [ $elapsed -lt $timeout ]; do
     local alias_file="$socket_dir/control-agent.alias"
     if [ -L "$alias_file" ]; then
-      local target
+      local target uuid sock_path
       target=$(readlink "$alias_file")
-      local uuid="${target%.sock}"
-      echo "bridge: found control-agent ($uuid)"
+      uuid=$(basename "$target" .sock)
+      sock_path="$socket_dir/$target"
+
+      # Verify the socket is actually alive (not stale from a previous session).
+      # On restart, the old alias may still point to a dead socket.
+      if [ ! -S "$sock_path" ]; then
+        # Socket file doesn't exist — alias is stale, keep waiting
+        sleep 2
+        elapsed=$((elapsed + 2))
+        continue
+      fi
+
+      # Try connecting to verify liveness
+      if ! python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(0.5); s.connect('$sock_path'); s.close()" 2>/dev/null; then
+        # Socket exists but isn't responding — stale, keep waiting
+        sleep 2
+        elapsed=$((elapsed + 2))
+        continue
+      fi
+
+      echo "bridge: found live control-agent ($uuid)"
 
       # Kill existing bridge if any
       tmux kill-session -t slack-bridge 2>/dev/null || true
       sleep 1
 
-      tmux new-session -d -s slack-bridge \
-        "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$uuid && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
+      # Start bridge, retry once on failure
+      local attempts=0
+      while [ $attempts -lt 2 ]; do
+        tmux new-session -d -s slack-bridge \
+          "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$uuid && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
 
-      sleep 3
-      local http_code
-      http_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
-      if [ "$http_code" = "400" ]; then
-        echo "bridge: up ✓"
-      else
-        echo "bridge: started but health check returned HTTP $http_code"
-      fi
+        sleep 3
+        local http_code
+        http_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
+        if [ "$http_code" = "400" ]; then
+          echo "bridge: up ✓"
+          return
+        fi
+
+        attempts=$((attempts + 1))
+        if [ $attempts -lt 2 ]; then
+          echo "bridge: health check failed (HTTP $http_code), retrying..."
+          tmux kill-session -t slack-bridge 2>/dev/null || true
+          sleep 2
+        else
+          echo "bridge: started but health check failed (HTTP $http_code)"
+        fi
+      done
       return
     fi
     sleep 2
