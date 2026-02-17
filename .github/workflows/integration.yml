@@ -58,12 +58,12 @@ jobs:
 
       - name: Upload source
         run: |
-          tar czf /tmp/hornet-src.tar.gz \
+          tar czf /tmp/baudbot-src.tar.gz \
             --exclude=node_modules --exclude=.git .
           scp -o StrictHostKeyChecking=no -o BatchMode=yes \
             -i ~/.ssh/ci_key \
-            /tmp/hornet-src.tar.gz \
-            "root@${{ steps.droplet.outputs.DROPLET_IP }}:/tmp/hornet-src.tar.gz"
+            /tmp/baudbot-src.tar.gz \
+            "root@${{ steps.droplet.outputs.DROPLET_IP }}:/tmp/baudbot-src.tar.gz"
 
       - name: Setup and test
         run: |

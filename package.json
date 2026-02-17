@@ -1,5 +1,5 @@
 {
-  "name": "hornet",
+  "name": "baudbot",
   "private": true,
   "scripts": {
     "test": "bin/test.sh",

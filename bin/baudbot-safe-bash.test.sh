@@ -1,7 +1,7 @@
 #!/bin/bash
-# Tests for hornet-safe-bash wrapper
+# Tests for baudbot-safe-bash wrapper
 #
-# Run: bash hornet-safe-bash.test.sh
+# Run: bash baudbot-safe-bash.test.sh
 #
 # Tests the wrapper script by invoking it with dangerous and safe commands
 # and checking exit codes. The wrapper should exit 137 for blocked commands
@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-WRAPPER="$(dirname "$0")/hornet-safe-bash"
+WRAPPER="$(dirname "$0")/baudbot-safe-bash"
 PASS=0
 FAIL=0
 
@@ -47,7 +47,7 @@ expect_allowed() {
 }
 
 echo ""
-echo "Testing hornet-safe-bash"
+echo "Testing baudbot-safe-bash"
 echo "========================"
 echo ""
 
@@ -76,7 +76,7 @@ echo "Allowed commands:"
 expect_allowed "echo hello"       'echo hello'
 expect_allowed "ls"               'ls /tmp'
 expect_allowed "cat file"         'cat /dev/null'
-expect_allowed "rm user tmp"      'rm -rf /tmp/hornet-test-safe'
+expect_allowed "rm user tmp"      'rm -rf /tmp/baudbot-test-safe'
 expect_allowed "curl (no pipe)"   'echo curl https://example.com'
 expect_allowed "git status"       'echo git status'
 

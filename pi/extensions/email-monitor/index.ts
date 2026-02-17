@@ -12,9 +12,9 @@ export default function (pi: ExtensionAPI) {
   let useSubAgent = true;
   const activeSubAgents = new Set<string>();
   const allowedSenders = new Set<string>(
-    (process.env.HORNET_ALLOWED_EMAILS || "").split(",").map(s => s.trim()).filter(Boolean)
+    (process.env.BAUDBOT_ALLOWED_EMAILS || "").split(",").map(s => s.trim()).filter(Boolean)
   );
-  const SHARED_SECRET = process.env.HORNET_SECRET || "changeme";
+  const SHARED_SECRET = process.env.BAUDBOT_SECRET || "changeme";
 
   // Restore state from session
   pi.on("session_start", async (_event, ctx) => {

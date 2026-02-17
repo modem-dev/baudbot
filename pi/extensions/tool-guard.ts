@@ -2,13 +2,13 @@
  * Tool Guard Extension
  *
  * Defense-in-depth: intercepts tool calls and blocks dangerous patterns
- * before they reach the shell. Works alongside hornet-safe-bash but catches
+ * before they reach the shell. Works alongside baudbot-safe-bash but catches
  * commands at the pi level, before any shell is spawned.
  *
  * Configuration (env vars):
- *   HORNET_AGENT_USER   — agent Unix username (default: hornet_agent)
- *   HORNET_AGENT_HOME   — agent home directory (default: /home/$HORNET_AGENT_USER)
- *   HORNET_SOURCE_DIR   — admin-owned source repo path (default: empty/disabled)
+ *   BAUDBOT_AGENT_USER   — agent Unix username (default: baudbot_agent)
+ *   BAUDBOT_AGENT_HOME   — agent home directory (default: /home/$BAUDBOT_AGENT_USER)
+ *   BAUDBOT_SOURCE_DIR   — admin-owned source repo path (default: empty/disabled)
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -16,19 +16,19 @@ import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
 import { appendFileSync } from "node:fs";
 
 // ── Configuration ───────────────────────────────────────────────────────────
-// All paths are configurable via env vars so Hornet can be deployed for any user.
-// Defaults match the standard setup (hornet_agent user, source in admin home).
+// All paths are configurable via env vars so Baudbot can be deployed for any user.
+// Defaults match the standard setup (baudbot_agent user, source in admin home).
 import { existsSync } from "node:fs";
 
-const AGENT_USER = process.env.HORNET_AGENT_USER || "hornet_agent";
-const AGENT_HOME = process.env.HORNET_AGENT_HOME || `/home/${AGENT_USER}`;
-const HORNET_SRC_DIR = process.env.HORNET_SOURCE_DIR || "";
+const AGENT_USER = process.env.BAUDBOT_AGENT_USER || "baudbot_agent";
+const AGENT_HOME = process.env.BAUDBOT_AGENT_HOME || `/home/${AGENT_USER}`;
+const BAUDBOT_SRC_DIR = process.env.BAUDBOT_SOURCE_DIR || "";
 
 // ── Audit logging ───────────────────────────────────────────────────────────
 // Append-only log of every tool call for forensic analysis.
-// Preferred: /var/log/hornet/commands.log (root-owned, chattr +a for tamper-proof)
+// Preferred: /var/log/baudbot/commands.log (root-owned, chattr +a for tamper-proof)
 // Fallback: ~/logs/commands.log (agent-owned, not append-only but still useful)
-const AUDIT_LOG_PRIMARY = "/var/log/hornet/commands.log";
+const AUDIT_LOG_PRIMARY = "/var/log/baudbot/commands.log";
 const AUDIT_LOG_FALLBACK = `${AGENT_HOME}/logs/commands.log`;
 const AUDIT_LOG = existsSync(AUDIT_LOG_PRIMARY)
   ? AUDIT_LOG_PRIMARY
@@ -130,7 +130,7 @@ const BASH_DENY_RULES: DenyRule[] = [
   },
   {
     id: "systemd-install",
-    pattern: /systemctl\s+(enable|start)\s+(?!hornet)/,
+    pattern: /systemctl\s+(enable|start)\s+(?!baudbot)/,
     label: "Installing/starting unknown systemd service",
     severity: "warn",
   },
@@ -170,25 +170,25 @@ const BASH_DENY_RULES: DenyRule[] = [
   },
 
   // ── Source repo protection ─────────────────────────────────────────────
-  // Block chmod/chown on the hornet source repo (admin-owned)
-  // Only active when HORNET_SOURCE_DIR is configured
-  ...(HORNET_SRC_DIR ? [
+  // Block chmod/chown on the baudbot source repo (admin-owned)
+  // Only active when BAUDBOT_SOURCE_DIR is configured
+  ...(BAUDBOT_SRC_DIR ? [
     {
-      id: "chmod-hornet-source",
-      pattern: new RegExp(`chmod\\b.*${escapeRegex(HORNET_SRC_DIR)}`),
-      label: "chmod on hornet source repo",
+      id: "chmod-baudbot-source",
+      pattern: new RegExp(`chmod\\b.*${escapeRegex(BAUDBOT_SRC_DIR)}`),
+      label: "chmod on baudbot source repo",
       severity: "block" as const,
     },
     {
-      id: "chown-hornet-source",
-      pattern: new RegExp(`chown\\b.*${escapeRegex(HORNET_SRC_DIR)}`),
-      label: "chown on hornet source repo",
+      id: "chown-baudbot-source",
+      pattern: new RegExp(`chown\\b.*${escapeRegex(BAUDBOT_SRC_DIR)}`),
+      label: "chown on baudbot source repo",
       severity: "block" as const,
     },
     {
-      id: "tee-hornet-source",
-      pattern: new RegExp(`tee\\s+.*${escapeRegex(HORNET_SRC_DIR)}/`),
-      label: "tee write to hornet source repo",
+      id: "tee-baudbot-source",
+      pattern: new RegExp(`tee\\s+.*${escapeRegex(BAUDBOT_SRC_DIR)}/`),
+      label: "tee write to baudbot source repo",
       severity: "block" as const,
     },
   ] : []),
@@ -258,7 +258,7 @@ const PROTECTED_RUNTIME_FILES = [
 
 function isProtectedPath(filePath: string): boolean {
   // Entire source repo is read-only (when configured)
-  if (HORNET_SRC_DIR && (filePath.startsWith(HORNET_SRC_DIR + "/") || filePath === HORNET_SRC_DIR)) {
+  if (BAUDBOT_SRC_DIR && (filePath.startsWith(BAUDBOT_SRC_DIR + "/") || filePath === BAUDBOT_SRC_DIR)) {
     return true;
   }
   // Protected runtime security files
@@ -347,14 +347,14 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // Guard write tool — workspace confinement + protected hornet files
+    // Guard write tool — workspace confinement + protected baudbot files
     if (isToolCallEventType("write", event)) {
       const filePath = (event.input as { path?: string }).path ?? "";
 
       // Audit log
       auditLog({ tool: "write", path: filePath, blocked: false });
 
-      // ALLOW LIST: only permit writes under hornet_agent's home
+      // ALLOW LIST: only permit writes under baudbot_agent's home
       if (!isAllowedWritePath(filePath)) {
         auditLog({
           tool: "write",
@@ -372,7 +372,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block writes to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
+        const rule = BAUDBOT_SRC_DIR && filePath.startsWith(BAUDBOT_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -381,8 +381,8 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
-          ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
+        const desc = BAUDBOT_SRC_DIR && filePath.startsWith(BAUDBOT_SRC_DIR)
+          ? `${filePath} is in the read-only source repo ~/baudbot/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
         return {
@@ -399,7 +399,7 @@ export default function (pi: ExtensionAPI) {
       // Audit log
       auditLog({ tool: "edit", path: filePath, blocked: false });
 
-      // ALLOW LIST: only permit edits under hornet_agent's home
+      // ALLOW LIST: only permit edits under baudbot_agent's home
       if (!isAllowedWritePath(filePath)) {
         auditLog({
           tool: "edit",
@@ -417,7 +417,7 @@ export default function (pi: ExtensionAPI) {
       }
       // Block edits to read-only source repo and protected runtime files
       if (isProtectedPath(filePath)) {
-        const rule = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
+        const rule = BAUDBOT_SRC_DIR && filePath.startsWith(BAUDBOT_SRC_DIR)
           ? "readonly-source"
           : "protected-runtime";
         auditLog({
@@ -426,8 +426,8 @@ export default function (pi: ExtensionAPI) {
           blocked: true,
           rule,
         });
-        const desc = HORNET_SRC_DIR && filePath.startsWith(HORNET_SRC_DIR)
-          ? `${filePath} is in the read-only source repo ~/hornet/. Edit source and run deploy.sh instead.`
+        const desc = BAUDBOT_SRC_DIR && filePath.startsWith(BAUDBOT_SRC_DIR)
+          ? `${filePath} is in the read-only source repo ~/baudbot/. Edit source and run deploy.sh instead.`
           : `${filePath} is a protected security file. Only the admin can modify it via deploy.sh.`;
         console.error(`🛡️ TOOL-GUARD BLOCKED [${rule}]: ${filePath}`);
         return {

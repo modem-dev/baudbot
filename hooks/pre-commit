@@ -1,10 +1,10 @@
 #!/bin/bash
-# Hornet pre-commit hook — protects security-critical files from agent modification.
+# Baudbot pre-commit hook — protects security-critical files from agent modification.
 #
 # Install (root-owned so agent cannot modify or delete):
-#   sudo cp ~/hornet/hooks/pre-commit ~/hornet/.git/hooks/pre-commit
-#   sudo chown root:root ~/hornet/.git/hooks/pre-commit
-#   sudo chmod 755 ~/hornet/.git/hooks/pre-commit
+#   sudo cp ~/baudbot/hooks/pre-commit ~/baudbot/.git/hooks/pre-commit
+#   sudo chown root:root ~/baudbot/.git/hooks/pre-commit
+#   sudo chmod 755 ~/baudbot/.git/hooks/pre-commit
 #
 # The agent can freely modify:
 #   - pi/skills/          (operational knowledge)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Docker wrapper for hornet_agent
+# Docker wrapper for baudbot_agent
 # Blocks privilege escalation vectors while allowing normal container usage
 
 BLOCKED=0

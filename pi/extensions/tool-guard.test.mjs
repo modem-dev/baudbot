@@ -12,10 +12,10 @@ import assert from "node:assert/strict";
 
 // ── Test configuration ─────────────────────────────────────────────────────
 // These mirror the defaults in tool-guard.ts. Tests use these constants so
-// they work regardless of where Hornet is actually deployed.
-const AGENT_USER = "hornet_agent";
+// they work regardless of where Baudbot is actually deployed.
+const AGENT_USER = "baudbot_agent";
 const AGENT_HOME = `/home/${AGENT_USER}`;
-const HORNET_SOURCE_DIR = "/home/admin_user/hornet";
+const BAUDBOT_SOURCE_DIR = "/home/admin_user/baudbot";
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -36,16 +36,16 @@ const BASH_DENY_RULES = [
   { id: "revshell-perl", pattern: /perl\s+-e\s+.*socket.*INET.*exec/si, label: "Reverse shell (perl)", severity: "block" },
   { id: "crontab-modify", pattern: /crontab\s+-[erl]/, label: "Crontab modification", severity: "block" },
   { id: "cron-write", pattern: />\s*\/etc\/cron/, label: "Write to /etc/cron", severity: "block" },
-  { id: "systemd-install", pattern: /systemctl\s+(enable|start)\s+(?!hornet)/, label: "Installing/starting unknown systemd service", severity: "warn" },
+  { id: "systemd-install", pattern: /systemctl\s+(enable|start)\s+(?!baudbot)/, label: "Installing/starting unknown systemd service", severity: "warn" },
   { id: "write-auth-files", pattern: />\s*\/etc\/(passwd|shadow|sudoers|group)/, label: "Write to system auth files", severity: "block" },
   { id: "ssh-key-injection-other", pattern: new RegExp(`>\\s*\\/home\\/(?!${AGENT_USER}).*\\/\\.ssh\\/authorized_keys`), label: "SSH key injection to another user", severity: "block" },
   { id: "ssh-key-injection-root", pattern: />\s*\/root\/\.ssh\/authorized_keys/, label: "SSH key injection to root", severity: "block" },
   { id: "chmod-777-sensitive", pattern: /chmod\s+(-[a-zA-Z]*\s+)?777\s+\/(etc|home|root|var|usr)/, label: "chmod 777 on sensitive path", severity: "block" },
   { id: "fork-bomb", pattern: /:\(\)\s*\{.*\|.*&.*\}/, label: "Fork bomb", severity: "block" },
-  // Source repo protection (dynamic based on HORNET_SOURCE_DIR)
-  { id: "chmod-hornet-source", pattern: new RegExp(`chmod\\b.*${escapeRegex(HORNET_SOURCE_DIR)}`), label: "chmod on hornet source repo", severity: "block" },
-  { id: "chown-hornet-source", pattern: new RegExp(`chown\\b.*${escapeRegex(HORNET_SOURCE_DIR)}`), label: "chown on hornet source repo", severity: "block" },
-  { id: "tee-hornet-source", pattern: new RegExp(`tee\\s+.*${escapeRegex(HORNET_SOURCE_DIR)}/`), label: "tee write to hornet source repo", severity: "block" },
+  // Source repo protection (dynamic based on BAUDBOT_SOURCE_DIR)
+  { id: "chmod-baudbot-source", pattern: new RegExp(`chmod\\b.*${escapeRegex(BAUDBOT_SOURCE_DIR)}`), label: "chmod on baudbot source repo", severity: "block" },
+  { id: "chown-baudbot-source", pattern: new RegExp(`chown\\b.*${escapeRegex(BAUDBOT_SOURCE_DIR)}`), label: "chown on baudbot source repo", severity: "block" },
+  { id: "tee-baudbot-source", pattern: new RegExp(`tee\\s+.*${escapeRegex(BAUDBOT_SOURCE_DIR)}/`), label: "tee write to baudbot source repo", severity: "block" },
   { id: "chmod-runtime-security", pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security)\./, label: "chmod on protected runtime security file", severity: "block" },
   // Credential exfiltration
   { id: "env-exfil-curl", pattern: /\benv\b.*\|\s*(curl|wget|nc)\b/, label: "Piping environment to network tool", severity: "block" },
@@ -83,7 +83,7 @@ const PROTECTED_RUNTIME_FILES = [
 
 function isProtectedPath(filePath) {
   // Entire source repo is read-only
-  if (HORNET_SOURCE_DIR && (filePath.startsWith(HORNET_SOURCE_DIR + "/") || filePath === HORNET_SOURCE_DIR)) {
+  if (BAUDBOT_SOURCE_DIR && (filePath.startsWith(BAUDBOT_SOURCE_DIR + "/") || filePath === BAUDBOT_SOURCE_DIR)) {
     return true;
   }
   // Protected runtime security files
@@ -126,7 +126,7 @@ function checkWritePath(filePath) {
 describe("tool-guard: safe commands pass through", () => {
   const safeCommands = [
     `ls -la ${AGENT_HOME}`,
-    `cat ${HORNET_SOURCE_DIR}/start.sh`,
+    `cat ${BAUDBOT_SOURCE_DIR}/start.sh`,
     "git status",
     "npm test",
     "node --version",
@@ -135,7 +135,7 @@ describe("tool-guard: safe commands pass through", () => {
     `rm -rf ${AGENT_HOME}/tmp/test`,
     "curl https://api.example.com",
     "wget -O /tmp/file.txt https://example.com",
-    "systemctl status hornet-firewall",
+    "systemctl status baudbot-firewall",
     `chmod 600 ${AGENT_HOME}/.config/.env`,
   ];
 
@@ -211,8 +211,8 @@ describe("tool-guard: persistence blocked", () => {
     assert.equal(result.warned, true);
     assert.equal(result.blocked, false);
   });
-  it("allows systemctl enable hornet services", () => {
-    const result = checkBashCommand("systemctl enable hornet-firewall");
+  it("allows systemctl enable baudbot services", () => {
+    const result = checkBashCommand("systemctl enable baudbot-firewall");
     assert.equal(result.blocked, false);
     assert.equal(result.warned, false);
   });
@@ -265,16 +265,16 @@ describe("tool-guard: credential exfiltration blocked", () => {
 
 describe("tool-guard: source repo protection (bash)", () => {
   it("blocks chmod on source repo", () => {
-    assert.equal(checkBashCommand(`chmod u+w ${HORNET_SOURCE_DIR}/start.sh`).blocked, true);
+    assert.equal(checkBashCommand(`chmod u+w ${BAUDBOT_SOURCE_DIR}/start.sh`).blocked, true);
   });
   it("blocks chmod -R on source repo", () => {
-    assert.equal(checkBashCommand(`chmod -R a+w ${HORNET_SOURCE_DIR}`).blocked, true);
+    assert.equal(checkBashCommand(`chmod -R a+w ${BAUDBOT_SOURCE_DIR}`).blocked, true);
   });
   it("blocks chown on source repo", () => {
-    assert.equal(checkBashCommand(`chown ${AGENT_USER} ${HORNET_SOURCE_DIR}/bin/security-audit.sh`).blocked, true);
+    assert.equal(checkBashCommand(`chown ${AGENT_USER} ${BAUDBOT_SOURCE_DIR}/bin/security-audit.sh`).blocked, true);
   });
   it("blocks tee to source repo", () => {
-    assert.equal(checkBashCommand(`tee ${HORNET_SOURCE_DIR}/bin/evil.sh`).blocked, true);
+    assert.equal(checkBashCommand(`tee ${BAUDBOT_SOURCE_DIR}/bin/evil.sh`).blocked, true);
   });
   it("blocks chmod on runtime tool-guard", () => {
     assert.equal(checkBashCommand(`chmod a+w ${AGENT_HOME}/.pi/agent/extensions/tool-guard.ts`).blocked, true);
@@ -373,25 +373,25 @@ describe("tool-guard: workspace confinement (allow-list)", () => {
 
 describe("tool-guard: source repo is fully read-only (write/edit)", () => {
   it("blocks write to ANY file in source repo", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/README.md`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/README.md`), true);
   });
   it("blocks write to source repo extensions", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/pi/extensions/auto-name.ts`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/pi/extensions/auto-name.ts`), true);
   });
   it("blocks write to source repo skills", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/pi/skills/new-skill/SKILL.md`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/pi/skills/new-skill/SKILL.md`), true);
   });
   it("blocks write to source repo bin/", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/bin/security-audit.sh`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/bin/security-audit.sh`), true);
   });
   it("blocks write to source repo setup.sh", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/setup.sh`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/setup.sh`), true);
   });
   it("blocks write to source repo .git/hooks", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/.git/hooks/pre-commit`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/.git/hooks/pre-commit`), true);
   });
   it("blocks write to source repo bridge", () => {
-    assert.equal(checkWritePath(`${HORNET_SOURCE_DIR}/slack-bridge/bridge.mjs`), true);
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/slack-bridge/bridge.mjs`), true);
   });
 });
 

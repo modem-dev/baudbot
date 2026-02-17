@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run all Hornet tests. Exit code reflects overall pass/fail.
+# Run all Baudbot tests. Exit code reflects overall pass/fail.
 #
 # Usage:
 #   bin/test.sh           # run all tests
@@ -43,7 +43,7 @@ run() {
   fi
 }
 
-echo "=== Hornet Tests ==="
+echo "=== Baudbot Tests ==="
 echo ""
 
 if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
@@ -56,7 +56,7 @@ fi
 
 if [ "$FILTER" = "all" ] || [ "$FILTER" = "shell" ]; then
   echo "Shell:"
-  run "safe-bash wrapper" bash bin/hornet-safe-bash.test.sh
+  run "safe-bash wrapper" bash bin/baudbot-safe-bash.test.sh
   run "log redaction"     bash bin/redact-logs.test.sh
   echo ""
 fi

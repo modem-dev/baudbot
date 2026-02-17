@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests for security-audit.sh
 #
-# Creates a mock hornet_agent home directory and verifies the audit
+# Creates a mock baudbot_agent home directory and verifies the audit
 # reports correct findings for various configurations.
 #
 # Run: bash security-audit.test.sh
@@ -19,7 +19,7 @@ trap cleanup EXIT
 setup_base() {
   local home="$1"
   rm -rf "$home"
-  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/hornet/slack-bridge" "$home/hornet/.git"
+  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/baudbot/slack-bridge" "$home/baudbot/.git"
 
   # Secrets file
   echo "SLACK_BOT_TOKEN=xoxb-test" > "$home/.config/.env"
@@ -32,14 +32,14 @@ setup_base() {
   chmod 700 "$home/.pi"
 
   # Gitignore
-  echo ".env" > "$home/hornet/.gitignore"
+  echo ".env" > "$home/baudbot/.gitignore"
 
   # Gitconfig (clean)
   echo -e "[user]\n\tname = test\n\temail = test@test.com" > "$home/.gitconfig"
 
   # Bridge security module
-  echo "// security" > "$home/hornet/slack-bridge/security.mjs"
-  echo "// tests" > "$home/hornet/slack-bridge/security.test.mjs"
+  echo "// security" > "$home/baudbot/slack-bridge/security.mjs"
+  echo "// tests" > "$home/baudbot/slack-bridge/security.test.mjs"
 
   # Audit log (fallback location)
   mkdir -p "$home/logs"
@@ -50,7 +50,7 @@ setup_base() {
 run_audit() {
   local home="$1"
   shift
-  HORNET_HOME="$home" bash "$SCRIPT" "$@" 2>&1 || true
+  BAUDBOT_HOME="$home" bash "$SCRIPT" "$@" 2>&1 || true
 }
 
 expect_contains() {
@@ -147,7 +147,7 @@ echo ""
 echo "Test: stale .env outside .config"
 HOME5="$TMPDIR/stale-env"
 setup_base "$HOME5"
-echo "SECRET=oops" > "$HOME5/hornet/.env"
+echo "SECRET=oops" > "$HOME5/baudbot/.env"
 
 output=$(run_audit "$HOME5")
 expect_contains "reports stale .env" "$output" "Found .env file"
@@ -171,7 +171,7 @@ echo ""
 echo "Test: missing .gitignore"
 HOME7="$TMPDIR/no-gitignore"
 setup_base "$HOME7"
-rm -f "$HOME7/hornet/.gitignore"
+rm -f "$HOME7/baudbot/.gitignore"
 
 output=$(run_audit "$HOME7")
 expect_contains "reports no gitignore" "$output" "No .gitignore found"
@@ -183,7 +183,7 @@ echo ""
 echo "Test: missing bridge security module"
 HOME8="$TMPDIR/no-bridge-sec"
 setup_base "$HOME8"
-rm -f "$HOME8/hornet/slack-bridge/security.mjs"
+rm -f "$HOME8/baudbot/slack-bridge/security.mjs"
 
 output=$(run_audit "$HOME8")
 expect_contains "reports missing security module" "$output" "Bridge security module not found"
@@ -195,7 +195,7 @@ echo ""
 echo "Test: missing bridge tests"
 HOME9="$TMPDIR/no-bridge-tests"
 setup_base "$HOME9"
-rm -f "$HOME9/hornet/slack-bridge/security.test.mjs"
+rm -f "$HOME9/baudbot/slack-bridge/security.test.mjs"
 
 output=$(run_audit "$HOME9")
 expect_contains "reports missing tests" "$output" "No tests for bridge security"
@@ -224,7 +224,7 @@ HOME11="$TMPDIR/exitcode"
 setup_base "$HOME11"
 echo "SLACK_ALLOWED_USERS=U12345" >> "$HOME11/.config/.env"
 set +e
-HORNET_HOME="$HOME11" bash "$SCRIPT" >/dev/null 2>&1
+BAUDBOT_HOME="$HOME11" bash "$SCRIPT" >/dev/null 2>&1
 code=$?
 set -e
 if [ "$code" -le 2 ]; then
@@ -239,7 +239,7 @@ HOME11b="$TMPDIR/exitcode-crit"
 setup_base "$HOME11b"
 chmod 644 "$HOME11b/.config/.env"
 set +e
-HORNET_HOME="$HOME11b" bash "$SCRIPT" >/dev/null 2>&1
+BAUDBOT_HOME="$HOME11b" bash "$SCRIPT" >/dev/null 2>&1
 code=$?
 set -e
 if [ "$code" -eq 2 ]; then
@@ -412,8 +412,8 @@ output=$(run_audit "$HOME19")
 expect_contains "reports missing hook" "$output" "Pre-commit hook not installed"
 
 # Install a hook
-mkdir -p "$HOME19/hornet/.git/hooks"
-echo "#!/bin/bash" > "$HOME19/hornet/.git/hooks/pre-commit"
+mkdir -p "$HOME19/baudbot/.git/hooks"
+echo "#!/bin/bash" > "$HOME19/baudbot/.git/hooks/pre-commit"
 output=$(run_audit "$HOME19")
 expect_contains "reports hook installed" "$output" "Pre-commit hook installed"
 
@@ -426,14 +426,14 @@ HOME20="$TMPDIR/protected-own"
 setup_base "$HOME20"
 echo "SLACK_ALLOWED_USERS=U12345" >> "$HOME20/.config/.env"
 
-# Create a protected file (will be owned by current user = hornet_agent in test)
-mkdir -p "$HOME20/hornet/bin"
-echo "#!/bin/bash" > "$HOME20/hornet/bin/security-audit.sh"
+# Create a protected file (will be owned by current user = baudbot_agent in test)
+mkdir -p "$HOME20/baudbot/bin"
+echo "#!/bin/bash" > "$HOME20/baudbot/bin/security-audit.sh"
 
 output=$(run_audit "$HOME20")
-# If running as hornet_agent, should flag it
-if [ "$(whoami)" = "hornet_agent" ]; then
-  expect_contains "flags agent-owned protected file" "$output" "Protected file owned by hornet_agent"
+# If running as baudbot_agent, should flag it
+if [ "$(whoami)" = "baudbot_agent" ]; then
+  expect_contains "flags agent-owned protected file" "$output" "Protected file owned by baudbot_agent"
 else
   # Running as admin — file is admin-owned, should pass
   expect_contains "protected files pass" "$output" "All protected files are admin-owned"

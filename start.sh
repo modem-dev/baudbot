@@ -1,6 +1,6 @@
 #!/bin/bash
-# Hornet Agent Launcher
-# Run as: sudo -u hornet_agent ~/runtime/start.sh
+# Baudbot Agent Launcher
+# Run as: sudo -u baudbot_agent ~/runtime/start.sh
 #
 # The agent runs entirely from deployed copies — no source repo access needed:
 #   ~/.pi/agent/extensions/  ← pi extensions

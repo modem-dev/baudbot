@@ -2,9 +2,9 @@
 # Redact secrets from pi session logs.
 #
 # Scans .jsonl session files and replaces common secret patterns with [REDACTED].
-# Run as hornet_agent (needs read/write access to ~/.pi/agent/sessions/).
+# Run as baudbot_agent (needs read/write access to ~/.pi/agent/sessions/).
 #
-# Usage: ~/hornet/bin/redact-logs.sh [--dry-run]
+# Usage: ~/baudbot/bin/redact-logs.sh [--dry-run]
 #
 # Patterns redacted:
 #   - API keys: sk-..., xoxb-..., xapp-..., ghp_..., AKIA...

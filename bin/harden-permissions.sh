@@ -1,6 +1,6 @@
 #!/bin/bash
-# Harden filesystem permissions for hornet_agent
-# Run as hornet_agent (or via: sudo -u hornet_agent ~/hornet/bin/harden-permissions.sh)
+# Harden filesystem permissions for baudbot_agent
+# Run as baudbot_agent (or via: sudo -u baudbot_agent ~/baudbot/bin/harden-permissions.sh)
 #
 # Pi creates session logs, control sockets, and settings with permissive defaults
 # (644/755). This locks them down to owner-only so group members can't read
@@ -36,7 +36,7 @@ fix_file() {
   fi
 }
 
-echo "🔒 Hardening hornet_agent permissions..."
+echo "🔒 Hardening baudbot_agent permissions..."
 
 # Pi state directories — restrict to owner only
 fix_dir "$HOME/.pi" "700"

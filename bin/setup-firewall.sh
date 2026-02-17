@@ -1,6 +1,6 @@
 #!/bin/bash
-# Port-based network lockdown for hornet_agent
-# Run as root: sudo ~/hornet/bin/setup-firewall.sh
+# Port-based network lockdown for baudbot_agent
+# Run as root: sudo ~/baudbot/bin/setup-firewall.sh
 #
 # OUTBOUND (internet):
 #   Allows: HTTP/S, SSH, DNS, cloud databases (pg, mysql, redis, mongo), OTLP
@@ -23,29 +23,29 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-UID_HORNET=$(id -u hornet_agent 2>/dev/null)
-if [ -z "$UID_HORNET" ]; then
-  echo "❌ hornet_agent user not found"
+UID_BAUDBOT=$(id -u baudbot_agent 2>/dev/null)
+if [ -z "$UID_BAUDBOT" ]; then
+  echo "❌ baudbot_agent user not found"
   exit 1
 fi
 
-CHAIN="HORNET_OUTPUT"
+CHAIN="BAUDBOT_OUTPUT"
 
-echo "🔒 Setting up firewall rules for hornet_agent (uid $UID_HORNET)..."
+echo "🔒 Setting up firewall rules for baudbot_agent (uid $UID_BAUDBOT)..."
 
 # Clean up any existing rules first
-iptables -w -D OUTPUT -m owner --uid-owner "$UID_HORNET" -j "$CHAIN" 2>/dev/null || true
+iptables -w -D OUTPUT -m owner --uid-owner "$UID_BAUDBOT" -j "$CHAIN" 2>/dev/null || true
 iptables -w -F "$CHAIN" 2>/dev/null || true
 iptables -w -X "$CHAIN" 2>/dev/null || true
 
-# Create a dedicated chain for hornet_agent
+# Create a dedicated chain for baudbot_agent
 iptables -w -N "$CHAIN"
 
 # ── Logging (SYN + DNS only — low volume) ────────────────────────────────────
 # Log all new outbound connections (SYN packets only to avoid flooding)
-iptables -w -A "$CHAIN" -p tcp --syn -j LOG --log-prefix "hornet-out: " --log-level info
+iptables -w -A "$CHAIN" -p tcp --syn -j LOG --log-prefix "baudbot-out: " --log-level info
 # Log DNS queries
-iptables -w -A "$CHAIN" -p udp --dport 53 -j LOG --log-prefix "hornet-dns: " --log-level info
+iptables -w -A "$CHAIN" -p udp --dport 53 -j LOG --log-prefix "baudbot-dns: " --log-level info
 
 # ── Localhost: allow only specific services ──────────────────────────────────
 
@@ -85,7 +85,7 @@ iptables -w -A "$CHAIN" -o lo -p tcp --dport 53 -j ACCEPT
 iptables -w -A "$CHAIN" -o lo -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Block everything else on localhost
-iptables -w -A "$CHAIN" -o lo -j LOG --log-prefix "HORNET_LOCAL_BLOCKED: " --log-level 4
+iptables -w -A "$CHAIN" -o lo -j LOG --log-prefix "BAUDBOT_LOCAL_BLOCKED: " --log-level 4
 iptables -w -A "$CHAIN" -o lo -j DROP
 
 # ── Internet: allow standard + dev ports ─────────────────────────────────────
@@ -115,11 +115,11 @@ iptables -w -A "$CHAIN" -p tcp --dport 4317:4318 -j ACCEPT
 iptables -w -A "$CHAIN" -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Log and drop everything else
-iptables -w -A "$CHAIN" -j LOG --log-prefix "HORNET_BLOCKED: " --log-level 4
+iptables -w -A "$CHAIN" -j LOG --log-prefix "BAUDBOT_BLOCKED: " --log-level 4
 iptables -w -A "$CHAIN" -j DROP
 
-# Jump to our chain for all hornet_agent traffic
-iptables -w -A OUTPUT -m owner --uid-owner "$UID_HORNET" -j "$CHAIN"
+# Jump to our chain for all baudbot_agent traffic
+iptables -w -A OUTPUT -m owner --uid-owner "$UID_BAUDBOT" -j "$CHAIN"
 
 echo "✅ Firewall active. Rules:"
 echo ""
@@ -134,6 +134,6 @@ echo "                   3306 (mysql), 4317-4318 (otlp), 5432-5433 (pg),"
 echo "                   6379 (redis), 6543 (supabase), 27017 (mongo)"
 echo "Everything else:   BLOCKED + LOGGED"
 echo ""
-echo "To remove: sudo iptables -w -D OUTPUT -m owner --uid-owner $UID_HORNET -j $CHAIN && sudo iptables -w -F $CHAIN && sudo iptables -w -X $CHAIN"
+echo "To remove: sudo iptables -w -D OUTPUT -m owner --uid-owner $UID_BAUDBOT -j $CHAIN && sudo iptables -w -F $CHAIN && sudo iptables -w -X $CHAIN"
 echo ""
-echo "Persistence: hornet-firewall.service (systemd)"
+echo "Persistence: baudbot-firewall.service (systemd)"
