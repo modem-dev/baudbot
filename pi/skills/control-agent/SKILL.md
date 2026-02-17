@@ -150,6 +150,17 @@ If dev-agent reports repeated failures (e.g. CI failing after 3+ fix attempts, o
 
 ## Spawning a Dev Agent
 
+Pick the model based on which API key is available (check env vars in this order):
+
+**Coding / orchestration (top-tier):**
+
+| API key | Model |
+|---------|-------|
+| `ANTHROPIC_API_KEY` | `anthropic/claude-opus-4-6` |
+| `OPENAI_API_KEY` | `openai/gpt-5.2-codex` |
+| `GEMINI_API_KEY` | `google/gemini-3-pro-preview` |
+| `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-opus-4-6` |
+
 Full procedure for spinning up a task-scoped dev agent:
 
 ```bash
@@ -170,7 +181,7 @@ tmux new-session -d -s $SESSION_NAME \
   "cd ~/workspace/worktrees/$BRANCH && \
    export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
    export PI_SESSION_NAME=$SESSION_NAME && \
-   exec varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent"
+   exec varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent --model <MODEL_FROM_TABLE_ABOVE>"
 ```
 
 **Important notes:**
@@ -330,6 +341,27 @@ The script:
 - [ ] Clean up any stale dev-agent worktrees/tmux sessions from previous runs
 
 **Note**: Dev agents are NOT started at startup. They are spawned on-demand when tasks arrive.
+
+### Spawning sentry-agent
+
+The sentry-agent triages Sentry alerts and investigates critical issues via the Sentry API. It runs on a cheap model to save tokens.
+
+**Triage (cheap):**
+
+| API key | Model |
+|---------|-------|
+| `ANTHROPIC_API_KEY` | `anthropic/claude-haiku-4-5` |
+| `OPENAI_API_KEY` | `openai/gpt-5-mini` |
+| `GEMINI_API_KEY` | `google/gemini-3-flash-preview` |
+| `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-haiku-4-5` |
+
+```bash
+tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model <MODEL_FROM_TABLE_ABOVE>"
+```
+
+**Model note**: `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
+
+The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry alerts arrive via the Slack bridge in real-time and are forwarded by you. The sentry-agent uses `sentry_monitor get <issue_id>` to investigate when asked.
 
 ### Starting the Slack Bridge
 

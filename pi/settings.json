@@ -1,7 +1,5 @@
 {
   "lastChangelogVersion": "0.52.12",
-  "defaultProvider": "opencode-zen",
-  "defaultModel": "claude-opus-4-6",
   "skills": [
     "~/.pi/agent/skills"
   ],

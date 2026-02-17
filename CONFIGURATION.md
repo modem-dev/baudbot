@@ -12,9 +12,14 @@ Baudbot uses [Varlock](https://varlock.dev) to validate environment variables at
 
 ### LLM Access
 
-| Variable | Description | How to get it |
-|----------|-------------|---------------|
-| `OPENCODE_ZEN_API_KEY` | API key for the LLM provider | Your LLM provider dashboard (e.g. Anthropic, OpenAI, or a proxy like OpenCode Zen) |
+Set at least one. Multiple can coexist — switch models at runtime via `/model`.
+
+| Variable | Provider | How to get it |
+|----------|----------|---------------|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| `OPENAI_API_KEY` | OpenAI (GPT, o-series) | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| `GEMINI_API_KEY` | Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `OPENCODE_ZEN_API_KEY` | OpenCode Zen (multi-provider router) | [opencode.ai](https://opencode.ai) |
 
 ### GitHub
 
@@ -90,8 +95,11 @@ Set during `setup.sh` via env vars (or edit `~/.gitconfig` after):
 ## Example `.env` File
 
 ```bash
-# LLM
-OPENCODE_ZEN_API_KEY=sk-...
+# LLM (set at least one)
+ANTHROPIC_API_KEY=sk-ant-...
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=...
+# OPENCODE_ZEN_API_KEY=...
 
 # GitHub
 GITHUB_TOKEN=ghp_...

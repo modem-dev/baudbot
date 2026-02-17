@@ -237,10 +237,38 @@ prompt_secret() {
 echo -e "${BOLD}Required${RESET} ${DIM}(agent won't start without these)${RESET}"
 echo ""
 
+echo -e "${BOLD}LLM provider${RESET} ${DIM}(set at least one)${RESET}"
+echo ""
+
+prompt_secret "ANTHROPIC_API_KEY" \
+  "Anthropic API key" \
+  "https://console.anthropic.com/settings/keys" \
+  "" \
+  "sk-ant-"
+
+prompt_secret "OPENAI_API_KEY" \
+  "OpenAI API key" \
+  "https://platform.openai.com/api-keys" \
+  "" \
+  "sk-"
+
+prompt_secret "GEMINI_API_KEY" \
+  "Google Gemini API key" \
+  "https://aistudio.google.com/apikey"
+
 prompt_secret "OPENCODE_ZEN_API_KEY" \
-  "LLM API key (Anthropic/OpenAI)" \
-  "https://docs.anthropic.com/en/api/getting-started" \
-  "required"
+  "OpenCode Zen API key (multi-provider router)" \
+  "https://opencode.ai"
+
+HAS_LLM_KEY=false
+for k in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
+  if [ -n "${ENV_VARS[$k]:-}" ]; then HAS_LLM_KEY=true; break; fi
+done
+if [ "$HAS_LLM_KEY" = false ]; then
+  warn "No LLM key set — agent needs at least one to work"
+fi
+
+echo ""
 
 prompt_secret "GITHUB_TOKEN" \
   "GitHub personal access token" \
@@ -321,6 +349,9 @@ ENV_CONTENT="# Baudbot agent configuration
 
 # Write in a sensible order
 ordered_keys=(
+  ANTHROPIC_API_KEY
+  OPENAI_API_KEY
+  GEMINI_API_KEY
   OPENCODE_ZEN_API_KEY
   GITHUB_TOKEN
   SLACK_BOT_TOKEN
@@ -358,7 +389,14 @@ header "Launch"
 
 # Check if we have the minimum required secrets
 MISSING=""
-for key in OPENCODE_ZEN_API_KEY GITHUB_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
+HAS_LLM=false
+for k in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
+  if [ -n "${ENV_VARS[$k]:-}" ]; then HAS_LLM=true; break; fi
+done
+if [ "$HAS_LLM" = false ]; then
+  MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)\n"
+fi
+for key in GITHUB_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
   if [ -z "${ENV_VARS[$key]:-}" ]; then
     MISSING+="  - $key\n"
   fi

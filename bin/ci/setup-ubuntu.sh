@@ -31,7 +31,7 @@ sudo -u baudbot_admin bash -c 'cd ~/baudbot && git init -q && git config user.em
 
 echo "=== Running install.sh ==="
 # Simulate interactive input: admin user, required secrets, skip optionals, decline launch
-printf 'baudbot_admin\nsk-test-key\nghp_testtoken\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\n\nn\n' \
+printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nghp_testtoken\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\n\nn\n' \
   | bash /home/baudbot_admin/baudbot/install.sh
 
 echo "=== Verifying install ==="
@@ -43,7 +43,7 @@ test "$(stat -c '%U' /home/baudbot_agent/.config/.env)" = "baudbot_agent"
 test -f /home/baudbot_agent/runtime/start.sh
 test -d /home/baudbot_agent/.pi/agent/extensions
 # Required secrets written
-grep -q "OPENCODE_ZEN_API_KEY=sk-test-key" /home/baudbot_agent/.config/.env
+grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" /home/baudbot_agent/.config/.env
 grep -q "SLACK_BOT_TOKEN=xoxb-test" /home/baudbot_agent/.config/.env
 grep -q "BAUDBOT_SOURCE_DIR=" /home/baudbot_agent/.config/.env
 echo "  ✓ install.sh verification passed"
