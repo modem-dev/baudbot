@@ -149,6 +149,10 @@ Pi session logs (`.jsonl` files) contain the complete conversation history. If p
 | `bin/harden-permissions.sh` | Lock down pi state file permissions | baudbot_agent |
 | `bin/setup-firewall.sh` | Apply port-based network restrictions | root |
 
-## Reporting
+## Reporting Vulnerabilities
 
-This is a private repo. Report security issues directly to the admin.
+Do **not** open a public GitHub issue for security vulnerabilities.
+
+Instead, use [GitHub Security Advisories](https://github.com/modem-dev/baudbot/security/advisories/new) to report privately. You can also email security@modem.dev.
+
+We'll acknowledge reports within 48 hours and aim to release a fix within 7 days for critical issues.
