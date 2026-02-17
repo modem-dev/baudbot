@@ -76,6 +76,9 @@ Agent runtime layout:
 ## Development Workflow
 
 ```bash
+# First-time install (interactive — handles everything)
+sudo ~/hornet/install.sh
+
 # Edit source files directly in ~/hornet/
 
 # Deploy to agent runtime
@@ -115,6 +118,38 @@ Add new test files to `bin/test.sh` — don't scatter test invocations across CI
 - Agent commits operational learnings to its own skills dir (not back to source).
 - **When changing behavior, update all docs.** Check and update: `README.md`, `CONFIGURATION.md`, skill files (`pi/skills/*/SKILL.md`), and `AGENTS.md`. Inline code examples in docs must match the actual implementation.
 - **No distro-specific commands.** Scripts must work on both Arch and Ubuntu (and any standard Linux). Use `grep -E` (not `grep -P`), POSIX-compatible tools, and avoid package manager calls (`pacman`, `apt`, etc.). If a package is needed, document it as a prerequisite rather than auto-installing it.
+
+## Testing on Droplets
+
+Use `bin/ci/droplet.sh` to spin up ephemeral DigitalOcean droplets for testing setup, install, or shell changes on real Linux. Requires `DO_API_TOKEN` env var.
+
+```bash
+# Generate a throwaway SSH key
+ssh-keygen -t ed25519 -f /tmp/ci_key -N "" -q
+
+# Create a droplet (Ubuntu or Arch)
+eval "$(bin/ci/droplet.sh create my-test ubuntu-24-04-x64 /tmp/ci_key.pub)"
+# → sets DROPLET_ID, DROPLET_IP, SSH_KEY_ID
+
+# Or Arch (custom image):
+eval "$(bin/ci/droplet.sh create my-test 217410218 /tmp/ci_key.pub)"
+
+# Wait for SSH, upload source, run a CI script
+bin/ci/droplet.sh wait-ssh "$DROPLET_IP" /tmp/ci_key
+tar czf /tmp/hornet-src.tar.gz --exclude=node_modules --exclude=.git .
+scp -i /tmp/ci_key /tmp/hornet-src.tar.gz "root@$DROPLET_IP:/tmp/"
+bin/ci/droplet.sh run "$DROPLET_IP" /tmp/ci_key bin/ci/setup-ubuntu.sh
+
+# Or SSH in for manual poking
+ssh -i /tmp/ci_key "root@$DROPLET_IP"
+
+# Clean up when done (~$0.003/run)
+bin/ci/droplet.sh destroy "$DROPLET_ID" "$SSH_KEY_ID"
+```
+
+Droplets take ~15s to create, ~10s for SSH, ~90s for full setup+tests. Always destroy after — they cost ~$0.003 per run but add up if forgotten.
+
+The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run `install.sh` with simulated input, verify the result, then run the full test suite. Use them as-is or SSH in and test manually.
 
 ## Security Notes
 
