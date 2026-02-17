@@ -7,13 +7,12 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
 /** Import the server module in a child process to avoid port conflicts. */
 async function startServer({ token, port } = {}) {
-  const { execSync, spawn } = await import("node:child_process");
+  const { spawn } = await import("node:child_process");
   const p = port || 28801 + Math.floor(Math.random() * 100);
   const env = {
     ...process.env,

@@ -21,7 +21,7 @@
 
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import express from "express";
@@ -45,13 +45,18 @@ function run(cmd, timeoutMs = 5000) {
   }
 }
 
-/** Timing-safe token comparison. */
+/** Timing-safe token comparison (constant-time regardless of length mismatch). */
 function tokenMatches(provided) {
   if (!TOKEN || !provided) return false;
   const a = Buffer.from(TOKEN);
   const b = Buffer.from(provided);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  // Pad to equal length to avoid leaking token length via timing
+  const len = Math.max(a.length, b.length);
+  const aPadded = Buffer.alloc(len);
+  const bPadded = Buffer.alloc(len);
+  a.copy(aPadded);
+  b.copy(bPadded);
+  return timingSafeEqual(aPadded, bPadded) && a.length === b.length;
 }
 
 /** Format milliseconds as human-readable duration. */
@@ -87,6 +92,16 @@ function readEnvKeys(envPath) {
   } catch {
     return null;
   }
+}
+
+/** HTML-escape a string. */
+function esc(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ── Data collectors ─────────────────────────────────────────────────────────
@@ -392,17 +407,6 @@ app.get("/dashboard", (_req, res) => {
 </body>
 </html>`);
 });
-
-// ── HTML escaping ───────────────────────────────────────────────────────────
-
-function esc(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 // ── Start ───────────────────────────────────────────────────────────────────
 
