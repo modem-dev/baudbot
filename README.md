@@ -97,7 +97,7 @@ The control agent spawns sub-agents in tmux sessions and starts the Slack bridge
 Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
 ```
 
-Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall restricts egress to known hosts even if all software layers fail.
+Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks egress to unknown hosts even if all software layers fail.
 
 ## Architecture
 
