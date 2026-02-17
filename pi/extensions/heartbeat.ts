@@ -120,45 +120,58 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
   }
 
   function fireHeartbeat() {
-    const content = readHeartbeatFile(state.heartbeatFile);
-    if (!content) {
-      // No checklist — skip silently, re-arm for next interval
-      armTimer();
-      return;
-    }
-
-    const now = Date.now();
-    state.lastRunAt = now;
-    state.totalRuns += 1;
-
-    const prompt = [
-      `🫀 **Heartbeat** (run #${state.totalRuns}, ${new Date(now).toISOString()})`,
-      ``,
-      `Review the following checklist and take action on any items that need attention.`,
-      `If everything is healthy, respond briefly with what you checked. Do NOT take action unless something is wrong.`,
-      ``,
-      `---`,
-      content,
-      `---`,
-      ``,
-      `If you find issues, fix them. If everything looks good, say so briefly and move on.`,
-    ].join("\n");
-
-    pi.sendMessage(
-      {
-        customType: "heartbeat",
-        content: prompt,
-        display: true,
-      },
-      {
-        deliverAs: "followUp",
-        triggerTurn: true,
+    try {
+      const content = readHeartbeatFile(state.heartbeatFile);
+      if (!content) {
+        // No checklist — skip silently, re-arm for next interval
+        armTimer();
+        return;
       }
-    );
 
-    saveState();
-    // Re-arm after firing (the agent_end handler will also re-arm on error)
-    armTimer();
+      const now = Date.now();
+      state.lastRunAt = now;
+      state.totalRuns += 1;
+
+      const prompt = [
+        `🫀 **Heartbeat** (run #${state.totalRuns}, ${new Date(now).toISOString()})`,
+        ``,
+        `Review the following checklist and take action on any items that need attention.`,
+        `If everything is healthy, respond briefly with what you checked. Do NOT take action unless something is wrong.`,
+        ``,
+        `---`,
+        content,
+        `---`,
+        ``,
+        `If you find issues, fix them. If everything looks good, say so briefly and move on.`,
+      ].join("\n");
+
+      pi.sendMessage(
+        {
+          customType: "heartbeat",
+          content: prompt,
+          display: true,
+        },
+        {
+          deliverAs: "followUp",
+          triggerTurn: true,
+        }
+      );
+
+      // Success — reset error counter
+      state.consecutiveErrors = 0;
+      saveState();
+    } catch (err) {
+      // Increment error counter for backoff — never let the heartbeat die
+      state.consecutiveErrors += 1;
+      try {
+        saveState();
+      } catch {
+        // Best-effort state persistence — don't let a save failure prevent re-arm
+      }
+    } finally {
+      // Always re-arm the timer, even after errors (with backoff)
+      armTimer();
+    }
   }
 
   function stopTimer() {

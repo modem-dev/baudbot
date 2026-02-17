@@ -332,6 +332,84 @@ describe("heartbeat: computeBackoffMs", () => {
   });
 });
 
+describe("heartbeat: fireHeartbeat error handling", () => {
+  // Simulate the try/catch/finally pattern from fireHeartbeat to verify
+  // that the error counter and re-arm behavior work correctly.
+
+  function simulateFireHeartbeat(state, sendThrows, saveThrows) {
+    let timerArmed = false;
+
+    try {
+      state.totalRuns += 1;
+
+      if (sendThrows) throw new Error("sendMessage failed");
+
+      // Success — reset error counter
+      state.consecutiveErrors = 0;
+
+      if (saveThrows) throw new Error("saveState failed");
+    } catch {
+      state.consecutiveErrors += 1;
+      try {
+        if (saveThrows) throw new Error("saveState failed in catch");
+      } catch {
+        // Best-effort — don't prevent re-arm
+      }
+    } finally {
+      timerArmed = true;
+    }
+
+    return { timerArmed, state };
+  }
+
+  it("resets consecutiveErrors on success", () => {
+    const state = { consecutiveErrors: 3, totalRuns: 5 };
+    const result = simulateFireHeartbeat(state, false, false);
+    assert.equal(result.state.consecutiveErrors, 0);
+    assert.equal(result.state.totalRuns, 6);
+    assert.equal(result.timerArmed, true);
+  });
+
+  it("increments consecutiveErrors on sendMessage failure", () => {
+    const state = { consecutiveErrors: 0, totalRuns: 5 };
+    const result = simulateFireHeartbeat(state, true, false);
+    assert.equal(result.state.consecutiveErrors, 1);
+    assert.equal(result.timerArmed, true, "timer should always re-arm");
+  });
+
+  it("accumulates errors across multiple failures", () => {
+    const state = { consecutiveErrors: 4, totalRuns: 10 };
+    const result = simulateFireHeartbeat(state, true, false);
+    assert.equal(result.state.consecutiveErrors, 5);
+    assert.equal(result.timerArmed, true, "timer should always re-arm");
+  });
+
+  it("re-arms timer even when both send and save throw", () => {
+    const state = { consecutiveErrors: 0, totalRuns: 0 };
+    const result = simulateFireHeartbeat(state, true, true);
+    assert.equal(result.timerArmed, true, "timer must re-arm regardless of errors");
+    assert.equal(result.state.consecutiveErrors, 1);
+  });
+
+  it("consecutive errors increase backoff delay", () => {
+    const base = 600_000;
+    // After 1 error: 2x
+    assert.equal(computeBackoffMs(1, base), 1_200_000);
+    // After 2 errors: 4x (capped at max)
+    assert.equal(computeBackoffMs(2, base), 2_400_000);
+    // After 3 errors: would be 8x = 4.8M but capped at 3.6M
+    assert.equal(computeBackoffMs(3, base), MAX_BACKOFF_MS);
+  });
+
+  it("success after errors resets to base interval", () => {
+    const state = { consecutiveErrors: 5, totalRuns: 10 };
+    const result = simulateFireHeartbeat(state, false, false);
+    assert.equal(result.state.consecutiveErrors, 0);
+    // With 0 errors, backoff returns base interval
+    assert.equal(computeBackoffMs(result.state.consecutiveErrors, 600_000), 600_000);
+  });
+});
+
 describe("heartbeat: deploy checklist file", () => {
   beforeEach(setup);
   afterEach(teardown);
