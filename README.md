@@ -1,8 +1,13 @@
 # 🐝 Hornet
 
+[![CI](https://github.com/modem-dev/hornet/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/hornet/actions/workflows/ci.yml)
+[![Integration](https://github.com/modem-dev/hornet/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/hornet/actions/workflows/integration.yml)
+
 **Hardened autonomous agent infrastructure. Careful — you might get stung.**
 
 Hornet is an open framework for running always-on AI agents that support software teams — coding agents, automated SREs, QA bots, monitoring, triage, and more. Agents run as isolated Linux processes with defense-in-depth security. Hornet assumes the worst: that an agent *will* be prompt-injected, and builds kernel-level walls that hold even when the LLM is fully compromised.
+
+**Built for Linux.** Hornet uses kernel-level features (iptables, `/proc` hidepid, Unix users) that don't exist on macOS or Windows. Every PR is integration-tested on fresh **Ubuntu 24.04** and **Arch Linux** droplets.
 
 ## Why
 
@@ -15,6 +20,15 @@ Every AI agent framework gives the model shell access and hopes for the best. Ho
 - **Self-healing** — permissions hardened on every boot, secrets redacted from logs automatically
 
 Agents work on real files in real repos — no sandbox friction. They make real git branches, run real tests, and push real PRs. But they can't exfiltrate data, escalate privileges, or phone home.
+
+## Requirements
+
+| | Minimum | Recommended |
+|--|---------|-------------|
+| **OS** | Ubuntu 24.04 or Arch Linux | Any systemd-based Linux |
+| **RAM** | 4 GB (3 agents) | 8 GB (6 agents + builds/tests) |
+| **CPU** | 2 vCPU | 4 vCPU |
+| **Disk** | 20 GB | 40 GB+ (repos, node_modules, Docker images) |
 
 ## Quick Start
 
