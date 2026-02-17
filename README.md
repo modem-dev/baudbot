@@ -19,7 +19,7 @@ Every agent framework gives the model shell access and hopes for the best. Baudb
 - **Dual-layer command blocking.** Dangerous patterns caught at two independent layers.
 - **Self-healing.** Permissions hardened on every boot, secrets redacted from logs.
 
-No sandbox friction. Agents make real branches, run real tests, push real PRs. But they can't exfiltrate data, escalate privileges, or phone home.
+No sandbox friction. Agents make real branches, run real tests, push real PRs. But they can't escalate privileges or phone home to arbitrary hosts.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ The control agent spawns sub-agents in tmux sessions and starts the Slack bridge
 Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
 ```
 
-Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks exfiltration even if all software layers fail.
+Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall restricts egress to known hosts even if all software layers fail.
 
 ## Architecture
 
