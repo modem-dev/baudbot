@@ -31,17 +31,25 @@ dim()   { echo -e "${DIM}$1${RESET}"; }
 # BAUDBOT_CONFIG_USER env var overrides detection (used by install.sh)
 if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
   CONFIG_USER="$BAUDBOT_CONFIG_USER"
-  CONFIG_HOME=$(getent passwd "$CONFIG_USER" | cut -d: -f6)
 elif [ "$(id -u)" -eq 0 ]; then
   CONFIG_USER="${SUDO_USER:-root}"
   if [ "$CONFIG_USER" = "root" ]; then
     echo "Run as: sudo baudbot config (not as root directly)"
     exit 1
   fi
-  CONFIG_HOME=$(getent passwd "$CONFIG_USER" | cut -d: -f6)
 else
   CONFIG_USER="$(whoami)"
+fi
+
+if [ "$CONFIG_USER" = "$(whoami)" ] && [ -n "$HOME" ]; then
   CONFIG_HOME="$HOME"
+else
+  CONFIG_HOME=$(getent passwd "$CONFIG_USER" | cut -d: -f6)
+fi
+
+if [ -z "$CONFIG_HOME" ]; then
+  echo "❌ Could not resolve home directory for user '$CONFIG_USER'"
+  exit 1
 fi
 
 CONFIG_DIR="$CONFIG_HOME/.baudbot"
