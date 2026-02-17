@@ -50,6 +50,7 @@ if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
   echo "JS/TS:"
   run "tool-guard"        node --test pi/extensions/tool-guard.test.mjs
   run "heartbeat"         node --test pi/extensions/heartbeat.test.mjs
+  run "memory"            node --test pi/extensions/memory.test.mjs
   run "bridge security"   node --test slack-bridge/security.test.mjs
   run "extension scanner" node --test bin/scan-extensions.test.mjs
   echo ""
