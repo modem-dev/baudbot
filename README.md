@@ -147,6 +147,29 @@ baudbot_agent (unprivileged uid)
 
 Deploy is a one-way push: `~/baudbot/bin/deploy.sh` stages source to `/tmp`, copies as `baudbot_agent` via `sudo -u`, stamps an integrity manifest, and cleans up.
 
+## Control Plane
+
+Admin-owned web server for monitoring agent status and configuration. Runs on port 28800 — intentionally outside the agent's firewall allowlist so the agent cannot reach it.
+
+```bash
+# Start the control plane (runs as admin, NOT as baudbot_agent)
+~/baudbot/bin/control-plane.sh
+
+# Or in tmux alongside the agent
+tmux new-window -n control-plane '~/baudbot/bin/control-plane.sh'
+
+# With auth token (recommended)
+BAUDBOT_CP_TOKEN=$(openssl rand -hex 32) ~/baudbot/bin/control-plane.sh
+```
+
+Open `http://127.0.0.1:28800/dashboard` for the web UI, or use the JSON API:
+
+```bash
+curl http://127.0.0.1:28800/health          # liveness (no auth)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:28800/status    # agent status
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:28800/config    # config (secrets redacted)
+```
+
 ## Operations
 
 ```bash
@@ -177,7 +200,7 @@ sudo -u baudbot_agent cat ~/.pi/agent/baudbot-version.json
 ## Tests
 
 ```bash
-# All 207 tests across 5 suites
+# All tests across 8 suites
 bin/test.sh
 
 # JS/TS only

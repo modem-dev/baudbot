@@ -35,6 +35,9 @@ pi/
     dev-agent/              coding agent
     sentry-agent/           monitoring/triage agent
   settings.json             pi agent settings
+control-plane/
+  server.mjs                admin-owned web dashboard + API (port 28800)
+  server.test.mjs           control plane tests
 slack-bridge/
   bridge.mjs                Slack ↔ agent bridge
   security.mjs              🔒 content wrapping, rate limiting, auth
