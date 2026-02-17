@@ -70,7 +70,12 @@ _start_bridge() {
       local target uuid sock_path
       target=$(readlink "$alias_file")
       uuid=$(basename "$target" .sock)
-      sock_path="$socket_dir/$target"
+      # Handle both relative and absolute symlink targets
+      if [[ "$target" == /* ]]; then
+        sock_path="$target"
+      else
+        sock_path="$socket_dir/$target"
+      fi
 
       # Verify the socket is actually alive (not stale from a previous session).
       # On restart, the old alias may still point to a dead socket.
