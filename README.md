@@ -14,12 +14,12 @@ Built for Linux. Uses iptables, `/proc` hidepid, and Unix user isolation. Every 
 Every agent framework gives the model shell access and hopes for the best. Baudbot enforces:
 
 - **OS-level isolation.** Dedicated Unix user, no sudo, can't see other processes.
-- **Network control.** iptables per-UID egress allowlist. No listeners, no reverse shells.
+- **Network control.** iptables per-UID port allowlist. Standard ports only (80/443/22/53). No listeners, no reverse shells on non-standard ports.
 - **Source/runtime separation.** Agent can't read or modify its own infrastructure.
 - **Dual-layer command blocking.** Dangerous patterns caught at two independent layers.
 - **Self-healing.** Permissions hardened on every boot, secrets redacted from logs.
 
-No sandbox friction. Agents make real branches, run real tests, push real PRs. But they can't escalate privileges or phone home to arbitrary hosts.
+No sandbox friction. Agents make real branches, run real tests, push real PRs. But they can't escalate privileges or open reverse shells.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ The control agent spawns sub-agents in tmux sessions and starts the Slack bridge
 Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
 ```
 
-Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks egress to unknown hosts even if all software layers fail.
+Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks non-standard ports even if all software layers fail.
 
 ## Architecture
 
@@ -180,7 +180,7 @@ See `pi/skills/dev-agent/SKILL.md` for the pattern.
 | Layer | What | Survives prompt injection? |
 |-------|------|---------------------------|
 | **Source isolation** | Source repo is admin-owned. Agent has zero read access. Deploy is one-way. | ✅ Filesystem |
-| **iptables egress** | Per-UID firewall chain. Allowlisted ports only. | ✅ Kernel |
+| **iptables egress** | Per-UID port allowlist (80/443/22/53 + DB ports). Blocks non-standard ports, listeners, raw sockets. | ✅ Kernel |
 | **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel |
 | **Shell deny list** | `baudbot-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. | ✅ Root-owned |
 | **Tool interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Compiled |
