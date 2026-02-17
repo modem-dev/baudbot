@@ -77,10 +77,11 @@ fi
 
 # ── Prompting ────────────────────────────────────────────────────────────────
 
-# prompt_secret KEY "description" "url" [required] [prefix]
+# prompt_secret KEY "description" "url" [required] [prefix] [sensitive]
 # If an existing value is set, shows [****] and allows Enter to keep it.
+# sensitive defaults to "true" — input is hidden. Pass "false" for visible input.
 prompt_secret() {
-  local key="$1" desc="$2" url="${3:-}" required="${4:-}" prefix="${5:-}"
+  local key="$1" desc="$2" url="${3:-}" required="${4:-}" prefix="${5:-}" sensitive="${6:-true}"
   local label="" existing="${EXISTING[$key]:-}"
 
   if [ "$required" = "required" ]; then
@@ -98,7 +99,14 @@ prompt_secret() {
   else
     ask "${label}${desc}: "
   fi
-  read -r value
+
+  if [ "$sensitive" = "true" ] && [ -t 0 ]; then
+    read -rs value
+    # Print newline since -s suppresses it
+    echo ""
+  else
+    read -r value
+  fi
 
   # Empty input with existing value = keep existing
   if [ -z "$value" ] && [ -n "$existing" ]; then
@@ -203,7 +211,8 @@ prompt_secret "SLACK_ALLOWED_USERS" \
   "Slack user IDs (comma-separated)" \
   "Click your Slack profile → ··· → Copy member ID" \
   "required" \
-  "U"
+  "U" \
+  "false"
 
 echo ""
 
@@ -216,7 +225,8 @@ prompt_secret "AGENTMAIL_API_KEY" \
   "https://app.agentmail.to"
 
 prompt_secret "BAUDBOT_EMAIL" \
-  "Agent email address (e.g. agent@agentmail.to)"
+  "Agent email address (e.g. agent@agentmail.to)" \
+  "" "" "" "false"
 
 if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ]; then
   prompt_secret "BAUDBOT_SECRET" \
@@ -227,7 +237,8 @@ if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ]; then
   fi
 
   prompt_secret "BAUDBOT_ALLOWED_EMAILS" \
-    "Allowed sender emails (comma-separated)"
+    "Allowed sender emails (comma-separated)" \
+    "" "" "" "false"
 fi
 
 prompt_secret "SENTRY_AUTH_TOKEN" \
@@ -235,8 +246,8 @@ prompt_secret "SENTRY_AUTH_TOKEN" \
   "https://sentry.io/settings/account/api/auth-tokens/"
 
 if [ -n "${ENV_VARS[SENTRY_AUTH_TOKEN]:-}" ]; then
-  prompt_secret "SENTRY_ORG" "Sentry org slug"
-  prompt_secret "SENTRY_CHANNEL_ID" "Slack channel ID for Sentry alerts" "" "" "C"
+  prompt_secret "SENTRY_ORG" "Sentry org slug" "" "" "" "false"
+  prompt_secret "SENTRY_CHANNEL_ID" "Slack channel ID for Sentry alerts" "" "" "C" "false"
 fi
 
 prompt_secret "KERNEL_API_KEY" \
