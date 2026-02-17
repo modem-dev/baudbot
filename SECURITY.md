@@ -64,9 +64,10 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 
 | Layer | What | Bypassed by |
 |-------|------|-------------|
-| **Read-only source** | ~/baudbot/ has no write permissions for agent; bind mount (if applied via setup.sh) is kernel-enforced | Root access |
-| **Tool-guard rules** | Blocks write/edit to ~/baudbot/ AND runtime security files; blocks chmod/chown on ~/baudbot/ | None (compiled into extension) |
-| **Integrity checks** | security-audit.sh compares runtime file hashes against source | None (detection, not prevention) |
+| **Read-only source** | ~/baudbot/ lives under admin home (700 perms) — agent has zero access. Optional bind mount for defense-in-depth (not applied by default). | Root access |
+| **File permissions** | Security-critical runtime files deployed `chmod a-w` by deploy.sh. Hard OS-level boundary — blocks `sed`, `python`, any write mechanism. | Root access or `chmod u+w` (which tool-guard blocks) |
+| **Tool-guard rules** | Blocks Edit/Write tools to source repo + protected runtime files. Blocks `chmod`/`chown` on source repo via bash. Does NOT catch `sed`/`python` writes through bash — file permissions handle that. | `sed -i` through bash (caught by file perms) |
+| **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
 | **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
 
 The read-only source repo is the primary defense. Even if the agent modifies runtime copies,
@@ -115,7 +116,7 @@ Slack @mention
 
 | Secret | Location | Perms | Purpose |
 |--------|----------|-------|---------|
-| `OPENCODE_ZEN_API_KEY` | `~/.config/.env` | `600` | LLM API access |
+| LLM API key(s) | `~/.config/.env` | `600` | LLM API access (one or more of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENCODE_ZEN_API_KEY`) |
 | `GITHUB_TOKEN` | `~/.config/.env` | `600` | GitHub PAT (scoped to agent account) |
 | `AGENTMAIL_API_KEY` | `~/.config/.env` | `600` | AgentMail inbox access |
 | `KERNEL_API_KEY` | `~/.config/.env` | `600` | Kernel cloud browsers |
@@ -129,7 +130,7 @@ Slack @mention
 ```bash
 # Admin edits source files in ~/baudbot/
 # Then deploys to runtime:
-sudo ~/baudbot/bin/deploy.sh
+~/baudbot/bin/deploy.sh
 
 # If bridge is running, restart it:
 sudo -u baudbot_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'

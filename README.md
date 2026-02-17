@@ -5,9 +5,9 @@
 [![CI](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml)
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
 
-**Like Openclaw, but for developer teams that care about SOC2.**
+**Like Openclaw, but paranoid.**
 
-Baudbot runs AI agents as isolated Linux processes with defense-in-depth security. Agents code, test, deploy, monitor, and triage. They work on real repos with real tools. The infrastructure assumes agents *will* be prompt-injected and builds kernel-level walls that hold when the LLM is compromised.
+Baudbot runs AI agents as isolated Linux processes with defense-in-depth security. Agents code, test, deploy, monitor, and triage. They work on real repos with real tools. The infrastructure assumes agents *will* be prompt-injected and layers OS-level isolation so damage is contained even when the LLM is compromised.
 
 Built for Linux. Uses iptables, `/proc` hidepid, and Unix user isolation. Every PR is integration-tested on fresh Ubuntu 24.04 and Arch Linux droplets.
 
@@ -220,7 +220,7 @@ npm run lint && npm run typecheck
 An agent role is a skill file. Baudbot ships three but you can add more.
 
 1. Create `pi/skills/my-agent/SKILL.md` with role instructions.
-2. Add a startup block to the control agent's `startup-cleanup.sh`.
+2. Add a tmux session spawn for the new agent in `pi/skills/control-agent/SKILL.md` (the control agent manages sub-agent lifecycle).
 3. Deploy: `~/baudbot/bin/deploy.sh`
 
 See `pi/skills/dev-agent/SKILL.md` for the pattern.
@@ -232,8 +232,9 @@ See `pi/skills/dev-agent/SKILL.md` for the pattern.
 | **Source isolation** | Source repo is admin-owned. Agent has zero read access. Deploy is one-way. | ✅ Filesystem |
 | **iptables egress** | Per-UID port allowlist (80/443/22/53 + DB ports). Blocks non-standard ports, listeners, raw sockets. | ✅ Kernel |
 | **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel |
-| **Shell deny list** | `baudbot-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. | ✅ Root-owned |
-| **Tool interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Read-only |
+| **File permissions** | Security-critical files deployed `chmod a-w`. Agent can't modify `tool-guard.ts`, `security.mjs`, etc. even via `sed` or `python`. | ✅ Filesystem |
+| **Shell deny list** | `baudbot-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. Pattern-based — can't catch everything. | ✅ Root-owned |
+| **Tool interception** | Pi extension blocks Edit/Write tools outside agent home + known dangerous bash patterns. Audit-logs all tool calls. Does NOT prevent arbitrary file writes through bash (that's what file permissions are for). | ✅ Read-only |
 | **Integrity manifest** | Deploy stamps SHA256 hashes. Security audit verifies runtime files match. | ✅ Admin-signed |
 | **Content wrapping** | External messages wrapped with security boundaries + homoglyph sanitization. | ⚠️ LLM-dependent |
 | **Injection detection** | 12 regex patterns flag suspicious content. Log-only. | ⚠️ Detection only |

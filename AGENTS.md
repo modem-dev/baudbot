@@ -6,14 +6,22 @@ Baudbot is hardened infrastructure for running always-on AI agents. Source is ad
 
 ```
 bin/                        security & operations scripts
+  baudbot                   CLI (attach, sessions, update, deploy)
   deploy.sh                 stages source → /tmp → agent runtime (run as admin)
-  security-audit.sh         24-check security posture audit
+  security-audit.sh         security posture audit
   setup-firewall.sh         iptables per-UID egress allowlist
   baudbot-safe-bash          shell command deny list (installed to /usr/local/bin)
   baudbot-docker             Docker wrapper (blocks privilege escalation)
   harden-permissions.sh     filesystem hardening (runs on boot)
   scan-extensions.mjs       extension static analysis
   redact-logs.sh            secret scrubber for session logs
+  config.sh                 env var validation helper
+  control-plane.sh          starts the admin web dashboard
+  doctor.sh                 system health checks
+  uninstall.sh              clean removal of baudbot
+  test.sh                   runs all test suites
+  baudbot-firewall.service  systemd unit for firewall persistence
+  baudbot.service           systemd unit for agent process
   ci/                       CI integration scripts
     droplet.sh              ephemeral DigitalOcean droplet lifecycle (create/destroy/ssh)
     setup-ubuntu.sh         Ubuntu droplet: prereqs + setup + tests

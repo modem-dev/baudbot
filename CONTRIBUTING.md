@@ -10,7 +10,7 @@ npm install
 ## Running Tests
 
 ```bash
-# All tests (207 across 5 suites)
+# All tests (8 suites)
 bin/test.sh
 
 # JS/TS only
