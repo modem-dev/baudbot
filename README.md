@@ -3,23 +3,23 @@
 [![CI](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml)
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
 
-**Hardened autonomous agent infrastructure.**
+**Hardened infrastructure for always-on AI agents.**
 
-Baudbot is an open framework for running always-on AI agents that support software teams — coding agents, automated SREs, QA bots, monitoring, triage, and more. Agents run as isolated Linux processes with defense-in-depth security. Baudbot assumes the worst: that an agent *will* be prompt-injected, and builds kernel-level walls that hold even when the LLM is fully compromised.
+Baudbot runs AI agents as isolated Linux processes with defense-in-depth security. Agents code, test, deploy, monitor, and triage. They work on real repos with real tools. The infrastructure assumes agents *will* be prompt-injected and builds kernel-level walls that hold when the LLM is compromised.
 
-**Built for Linux.** Baudbot uses kernel-level features (iptables, `/proc` hidepid, Unix users) that don't exist on macOS or Windows. Every PR is integration-tested on fresh **Ubuntu 24.04** and **Arch Linux** droplets.
+Built for Linux. Uses iptables, `/proc` hidepid, and Unix user isolation. Every PR is integration-tested on fresh Ubuntu 24.04 and Arch Linux droplets.
 
 ## Why
 
-Every AI agent framework gives the model shell access and hopes for the best. Baudbot doesn't hope — it enforces:
+Every agent framework gives the model shell access and hopes for the best. Baudbot enforces:
 
-- **OS-level isolation** — dedicated Unix user, no sudo, can't see other processes
-- **Kernel-enforced network control** — iptables per-UID egress allowlist
-- **Source/runtime separation** — agent can't read or modify its own infrastructure code
-- **Dual-layer command blocking** — dangerous shell patterns caught before execution at two independent layers
-- **Self-healing** — permissions hardened on every boot, secrets redacted from logs automatically
+- **OS-level isolation.** Dedicated Unix user, no sudo, can't see other processes.
+- **Network control.** iptables per-UID port allowlist. Standard ports only (80/443/22/53). No listeners, no reverse shells on non-standard ports.
+- **Source/runtime separation.** Agent can't read or modify its own infrastructure.
+- **Dual-layer command blocking.** Dangerous patterns caught at two independent layers.
+- **Self-healing.** Permissions hardened on every boot, secrets redacted from logs.
 
-Agents work on real files in real repos — no sandbox friction. They make real git branches, run real tests, and push real PRs. But they can't exfiltrate data, escalate privileges, or phone home.
+No sandbox friction. Agents make real branches, run real tests, push real PRs. But they can't escalate privileges or open reverse shells.
 
 ## Requirements
 
@@ -37,19 +37,19 @@ git clone https://github.com/modem-dev/baudbot.git ~/baudbot
 sudo ~/baudbot/install.sh
 ```
 
-The installer detects your distro, installs dependencies, creates the agent user, sets up the firewall, and walks you through API keys interactively. Takes ~2 minutes.
+The installer detects your distro, installs dependencies, creates the agent user, sets up the firewall, and walks you through API keys. Takes ~2 minutes.
 
 <details>
 <summary>Manual setup (without installer)</summary>
 
 ```bash
-# Setup (creates user, firewall, permissions — run as root)
+# Creates user, firewall, permissions (run as root)
 sudo bash ~/baudbot/setup.sh <admin_username>
 
 # Add secrets
 sudo -u baudbot_agent vim ~/.config/.env
 
-# Deploy source → agent runtime
+# Deploy source to agent runtime
 ~/baudbot/bin/deploy.sh
 
 # Launch
@@ -61,8 +61,66 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the full list of secrets and how to
 
 ## Configuration
 
-Secrets and configuration live in `~baudbot_agent/.config/.env` (not in repo, 600 perms).
-See [CONFIGURATION.md](CONFIGURATION.md) for the full list and how to obtain each value.
+Secrets live in `~baudbot_agent/.config/.env` (not in repo, 600 perms).
+See [CONFIGURATION.md](CONFIGURATION.md) for all keys and how to obtain each value.
+
+## Agents
+
+Baudbot ships three agent roles. The control agent starts automatically and spawns the others in tmux sessions.
+
+| Role | What it does |
+|------|-------------|
+| **control-agent** | Monitors email inbox, triages requests, delegates to workers, runs Slack bridge |
+| **dev-agent** | Full coding loop: branch, code, test, PR, fix CI, repeat |
+| **sentry-agent** | Watches Sentry alerts, investigates via API, reports triage to control agent |
+
+Agents can read/write files, run shell commands, create git branches and PRs, build Docker images (via a security wrapper), message each other across sessions, monitor email inboxes, automate cloud browsers, and manage shared todos.
+
+## Integrations
+
+| Integration | How |
+|---|---|
+| **Slack** | Socket Mode bridge. @mentions + channel monitoring. Rate-limited, content-wrapped. |
+| **GitHub** | SSH + PAT. Branches, commits, PRs via `gh`. |
+| **Email** | AgentMail inboxes. Send, receive, monitor. |
+| **Sentry** | API integration. Alert forwarding from Slack channel. |
+| **Docker** | Security wrapper blocks privilege escalation. |
+| **Cloud browser** | Kernel browser + Playwright automation. |
+
+Slack is the primary human interface. Email is for agent-to-agent and automated workflows.
+
+## How it works
+
+The control agent spawns sub-agents in tmux sessions and starts the Slack bridge. Messages flow through layered security:
+
+```
+Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
+```
+
+Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is evaded. The firewall blocks non-standard ports even if all software layers fail.
+
+## Architecture
+
+```
+admin_user (your account)
+├── ~/baudbot/                    ← source repo (agent CANNOT read)
+│   ├── bin/                         deploy, firewall, security scripts
+│   ├── pi/extensions/               🔒 tool-guard, auto-name, etc.
+│   ├── pi/skills/                   agent skill templates
+│   ├── slack-bridge/                🔒 bridge + security module
+│   └── setup.sh / start.sh         system setup + launcher
+
+baudbot_agent (unprivileged uid)
+├── ~/runtime/                   ← deployed copies of bin/, bridge
+├── ~/.pi/agent/
+│   ├── extensions/                  deployed extensions (read-only)
+│   ├── skills/                      agent-owned (can modify)
+│   └── baudbot-manifest.json        SHA256 integrity hashes
+├── ~/workspace/                     project repos + worktrees
+└── ~/.config/.env                   secrets (600 perms)
+```
+
+Deploy is a one-way push: `~/baudbot/bin/deploy.sh` stages source to `/tmp`, copies as `baudbot_agent` via `sudo -u`, stamps an integrity manifest, and cleans up.
 
 ## Operations
 
@@ -70,10 +128,10 @@ See [CONFIGURATION.md](CONFIGURATION.md) for the full list and how to obtain eac
 # Deploy after editing source
 ~/baudbot/bin/deploy.sh
 
-# Launch agent (in tmux for persistence)
+# Launch agent (tmux for persistence)
 tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 
-# Check security posture
+# Security audit
 ~/baudbot/bin/security-audit.sh
 ~/baudbot/bin/security-audit.sh --deep   # includes extension scanner
 
@@ -83,7 +141,7 @@ sudo -u baudbot_agent tmux ls
 # Kill everything
 sudo -u baudbot_agent pkill -u baudbot_agent
 
-# Uninstall (reverses setup.sh)
+# Uninstall
 sudo ~/baudbot/bin/uninstall.sh --dry-run   # preview
 sudo ~/baudbot/bin/uninstall.sh             # for real
 
@@ -107,56 +165,33 @@ bin/test.sh shell
 npm run lint && npm run typecheck
 ```
 
-## How It Works
+## Adding agents
 
-Baudbot runs a **control-agent** that spawns specialized sub-agents in tmux sessions and starts a Slack bridge. Out of the box it ships with a dev-agent (coding), sentry-agent (monitoring/triage), and a control-agent (orchestration) — but you can add any agent role. Messages flow:
+An agent role is a skill file. Baudbot ships three but you can add more.
 
-```
-Slack → bridge (access control + content wrapping) → pi agent → tools (tool-guard + safe-bash) → workspace
-```
+1. Create `pi/skills/my-agent/SKILL.md` with role instructions.
+2. Add a startup block to the control agent's `startup-cleanup.sh`.
+3. Deploy: `~/baudbot/bin/deploy.sh`
 
-Every layer assumes the previous one failed. The bridge wraps content and rate-limits, but tool-guard blocks dangerous commands even if wrapping is bypassed. Safe-bash blocks patterns even if tool-guard is somehow evaded. The firewall blocks exfiltration even if all software layers fail. Defense in depth, all the way down.
+See `pi/skills/dev-agent/SKILL.md` for the pattern.
 
-## Architecture
-
-```
-admin_user (your account)
-├── ~/baudbot/                    ← source repo (agent CANNOT read)
-│   ├── bin/                         deploy, firewall, security scripts
-│   ├── pi/extensions/               🔒 tool-guard, auto-name, etc.
-│   ├── pi/skills/                   agent skill templates
-│   ├── slack-bridge/                🔒 bridge + security module
-│   └── setup.sh / start.sh         system setup + launcher
-
-baudbot_agent (unprivileged uid)
-├── ~/runtime/                   ← deployed copies of bin/, bridge
-├── ~/.pi/agent/
-│   ├── extensions/                  deployed extensions (read-only)
-│   ├── skills/                      agent-owned (can modify)
-│   └── baudbot-manifest.json         SHA256 integrity hashes
-├── ~/workspace/                     project repos + worktrees
-└── ~/.config/.env                   secrets (600 perms)
-```
-
-Deploy is a one-way push: `~/baudbot/bin/deploy.sh` stages source → `/tmp` → copies as `baudbot_agent` via `sudo -u` → stamps integrity manifest → cleans up.
-
-## Security Stack
+## Security stack
 
 | Layer | What | Survives prompt injection? |
 |-------|------|---------------------------|
-| **Source isolation** | Source repo is admin-owned, agent has zero read access. Deploy is one-way. | ✅ Filesystem-enforced |
-| **iptables egress** | Per-UID firewall chain. Allowlisted ports only, no listeners, no reverse shells. | ✅ Kernel-enforced |
-| **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel-enforced |
+| **Source isolation** | Source repo is admin-owned. Agent has zero read access. Deploy is one-way. | ✅ Filesystem |
+| **iptables egress** | Per-UID port allowlist (80/443/22/53 + DB ports). Blocks non-standard ports, listeners, raw sockets. | ✅ Kernel |
+| **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel |
 | **Shell deny list** | `baudbot-safe-bash` blocks rm -rf, reverse shells, fork bombs, curl\|sh. Root-owned. | ✅ Root-owned |
-| **Tool call interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Compiled into runtime |
-| **Integrity manifest** | Deploy stamps SHA256 hashes of all files. Agent can verify its own runtime hasn't been tampered with. | ✅ Admin-signed |
-| **Content wrapping** | External messages wrapped with security boundaries + Unicode homoglyph sanitization. | ⚠️ LLM-dependent |
-| **Injection detection** | 12 regex patterns flag suspicious content. Log-only. | ⚠️ Detection, not prevention |
+| **Tool interception** | Pi extension blocks dangerous tool calls before they hit disk or shell. | ✅ Read-only |
+| **Integrity manifest** | Deploy stamps SHA256 hashes. Security audit verifies runtime files match. | ✅ Admin-signed |
+| **Content wrapping** | External messages wrapped with security boundaries + homoglyph sanitization. | ⚠️ LLM-dependent |
+| **Injection detection** | 12 regex patterns flag suspicious content. Log-only. | ⚠️ Detection only |
 | **Filesystem hardening** | 700 dirs, 600 secrets, enforced on every boot. | ✅ Boot script |
 | **Log redaction** | Scrubs API keys, tokens, private keys from session logs. | ✅ Boot script |
 | **Extension scanning** | Static analysis for exfiltration, obfuscation, crypto-mining patterns. | ✅ Audit-time |
 
-## Security Details
+## Security details
 
 See [SECURITY.md](SECURITY.md) for the full threat model and trust boundary diagram.
 
