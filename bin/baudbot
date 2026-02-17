@@ -254,14 +254,27 @@ case "${1:-}" in
 
   update)
     shift
-    # For now: git pull + deploy
     require_root "update"
     echo "=== Pulling latest ==="
     cd "$BAUDBOT_ROOT"
     git pull origin main
     echo ""
     echo "=== Deploying ==="
-    exec "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
+    "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
+    echo ""
+    # Restart if currently running
+    if has_systemd && systemctl is-active baudbot &>/dev/null 2>&1; then
+      echo "=== Restarting ==="
+      systemctl restart baudbot
+      sleep 2
+      if systemctl is-active baudbot &>/dev/null 2>&1; then
+        echo "✅ Updated and running"
+      else
+        echo "⚠️  Deployed but agent didn't restart — check: baudbot logs"
+      fi
+    else
+      echo "✅ Updated. Start with: sudo baudbot start"
+    fi
     ;;
 
   uninstall)

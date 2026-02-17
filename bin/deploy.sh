@@ -270,8 +270,18 @@ fi
 echo "Deploying config..."
 
 # Determine who invoked this (the admin user)
-# BAUDBOT_CONFIG_USER env var overrides detection (used by install.sh)
-DEPLOY_USER="${BAUDBOT_CONFIG_USER:-${SUDO_USER:-$(whoami)}}"
+# Priority: BAUDBOT_CONFIG_USER env > SUDO_USER > repo owner > whoami
+if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
+  DEPLOY_USER="$BAUDBOT_CONFIG_USER"
+elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+  DEPLOY_USER="$SUDO_USER"
+else
+  # Detect from repo ownership (the admin owns the source)
+  DEPLOY_USER=$(stat -c '%U' "$BAUDBOT_SRC" 2>/dev/null || echo "")
+  if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
+    DEPLOY_USER="$(whoami)"
+  fi
+fi
 DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
 
