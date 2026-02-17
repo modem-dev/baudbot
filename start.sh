@@ -50,6 +50,46 @@ else
   exit 1
 fi
 
+# Start the slack-bridge in the background.
+# It waits for the control-agent socket to appear, then connects.
+_start_bridge() {
+  local socket_dir="$HOME/.pi/session-control"
+  local timeout=60
+  local elapsed=0
+
+  echo "bridge: waiting for control-agent socket..."
+  while [ $elapsed -lt $timeout ]; do
+    local alias_file="$socket_dir/control-agent.alias"
+    if [ -L "$alias_file" ]; then
+      local target
+      target=$(readlink "$alias_file")
+      local uuid="${target%.sock}"
+      echo "bridge: found control-agent ($uuid)"
+
+      # Kill existing bridge if any
+      tmux kill-session -t slack-bridge 2>/dev/null || true
+      sleep 1
+
+      tmux new-session -d -s slack-bridge \
+        "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$uuid && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
+
+      sleep 3
+      local http_code
+      http_code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
+      if [ "$http_code" = "400" ]; then
+        echo "bridge: up ✓"
+      else
+        echo "bridge: started but health check returned HTTP $http_code"
+      fi
+      return
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  echo "bridge: timed out waiting for control-agent socket (${timeout}s)"
+}
+_start_bridge &
+
 # Start control-agent
 # --session-control: enables inter-session communication (handled by control.ts extension)
 pi --session-control --model "$MODEL" --skill ~/.pi/agent/skills/control-agent "/skill:control-agent"
