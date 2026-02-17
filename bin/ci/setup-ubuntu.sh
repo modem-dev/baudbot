@@ -10,7 +10,7 @@ set -euo pipefail
 echo "=== [Ubuntu] Waiting for unattended-upgrades ==="
 # Fresh DO droplets run unattended-upgrades on first boot which holds apt locks.
 # Wait for all apt/dpkg processes to finish (up to 120s).
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if ! pgrep -x 'apt|apt-get|dpkg|unattended-upgrade' >/dev/null 2>&1; then
     break
   fi

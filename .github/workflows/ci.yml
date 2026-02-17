@@ -25,6 +25,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: ShellCheck
+        run: |
+          find bin/ setup.sh start.sh -type f \( -name '*.sh' -o -name 'hornet-safe-bash' -o -name 'hornet-docker' \) \
+            | xargs shellcheck -s bash -S warning
+
   test:
     runs-on: ubuntu-latest
     steps:

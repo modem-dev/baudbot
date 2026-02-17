@@ -181,10 +181,10 @@ echo "=== Installing extension dependencies ==="
 # npm install runs in source (admin-owned) then deploy copies to runtime
 NODE_BIN="$HORNET_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
 export PATH="$NODE_BIN:$PATH"
-for dir in $(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_modules/*' -exec dirname {} \;); do
+while IFS= read -r dir; do
   echo "  Installing deps in $dir"
   (cd "$dir" && npm install)
-done
+done < <(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_modules/*' -exec dirname {} \;)
 
 echo "=== Installing Slack bridge dependencies ==="
 (cd "$REPO_DIR/slack-bridge" && npm install)

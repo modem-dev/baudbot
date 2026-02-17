@@ -24,7 +24,9 @@ SIZE="${DO_SIZE:-s-2vcpu-4gb}"
 die() { echo "❌ $1" >&2; exit 1; }
 
 require_token() {
-  [ -z "${DO_API_TOKEN:-}" ] && die "DO_API_TOKEN not set"
+  if [ -z "${DO_API_TOKEN:-}" ]; then
+    die "DO_API_TOKEN not set"
+  fi
 }
 
 do_api() {
@@ -49,7 +51,8 @@ cmd_create() {
   pub_key=$(cat "$pub_key_file")
 
   # Register ephemeral SSH key
-  local key_name="ci-${name}-$(date +%s)"
+  local key_name
+  key_name="ci-${name}-$(date +%s)"
   local key_result
   key_result=$(do_api POST "account/keys" -d "{\"name\":\"$key_name\",\"public_key\":\"$pub_key\"}")
 
@@ -98,7 +101,9 @@ print(v4[0]['ip_address'] if v4 else 'none')
     sleep 3
   done
 
-  [ "$ip" = "none" ] && die "Droplet $droplet_id never became active"
+  if [ "$ip" = "none" ]; then
+    die "Droplet $droplet_id never became active"
+  fi
 
   # Output for GitHub Actions $GITHUB_OUTPUT or eval
   echo "DROPLET_ID=$droplet_id"
