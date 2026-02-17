@@ -1,4 +1,6 @@
-# 🤖 Baudbot
+<img src="https://github.com/user-attachments/assets/cd13e86c-a11d-4dfc-89be-3b66637e0531" width="256" height="256"/>
+
+# Baudbot
 
 [![CI](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml)
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
