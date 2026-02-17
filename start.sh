@@ -14,9 +14,13 @@ set -euo pipefail
 cd ~
 
 # Set PATH
-export PATH="$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
 
-# Load secrets
+# Validate and load secrets via varlock
+varlock load --path ~/.config/ || {
+  echo "❌ Environment validation failed — check ~/.config/.env against .env.schema"
+  exit 1
+}
 set -a
 source ~/.config/.env
 set +a

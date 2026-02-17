@@ -109,6 +109,7 @@ Add new test files to `bin/test.sh` — don't scatter test invocations across CI
 - Extensions are deployed from `pi/extensions/` → agent's `~/.pi/agent/extensions/`.
 - Skills are deployed from `pi/skills/` → agent's `~/.pi/agent/skills/`.
 - Agent commits operational learnings to its own skills dir (not back to source).
+- **When changing behavior, update all docs.** Check and update: `README.md`, `CONFIGURATION.md`, skill files (`pi/skills/*/SKILL.md`), and `AGENTS.md`. Inline code examples in docs must match the actual implementation.
 
 ## Security Notes
 

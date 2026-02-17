@@ -52,6 +52,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     [ -f "$HORNET_SRC/bin/$script" ] && cp --no-preserve=ownership "$HORNET_SRC/bin/$script" "$STAGE_DIR/bin/$script"
   done
   [ -f "$HORNET_SRC/pi/settings.json" ] && cp --no-preserve=ownership "$HORNET_SRC/pi/settings.json" "$STAGE_DIR/settings.json"
+  [ -f "$HORNET_SRC/.env.schema" ] && cp --no-preserve=ownership "$HORNET_SRC/.env.schema" "$STAGE_DIR/.env.schema"
   chmod -R a+rX "$STAGE_DIR"
 fi
 
@@ -207,6 +208,20 @@ if [ -f "$STAGE_DIR/settings.json" ]; then
     log "✓ settings.json"
   else
     log "would copy: settings.json"
+  fi
+fi
+
+# ── Env schema ───────────────────────────────────────────────────────────────
+
+echo "Deploying env schema..."
+
+if [ -f "$STAGE_DIR/.env.schema" ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
+    as_agent cp "$STAGE_DIR/.env.schema" "$HORNET_HOME/.config/.env.schema"
+    as_agent chmod 644 "$HORNET_HOME/.config/.env.schema"
+    log "✓ .env.schema → ~/.config/.env.schema"
+  else
+    log "would copy: .env.schema → ~/.config/.env.schema"
   fi
 fi
 

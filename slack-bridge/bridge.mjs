@@ -17,7 +17,8 @@
  *   BRIDGE_API_PORT        - outbound API port (default: 7890)
  */
 
-import "dotenv/config";
+// Env vars loaded and validated by varlock (via `varlock run` or `start.sh`).
+// No dotenv/varlock import needed — env is already in process.env.
 import { App } from "@slack/bolt";
 import * as net from "node:net";
 import * as fs from "node:fs";
