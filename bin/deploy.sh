@@ -273,7 +273,7 @@ echo "Deploying config..."
 # Priority: BAUDBOT_CONFIG_USER env > SUDO_USER > repo owner > whoami
 if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
   DEPLOY_USER="$BAUDBOT_CONFIG_USER"
-elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
   DEPLOY_USER="$SUDO_USER"
 else
   # Detect from repo ownership (the admin owns the source)

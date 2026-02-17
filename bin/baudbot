@@ -123,7 +123,7 @@ case "${1:-}" in
 
   status)
     shift
-    if has_systemd && systemctl is-enabled baudbot &>/dev/null 2>&1; then
+    if has_systemd && systemctl is-enabled baudbot &>/dev/null; then
       exec systemctl status baudbot "$@"
     else
       # Fallback: check if baudbot_agent has pi running
@@ -138,7 +138,7 @@ case "${1:-}" in
 
   logs)
     shift
-    if has_systemd && systemctl is-enabled baudbot &>/dev/null 2>&1; then
+    if has_systemd && systemctl is-enabled baudbot &>/dev/null; then
       exec journalctl -u baudbot -f "$@"
     else
       echo "No systemd unit. Check tmux sessions:"
@@ -263,11 +263,12 @@ case "${1:-}" in
     "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
     echo ""
     # Restart if currently running
-    if has_systemd && systemctl is-active baudbot &>/dev/null 2>&1; then
+    if has_systemd && systemctl is-active baudbot &>/dev/null; then
       echo "=== Restarting ==="
       systemctl restart baudbot
-      sleep 2
-      if systemctl is-active baudbot &>/dev/null 2>&1; then
+      # Wait for ExecStartPre hooks + process init
+      sleep 3
+      if systemctl is-active baudbot &>/dev/null; then
         echo "✅ Updated and running"
       else
         echo "⚠️  Deployed but agent didn't restart — check: baudbot logs"
