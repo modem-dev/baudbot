@@ -218,7 +218,8 @@ case "${1:-}" in
     TARGET="${1:-}"
     if [ -z "$TARGET" ]; then
       # Default: attach to first available tmux session
-      FIRST_SESSION=$(agent_tmux ls -F '#{session_name}' 2>/dev/null | head -1)
+      FIRST_SESSION=$(agent_tmux ls -F '#{session_name}' 2>/dev/null || true)
+      FIRST_SESSION=$(echo "$FIRST_SESSION" | head -1)
       if [ -n "$FIRST_SESSION" ]; then
         TARGET="$FIRST_SESSION"
       else

@@ -54,19 +54,17 @@ if echo "$VARLOCK_OUT" | grep -q "❌"; then
   echo "varlock validation failed"
   exit 1
 fi
-echo "  varlock check passed"
 # start.sh has TMUX_TMPDIR set (so tmux works with systemd PrivateTmp)
-echo "  checking TMUX_TMPDIR in start.sh..."
-grep -q "TMUX_TMPDIR" /home/baudbot_agent/runtime/start.sh || { echo "FAIL: TMUX_TMPDIR not found in start.sh"; exit 1; }
-echo "  checking _start_bridge in start.sh..."
-grep -q "_start_bridge" /home/baudbot_agent/runtime/start.sh || { echo "FAIL: _start_bridge not found in start.sh"; exit 1; }
-echo "  checking baudbot sessions..."
+grep -q "TMUX_TMPDIR" /home/baudbot_agent/runtime/start.sh
+# start.sh has bridge auto-start function
+grep -q "_start_bridge" /home/baudbot_agent/runtime/start.sh
+# baudbot sessions runs without error
 SESS_OUT=$(baudbot sessions 2>&1 || true)
-echo "$SESS_OUT" | grep -q "tmux sessions" || { echo "FAIL: sessions output missing 'tmux sessions'"; echo "$SESS_OUT"; exit 1; }
-echo "$SESS_OUT" | grep -q "pi sessions" || { echo "FAIL: sessions output missing 'pi sessions'"; echo "$SESS_OUT"; exit 1; }
-echo "  checking baudbot attach..."
+echo "$SESS_OUT" | grep -q "tmux sessions"
+echo "$SESS_OUT" | grep -q "pi sessions"
+# baudbot attach gives helpful message when no sessions
 ATTACH_OUT=$(baudbot attach 2>&1 || true)
-echo "$ATTACH_OUT" | grep -qi "no tmux sessions\|start the agent" || { echo "FAIL: attach output unexpected"; echo "$ATTACH_OUT"; exit 1; }
+echo "$ATTACH_OUT" | grep -qi "no tmux sessions"
 echo "  ✓ install.sh verification passed"
 
 echo "=== Installing test dependencies ==="
