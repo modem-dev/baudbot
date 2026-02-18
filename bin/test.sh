@@ -48,6 +48,7 @@ echo ""
 
 if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
   echo "JS/TS:"
+  run "external-content"  node --test lib/external-content.test.mjs
   run "tool-guard"        node --test pi/extensions/tool-guard.test.mjs
   run "heartbeat"         node --test pi/extensions/heartbeat.test.mjs
   run "memory"            node --test pi/extensions/memory.test.mjs
