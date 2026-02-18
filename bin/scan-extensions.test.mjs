@@ -14,9 +14,9 @@ import { execFileSync } from "node:child_process";
 const SCANNER = join(import.meta.dirname, "../bin/scan-extensions.mjs");
 const NODE = process.execPath;
 
-function runScanner(dir) {
+function runScanner(dir, extraArgs = []) {
   try {
-    const output = execFileSync(NODE, [SCANNER, dir], {
+    const output = execFileSync(NODE, [SCANNER, ...extraArgs, dir], {
       encoding: "utf-8",
       timeout: 10_000,
     });
@@ -207,6 +207,104 @@ describe("scan-extensions: reports line numbers", () => {
       ].join("\n"));
       const { output } = runScanner(dir);
       assert.ok(output.includes("lined.ts:4"), `expected line 4, got:\n${output}`);
+    });
+  });
+});
+
+describe("scan-extensions: new rules", () => {
+  it("detects filesystem writes to system paths", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), `
+        import { writeFileSync } from "node:fs";
+        writeFileSync("/etc/passwd", "evil");
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.equal(exitCode, 2);
+      assert.ok(output.includes("system path"), output);
+    });
+  });
+
+  it("detects privilege escalation with child_process", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), `
+        import { execSync } from "node:child_process";
+        execSync("sudo rm -rf /");
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.equal(exitCode, 2);
+      // Should detect either privilege-escalation or dangerous-exec
+      assert.ok(output.includes("CRITICAL"), output);
+    });
+  });
+
+  it("does not flag sudo without child_process context", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "ok.ts"), `
+        // Documentation: run sudo to install
+        const help = "Use sudo apt install nodejs";
+      `);
+      const { exitCode } = runScanner(dir);
+      assert.equal(exitCode, 0);
+    });
+  });
+
+  it("detects network listeners with http context", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "backdoor.ts"), `
+        import http from "node:http";
+        const server = http.createServer((req, res) => {
+          res.end("backdoor");
+        });
+        server.listen(9999);
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.ok(exitCode > 0, `expected non-zero exit, got ${exitCode}`);
+      assert.ok(output.includes("listener") || output.includes("backdoor") || output.includes("Network"), output);
+    });
+  });
+
+  it("detects prototype pollution patterns", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.js"), `
+        const obj = {};
+        obj.__proto__.isAdmin = true;
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.ok(exitCode > 0);
+      assert.ok(output.includes("prototype") || output.includes("pollution"), output);
+    });
+  });
+});
+
+describe("scan-extensions: --json output", () => {
+  it("outputs valid JSON with --json flag", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "clean.ts"), `console.log("hello");`);
+      const { output, exitCode } = runScanner(dir, ["--json"]);
+      assert.equal(exitCode, 0);
+      const report = JSON.parse(output);
+      assert.ok(report.timestamp);
+      assert.equal(typeof report.scanned, "number");
+      assert.ok(report.summary);
+      assert.ok(Array.isArray(report.findings));
+      assert.equal(report.findings.length, 0);
+    });
+  });
+
+  it("includes findings in JSON output", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.js"), `eval("evil")`);
+      const { output, exitCode } = runScanner(dir, ["--json"]);
+      assert.equal(exitCode, 2);
+      const report = JSON.parse(output);
+      assert.ok(report.findings.length > 0);
+      const finding = report.findings[0];
+      assert.ok(finding.ruleId);
+      assert.ok(finding.severity);
+      assert.ok(finding.file);
+      assert.ok(typeof finding.line === "number");
+      assert.ok(finding.message);
+      assert.ok(finding.evidence);
     });
   });
 });

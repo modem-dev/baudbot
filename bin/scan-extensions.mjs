@@ -9,10 +9,13 @@
  * - Credential harvesting (process.env + network send)
  * - Obfuscated code (hex sequences, large base64)
  * - Crypto-mining references
+ * - Filesystem writes outside agent home
+ * - Privilege escalation patterns
+ * - Network listeners (potential backdoors)
  *
  * Ported from OpenClaw's skill-scanner.ts.
  *
- * Usage: node scan-extensions.mjs [dir1] [dir2] ...
+ * Usage: node scan-extensions.mjs [--json] [dir1] [dir2] ...
  *        Defaults to ~/baudbot/pi/extensions ~/baudbot/pi/skills
  */
 
@@ -55,6 +58,38 @@ const LINE_RULES = [
     message: "WebSocket connection to non-standard port",
     pattern: /new\s+WebSocket\s*\(\s*["']wss?:\/\/[^"']*:(\d+)/,
   },
+  {
+    id: "fs-write-outside-home",
+    severity: "critical",
+    message: "Filesystem write to system path detected",
+    pattern: /writeFileSync?\s*\(\s*["'](\/etc\/|\/usr\/|\/var\/|\/root\/)/,
+  },
+  {
+    id: "privilege-escalation",
+    severity: "critical",
+    message: "Privilege escalation pattern detected (sudo/chmod/chown)",
+    pattern: /\bsudo\b|chmod\s+[0-7]{3,4}\s+\/|chown\s+root/,
+    requiresContext: /child_process|execSync|spawn/,
+  },
+  {
+    id: "network-listener",
+    severity: "warn",
+    message: "Network server/listener detected (potential backdoor)",
+    pattern: /\.listen\s*\(\s*\d+|createServer\s*\(/,
+    requiresContext: /\bnet\b|\bhttp\b|\bhttps\b|\bexpress\b/,
+  },
+  {
+    id: "prototype-pollution",
+    severity: "warn",
+    message: "Potential prototype pollution pattern",
+    pattern: /__proto__|Object\.setPrototypeOf|constructor\s*\[/,
+  },
+  {
+    id: "unsafe-deserialization",
+    severity: "warn",
+    message: "Unsafe deserialization (JSON.parse on external input without validation)",
+    pattern: /JSON\.parse\s*\(\s*(req\.|request\.|body|input|external|untrusted)/,
+  },
 ];
 
 const STANDARD_PORTS = new Set([80, 443, 8080, 8443, 3000]);
@@ -87,16 +122,31 @@ const SOURCE_RULES = [
     pattern: /process\.env/,
     requiresContext: /\bfetch\b|\bpost\b|http\.request/i,
   },
+  {
+    id: "credential-logging",
+    severity: "warn",
+    message: "Possible credential logging (process.env written to log/console)",
+    pattern: /process\.env/,
+    requiresContext: /console\.(log|info|warn|error|debug)\s*\(.*process\.env/,
+  },
+  {
+    id: "dynamic-require",
+    severity: "info",
+    message: "Dynamic require/import — may load untrusted modules",
+    pattern: /require\s*\(\s*[^"'`]|import\s*\(\s*[^"'`]/,
+  },
 ];
 
 // ── Scanner ─────────────────────────────────────────────────────────────────
 
-function truncateEvidence(evidence, maxLen = 120) {
+export function truncateEvidence(evidence, maxLen = 120) {
   if (evidence.length <= maxLen) return evidence;
   return evidence.slice(0, maxLen) + "…";
 }
 
-function scanSource(source, filePath) {
+export { LINE_RULES, SOURCE_RULES, SCANNABLE_EXTENSIONS, STANDARD_PORTS };
+
+export function scanSource(source, filePath) {
   const findings = [];
   const lines = source.split("\n");
   const matchedLineRules = new Set();
@@ -226,7 +276,9 @@ const SEVERITY_ORDER = { critical: 0, warn: 1, info: 2 };
 
 async function main() {
   const home = homedir();
-  const dirs = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const jsonOutput = args.includes("--json");
+  const dirs = args.filter((a) => !a.startsWith("--"));
   if (dirs.length === 0) {
     dirs.push(join(home, "baudbot/pi/extensions"), join(home, "baudbot/pi/skills"));
   }
@@ -236,18 +288,20 @@ async function main() {
   let totalWarn = 0;
   const allFindings = [];
 
-  console.log("");
-  console.log("🔍 Extension & Skill Scanner");
-  console.log("============================");
+  if (!jsonOutput) {
+    console.log("");
+    console.log("🔍 Extension & Skill Scanner");
+    console.log("============================");
+  }
 
   for (const dir of dirs) {
     const resolved = resolve(dir);
-    console.log(`\nScanning: ${resolved}`);
+    if (!jsonOutput) console.log(`\nScanning: ${resolved}`);
 
     try {
       await stat(resolved);
     } catch {
-      console.log("  (directory not found, skipping)");
+      if (!jsonOutput) console.log("  (directory not found, skipping)");
       continue;
     }
 
@@ -255,40 +309,59 @@ async function main() {
     totalScanned += scanned;
     allFindings.push(...findings);
 
-    if (findings.length === 0) {
-      console.log(`  ✅ ${scanned} files scanned, no findings`);
-    } else {
-      console.log(`  ${scanned} files scanned, ${findings.length} finding(s):`);
+    if (!jsonOutput) {
+      if (findings.length === 0) {
+        console.log(`  ✅ ${scanned} files scanned, no findings`);
+      } else {
+        console.log(`  ${scanned} files scanned, ${findings.length} finding(s):`);
+      }
+    }
+    if (findings.length > 0) {
       // Sort by severity
       findings.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2));
       for (const f of findings) {
-        const icon = SEVERITY_ICONS[f.severity] ?? "?";
-        const relPath = relative(resolved, f.file);
-        console.log(`  ${icon} ${f.severity.toUpperCase()}: ${f.message}`);
-        console.log(`     ${relPath}:${f.line}`);
-        console.log(`     ${f.evidence}`);
+        if (!jsonOutput) {
+          const icon = SEVERITY_ICONS[f.severity] ?? "?";
+          const relPath = relative(resolved, f.file);
+          console.log(`  ${icon} ${f.severity.toUpperCase()}: ${f.message}`);
+          console.log(`     ${relPath}:${f.line}`);
+          console.log(`     ${f.evidence}`);
+        }
         if (f.severity === "critical") totalCritical++;
         if (f.severity === "warn") totalWarn++;
       }
     }
   }
 
-  console.log("");
-  console.log("Summary");
-  console.log("───────");
-  console.log(`  Files scanned: ${totalScanned}`);
-  console.log(`  ❌ Critical:   ${totalCritical}`);
-  console.log(`  ⚠️  Warn:       ${totalWarn}`);
-  console.log("");
+  const totalInfo = allFindings.filter((f) => f.severity === "info").length;
+
+  if (jsonOutput) {
+    const report = {
+      timestamp: new Date().toISOString(),
+      scanned: totalScanned,
+      summary: { critical: totalCritical, warn: totalWarn, info: totalInfo },
+      findings: allFindings,
+    };
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  } else {
+    console.log("");
+    console.log("Summary");
+    console.log("───────");
+    console.log(`  Files scanned: ${totalScanned}`);
+    console.log(`  ❌ Critical:   ${totalCritical}`);
+    console.log(`  ⚠️  Warn:       ${totalWarn}`);
+    if (totalInfo > 0) console.log(`  ℹ️  Info:       ${totalInfo}`);
+    console.log("");
+  }
 
   if (totalCritical > 0) {
-    console.log(`🚨 ${totalCritical} critical finding(s) — review immediately!`);
+    if (!jsonOutput) console.log(`🚨 ${totalCritical} critical finding(s) — review immediately!`);
     process.exit(2);
   } else if (totalWarn > 0) {
-    console.log(`⚠️  ${totalWarn} warning(s) — review recommended.`);
+    if (!jsonOutput) console.log(`⚠️  ${totalWarn} warning(s) — review recommended.`);
     process.exit(1);
   } else {
-    console.log("✅ All clean.");
+    if (!jsonOutput) console.log("✅ All clean.");
     process.exit(0);
   }
 }
