@@ -29,7 +29,7 @@ async function linearQuery(query: string, variables: Record<string, any> = {}): 
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: LINEAR_API_KEY,
+      Authorization: `Bearer ${LINEAR_API_KEY}`,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -104,26 +104,42 @@ async function handleSearch(params: any): Promise<string> {
   if (!params.query) return "❌ query is required for search action.";
 
   const limit = params.limit || 20;
+  const variables: Record<string, any> = { query: params.query, first: limit };
 
-  // Build filter for status if provided
-  let filterClause = "";
+  // Build query with optional status filter using GraphQL variables
+  let queryStr: string;
   if (params.status) {
-    filterClause = `, filter: { state: { name: { eqCaseInsensitive: "${params.status}" } } }`;
-  }
-
-  const data = await linearQuery(`
-    query SearchIssues($query: String!, $first: Int!) {
-      issueSearch(query: $query, first: $first${filterClause}) {
-        nodes {
-          identifier
-          title
-          priority
-          state { name }
-          assignee { name displayName }
+    variables.status = params.status;
+    queryStr = `
+      query SearchIssues($query: String!, $first: Int!, $status: String!) {
+        issueSearch(query: $query, first: $first, filter: { state: { name: { eqCaseInsensitive: $status } } }) {
+          nodes {
+            identifier
+            title
+            priority
+            state { name }
+            assignee { name displayName }
+          }
         }
       }
-    }
-  `, { query: params.query, first: limit });
+    `;
+  } else {
+    queryStr = `
+      query SearchIssues($query: String!, $first: Int!) {
+        issueSearch(query: $query, first: $first) {
+          nodes {
+            identifier
+            title
+            priority
+            state { name }
+            assignee { name displayName }
+          }
+        }
+      }
+    `;
+  }
+
+  const data = await linearQuery(queryStr, variables);
 
   const issues = data.issueSearch?.nodes || [];
   if (issues.length === 0) return `No issues found for query: "${params.query}"`;
@@ -175,25 +191,38 @@ async function handleGet(params: any): Promise<string> {
 
 async function handleList(params: any): Promise<string> {
   const limit = params.limit || 20;
-  const filters: string[] = [];
+  const variables: Record<string, any> = { first: limit };
+
+  // Build GraphQL variable declarations and filter object dynamically,
+  // using proper GraphQL variables to prevent injection.
+  const varDecls: string[] = ["$first: Int!"];
+  const filterParts: string[] = [];
 
   if (params.status) {
-    filters.push(`state: { name: { eqCaseInsensitive: "${params.status}" } }`);
+    variables.status = params.status;
+    varDecls.push("$status: String!");
+    filterParts.push("state: { name: { eqCaseInsensitive: $status } }");
   }
   if (params.assignee) {
-    filters.push(`assignee: { name: { eqCaseInsensitive: "${params.assignee}" } }`);
+    variables.assignee = params.assignee;
+    varDecls.push("$assignee: String!");
+    filterParts.push("assignee: { name: { eqCaseInsensitive: $assignee } }");
   }
   if (params.team) {
-    filters.push(`team: { name: { eqCaseInsensitive: "${params.team}" } }`);
+    variables.team = params.team;
+    varDecls.push("$team: String!");
+    filterParts.push("team: { name: { eqCaseInsensitive: $team } }");
   }
   if (params.label) {
-    filters.push(`labels: { name: { eqCaseInsensitive: "${params.label}" } }`);
+    variables.label = params.label;
+    varDecls.push("$label: String!");
+    filterParts.push("labels: { name: { eqCaseInsensitive: $label } }");
   }
 
-  const filterArg = filters.length > 0 ? `, filter: { ${filters.join(", ")} }` : "";
+  const filterArg = filterParts.length > 0 ? `, filter: { ${filterParts.join(", ")} }` : "";
 
-  const data = await linearQuery(`
-    query ListIssues($first: Int!) {
+  const queryStr = `
+    query ListIssues(${varDecls.join(", ")}) {
       issues(first: $first${filterArg}, orderBy: updatedAt) {
         nodes {
           identifier
@@ -204,7 +233,9 @@ async function handleList(params: any): Promise<string> {
         }
       }
     }
-  `, { first: limit });
+  `;
+
+  const data = await linearQuery(queryStr, variables);
 
   const issues = data.issues?.nodes || [];
   if (issues.length === 0) return "No issues found matching the given filters.";

@@ -60,6 +60,14 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | `SENTRY_ORG` | Sentry organization slug | The slug from your Sentry URL: `sentry.io/organizations/<this-part>/` |
 | `SENTRY_CHANNEL_ID` | Slack channel ID for Sentry alerts | The Slack channel where Sentry posts alerts. Right-click the channel → "View channel details" → scroll to the bottom for the Channel ID. |
 
+### Linear Integration
+
+The `linear` extension provides a tool for interacting with the Linear issue tracker. The agent can search, list, create, update, and comment on issues via Linear's GraphQL API.
+
+| Variable | Description | How to get it |
+|----------|-------------|---------------|
+| `LINEAR_API_KEY` | Linear API key (personal or OAuth token) | Go to [Linear Settings → API](https://linear.app/settings/api), create a **Personal API key**. For workspace-wide access, create an OAuth application instead. The key needs read/write access to issues and comments. |
+
 ### Slack Channels
 
 | Variable | Description | How to get it |
@@ -154,6 +162,9 @@ BAUDBOT_ALLOWED_EMAILS=you@example.com
 # Sentry (optional)
 SENTRY_AUTH_TOKEN=sntrys_...
 SENTRY_ORG=my-org
+
+# Linear (optional)
+LINEAR_API_KEY=lin_api_...
 
 # Kernel (optional)
 KERNEL_API_KEY=...
