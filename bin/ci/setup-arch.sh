@@ -20,7 +20,9 @@ sudo -u baudbot_admin bash -c 'cd ~/baudbot && git init -q && git config user.em
 
 echo "=== Running install.sh ==="
 # Simulate interactive input: admin user, required secrets, skip optionals, decline launch
-printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nghp_testtoken\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\nn\n' \
+# Prompts: admin user, Anthropic, OpenAI(skip), Gemini(skip), OpenCode(skip),
+#   Slack bot, Slack app, Slack users, AgentMail(skip), email(skip), Sentry(skip), Kernel(skip), launch(n)
+printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\nn\n' \
   | bash /home/baudbot_admin/baudbot/install.sh
 
 echo "=== Verifying install ==="

@@ -117,7 +117,7 @@ Slack @mention
 | Secret | Location | Perms | Purpose |
 |--------|----------|-------|---------|
 | LLM API key(s) | `~/.config/.env` | `600` | LLM API access (one or more of: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENCODE_ZEN_API_KEY`) |
-| `GITHUB_TOKEN` | `~/.config/.env` | `600` | GitHub PAT (scoped to agent account) |
+| GitHub OAuth token | `~/.config/gh/hosts.yml` | `600` | `gh` CLI auth (via `gh auth login`) |
 | `AGENTMAIL_API_KEY` | `~/.config/.env` | `600` | AgentMail inbox access |
 | `KERNEL_API_KEY` | `~/.config/.env` | `600` | Kernel cloud browsers |
 | `BAUDBOT_SECRET` | `~/.config/.env` | `600` | Email authentication shared secret |

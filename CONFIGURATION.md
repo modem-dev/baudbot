@@ -23,9 +23,13 @@ Set at least one. Multiple can coexist — switch models at runtime via `/model`
 
 ### GitHub
 
-| Variable | Description | How to get it |
-|----------|-------------|---------------|
-| `GITHUB_TOKEN` | GitHub Personal Access Token | [github.com/settings/tokens](https://github.com/settings/tokens) — create a fine-grained token scoped to the repos you want the agent to access. Minimum scopes: `contents: write`, `pull_requests: write`, `issues: write`. |
+The agent uses the `gh` CLI for PRs, checks, and issues. Authenticate with:
+
+```bash
+sudo -u baudbot_agent gh auth login
+```
+
+This uses the device code flow — it shows a code, you visit [github.com/login/device](https://github.com/login/device) on your browser. The token is stored in `~/.config/gh/hosts.yml` (not in `.env`).
 
 The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generates one automatically. Add the public key to **Settings → SSH keys** on the GitHub account the agent will push as.
 
@@ -133,8 +137,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 # GEMINI_API_KEY=...
 # OPENCODE_ZEN_API_KEY=...
 
-# GitHub
-GITHUB_TOKEN=ghp_...
+# GitHub: authenticate with `sudo -u baudbot_agent gh auth login`
 
 # Slack
 SLACK_BOT_TOKEN=xoxb-...

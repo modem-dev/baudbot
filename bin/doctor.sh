@@ -68,6 +68,16 @@ else
   warn "docker not found (optional, needed for container tasks)"
 fi
 
+if command -v gh &>/dev/null; then
+  if sudo -u baudbot_agent gh auth status &>/dev/null; then
+    pass "gh cli authenticated"
+  else
+    warn "gh cli installed but not authenticated (run: sudo -u baudbot_agent gh auth login)"
+  fi
+else
+  fail "gh cli not found"
+fi
+
 # ── Secrets ──────────────────────────────────────────────────────────────────
 
 echo ""
@@ -117,7 +127,7 @@ if [ -f "$ENV_FILE" ]; then
   fi
 
   # Check required keys
-  for key in GITHUB_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
+  for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
     if grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
       pass "$key is set"
     else

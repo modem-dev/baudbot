@@ -189,12 +189,6 @@ fi
 
 echo ""
 
-prompt_secret "GITHUB_TOKEN" \
-  "GitHub personal access token" \
-  "https://github.com/settings/tokens" \
-  "required" \
-  "ghp_|github_pat_"
-
 prompt_secret "SLACK_BOT_TOKEN" \
   "Slack bot token" \
   "https://api.slack.com/apps → OAuth & Permissions" \
@@ -286,7 +280,6 @@ ordered_keys=(
   OPENAI_API_KEY
   GEMINI_API_KEY
   OPENCODE_ZEN_API_KEY
-  GITHUB_TOKEN
   SLACK_BOT_TOKEN
   SLACK_APP_TOKEN
   SLACK_ALLOWED_USERS

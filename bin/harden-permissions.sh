@@ -63,6 +63,10 @@ fix_file "$HOME/.pi/agent/settings.json" "600"
 # Secrets
 fix_file "$HOME/.config/.env" "600"
 
+# GitHub CLI token (gh auth login stores token here)
+fix_dir "$HOME/.config/gh" "700"
+fix_file "$HOME/.config/gh/hosts.yml" "600"
+
 # SSH (should already be correct from setup.sh)
 fix_dir "$HOME/.ssh" "700"
 find "$HOME/.ssh" -name 'id_*' -not -name '*.pub' -exec chmod 600 {} + 2>/dev/null
