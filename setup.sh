@@ -4,7 +4,7 @@
 #
 # Prerequisites:
 #   - Linux (tested on Arch and Ubuntu)
-#   - Docker installed (optional — only needed for container tasks)
+#   - Docker installed
 #
 # This script:
 #   1. Creates the baudbot_agent user

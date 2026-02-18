@@ -34,7 +34,7 @@ No sandbox friction. Agents make real branches, run real tests, push real PRs. B
 | **CPU** | 2 vCPU | 4 vCPU |
 | **Disk** | 20 GB | 40 GB+ (repos, node_modules, Docker images) |
 
-The installer handles system dependencies (git, curl, tmux, iptables). Docker is optional — only needed if your agents build or run containers.
+The installer handles system dependencies (git, curl, tmux, iptables, Docker).
 
 ### Accounts
 
