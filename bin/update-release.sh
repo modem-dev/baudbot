@@ -256,6 +256,9 @@ publish_release() {
   if [ -d "$RELEASE_DIR" ]; then
     log "release already exists: $RELEASE_DIR"
     verify_git_free_release "$RELEASE_DIR" || die "existing release contains .git: $RELEASE_DIR"
+    # Ensure the top-level release directory is traversable by non-root users
+    # so /usr/local/bin/baudbot remains discoverable on PATH.
+    chmod a+rx "$RELEASE_DIR" 2>/dev/null || true
     return 0
   fi
 
@@ -276,6 +279,10 @@ publish_release() {
   # Release snapshots are immutable artifacts (files read-only).
   # Keep directories writable for release pruning/cleanup workflows.
   find "$STAGING_DIR" -type f -exec chmod a-w {} +
+
+  # Ensure release root is traversable by non-root users so the global
+  # /usr/local/bin/baudbot symlink can be resolved from PATH.
+  chmod a+rx "$STAGING_DIR"
 
   mv "$STAGING_DIR" "$RELEASE_DIR"
   STAGING_DIR=""
