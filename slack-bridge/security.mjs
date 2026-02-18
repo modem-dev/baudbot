@@ -39,6 +39,7 @@ export function wrapExternalContent({ text, source, user, channel, threadTs }) {
     From: `<@${user}>`,
     Channel: `<#${channel}>`,
     ...(threadTs ? { Thread: threadTs } : {}),
+    ...(source && source !== "Slack" ? { "Source-Detail": source } : {}),
   };
 
   return _wrapExternalContent({
