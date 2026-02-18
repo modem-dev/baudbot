@@ -5,10 +5,10 @@
  * but we can extract and test the pure functions: file reading, config
  * resolution, backoff computation, and env var handling.
  *
- * Run: node --test pi/extensions/heartbeat.test.mjs
+ * Run: npx vitest run pi/extensions/heartbeat.test.mjs
  */
 
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

@@ -128,17 +128,20 @@ tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 ## Running Tests
 
 ```bash
-# All tests (10 suites)
-bin/test.sh
+# All tests (unified Vitest runner)
+npm test
 
 # Only JS/TS tests
-bin/test.sh js
+npm run test:js
 
-# Only shell tests
-bin/test.sh shell
+# Only shell/security script tests
+npm run test:shell
+
+# JS/TS coverage
+npm run test:coverage
 ```
 
-Add new test files to `bin/test.sh` — don't scatter test invocations across CI or docs.
+Add new test files to `vitest.config.mjs` (and shell wrappers under `test/` as needed) — don't scatter test invocations across CI or docs.
 
 ## Conventions
 

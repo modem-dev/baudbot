@@ -1,11 +1,11 @@
 /**
  * Control plane server tests.
  *
- * Uses Node's built-in test runner. Run with:
- *   node --test server.test.mjs
+ * Run with Vitest:
+ *   npx vitest run control-plane/server.test.mjs
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "vitest";
 import assert from "node:assert/strict";
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -28,9 +28,14 @@ async function startServer({ token, port } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+  });
+
   // Wait for server to be ready
   await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("server start timeout")), 5000);
+    const timeout = setTimeout(() => reject(new Error(`server start timeout${stderr ? `: ${stderr.trim()}` : ""}`)), 5000);
     child.stdout.on("data", (chunk) => {
       if (chunk.toString().includes("listening")) {
         clearTimeout(timeout);
@@ -40,6 +45,10 @@ async function startServer({ token, port } = {}) {
     child.on("error", (err) => {
       clearTimeout(timeout);
       reject(err);
+    });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`server exited before ready (code=${code}, signal=${signal})${stderr ? `: ${stderr.trim()}` : ""}`));
     });
   });
 
@@ -61,10 +70,10 @@ async function startServer({ token, port } = {}) {
 describe("control-plane (no auth)", () => {
   let server;
 
-  before(async () => {
+  beforeAll(async () => {
     server = await startServer();
   });
-  after(() => server?.close());
+  afterAll(() => server?.close());
 
   it("GET /health returns 200", async () => {
     const res = await server.fetch("/health");
@@ -128,10 +137,10 @@ describe("control-plane (with auth)", () => {
   let server;
   const TOKEN = "test-token-abc123";
 
-  before(async () => {
+  beforeAll(async () => {
     server = await startServer({ token: TOKEN });
   });
-  after(() => server?.close());
+  afterAll(() => server?.close());
 
   it("GET /health works without auth", async () => {
     const res = await server.fetch("/health");
