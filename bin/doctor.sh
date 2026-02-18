@@ -69,7 +69,7 @@ else
 fi
 
 if command -v gh &>/dev/null; then
-  if sudo -u baudbot_agent gh auth status &>/dev/null 2>&1; then
+  if sudo -u baudbot_agent gh auth status &>/dev/null; then
     pass "gh cli authenticated"
   else
     warn "gh cli installed but not authenticated (run: sudo -u baudbot_agent gh auth login)"
