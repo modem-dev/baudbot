@@ -33,6 +33,48 @@ umask 077
 # Redact any secrets that leaked into session logs
 ~/runtime/bin/redact-logs.sh 2>/dev/null || true
 
+# Clean stale session sockets from previous runs
+SOCKET_DIR="$HOME/.pi/session-control"
+if [ -d "$SOCKET_DIR" ]; then
+  echo "Cleaning stale session sockets..."
+  if command -v fuser &>/dev/null; then
+    for sock in "$SOCKET_DIR"/*.sock; do
+      [ -e "$sock" ] || continue
+      # If no process has the socket open, it's stale
+      if ! fuser "$sock" &>/dev/null 2>&1; then
+        rm -f "$sock"
+      fi
+    done
+  else
+    echo "  fuser not found, skipping socket cleanup (install psmisc)"
+  fi
+  # Clean broken alias symlinks
+  for alias in "$SOCKET_DIR"/*.alias; do
+    [ -L "$alias" ] || continue
+    target=$(readlink "$alias")
+    if [ ! -e "$SOCKET_DIR/$target" ] && [ ! -e "$target" ]; then
+      rm -f "$alias"
+    fi
+  done
+fi
+
+# Start Slack bridge in the background (before pi, so it's ready for messages).
+# The bridge resolves the pi session socket lazily — it will wait for the
+# control-agent to come up and create its socket before forwarding messages.
+if [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
+  # Kill any existing bridge
+  tmux kill-session -t slack-bridge 2>/dev/null || true
+  echo "Starting Slack bridge..."
+  tmux new-session -d -s slack-bridge \
+    "export PATH=$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
+     cd ~/runtime/slack-bridge && \
+     while true; do \
+       varlock run --path ~/.config/ -- node bridge.mjs; \
+       echo '⚠️  Bridge exited (\$?), restarting in 5s...'; \
+       sleep 5; \
+     done"
+fi
+
 # Set session name (read by auto-name.ts extension)
 export PI_SESSION_NAME="control-agent"
 

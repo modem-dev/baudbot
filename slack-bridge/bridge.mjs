@@ -188,15 +188,20 @@ const app = new App({
   socketMode: true,
 });
 
-let socketPath = findSessionSocket(process.env.PI_SESSION_ID);
-console.log(`🔌 Using pi session socket: ${socketPath}`);
+let socketPath = null;
+try {
+  socketPath = findSessionSocket(process.env.PI_SESSION_ID);
+  console.log(`🔌 Using pi session socket: ${socketPath}`);
+} catch {
+  console.log(`⏳ No pi session socket found yet — will resolve when first message arrives`);
+}
 
 /** Re-resolve the socket path (handles session restarts). */
 function refreshSocket() {
   try {
     socketPath = findSessionSocket(process.env.PI_SESSION_ID);
   } catch {
-    // keep current — will fail on next send with a clear error
+    socketPath = null;
   }
 }
 
@@ -233,6 +238,15 @@ async function handleMessage(userMessage, event, say) {
   } catch {}
 
   try {
+    // Always re-resolve the socket before sending (handles agent restarts).
+    // Capture into a local to avoid TOCTOU with concurrent handleMessage calls.
+    refreshSocket();
+    const currentSocket = socketPath;
+    if (!currentSocket) {
+      await say({ text: "⏳ Agent is starting up — try again in a moment.", thread_ts: event.ts });
+      return;
+    }
+
     // Wrap the message with security boundaries before sending to agent
     const contextMessage = wrapExternalContent({
       text: userMessage,
@@ -242,7 +256,7 @@ async function handleMessage(userMessage, event, say) {
       threadTs: event.ts,
     });
 
-    const reply = await enqueue(() => sendToAgent(socketPath, contextMessage));
+    const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
     const formatted = formatForSlack(reply);
     await say({ text: formatted, thread_ts: event.ts });
 
@@ -263,7 +277,7 @@ async function handleMessage(userMessage, event, say) {
     } catch {}
   } catch (err) {
     console.error("Error:", err.message);
-    refreshSocket(); // try to reconnect on next message
+    refreshSocket();
     await say({ text: `❌ Error: ${err.message}`, thread_ts: event.ts });
   }
 }
@@ -299,8 +313,15 @@ app.event("message", async ({ event, say }) => {
       threadTs: event.ts,
     });
     try {
+      // Re-resolve socket before sending (capture local to avoid TOCTOU)
+      refreshSocket();
+      const currentSocket = socketPath;
+      if (!currentSocket) {
+        console.log("⏳ Sentry alert dropped — agent not ready yet");
+        return;
+      }
       // Fire and forget — don't wait for agent response, don't reply in channel
-      await enqueue(() => sendToAgent(socketPath, contextMessage));
+      await enqueue(() => sendToAgent(currentSocket, contextMessage));
     } catch (err) {
       console.error("Sentry alert forward error:", err.message);
       refreshSocket();
