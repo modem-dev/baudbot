@@ -21,7 +21,7 @@
 
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, readlinkSync, existsSync, readdirSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import express from "express";
@@ -252,6 +252,81 @@ app.get("/status", (_req, res) => {
 app.get("/config", (_req, res) => {
   const config = getConfig();
   res.json(config);
+});
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+
+/** Require auth token for all POST actions (even if GET routes are open). */
+function requireToken(req, res) {
+  if (!TOKEN) {
+    res.status(403).json({ error: "No BAUDBOT_CP_TOKEN configured — POST actions disabled" });
+    return false;
+  }
+  const auth = req.headers.authorization || "";
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match || !tokenMatches(match[1])) {
+    res.status(401).json({ error: "unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+app.post("/restart-bridge", (req, res) => {
+  if (!requireToken(req, res)) return;
+  try {
+    // Kill existing bridge
+    run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t slack-bridge 2>/dev/null`);
+
+    // Find the control-agent socket UUID
+    const aliasPath = join(AGENT_HOME, ".pi", "session-control", "control-agent.alias");
+    let uuid = null;
+    try {
+      const target = readlinkSync(aliasPath);
+      uuid = target.replace(".sock", "");
+    } catch {}
+
+    if (!uuid) {
+      return res.json({ ok: false, error: "Could not find control-agent socket UUID" });
+    }
+
+    // Start bridge in tmux
+    const cmd = `sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux new-session -d -s slack-bridge "export PATH=${AGENT_HOME}/.varlock/bin:${AGENT_HOME}/opt/node-v22.14.0-linux-x64/bin:\\$PATH && export PI_SESSION_ID=${uuid} && cd ${AGENT_HOME}/runtime/slack-bridge && exec varlock run --path ${AGENT_HOME}/.config/ -- node bridge.mjs"`;
+    run(cmd, 10000);
+    res.json({ ok: true, action: "restart-bridge", uuid });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/kill-session/:name", (req, res) => {
+  if (!requireToken(req, res)) return;
+  const name = req.params.name;
+  // Validate session name (alphanumeric, hyphens, underscores only)
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+    return res.status(400).json({ error: "Invalid session name" });
+  }
+  try {
+    const result = run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t ${name} 2>&1`);
+    res.json({ ok: true, action: "kill-session", session: name, output: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/deploy", (req, res) => {
+  if (!requireToken(req, res)) return;
+  try {
+    // deploy.sh runs as the current (admin) user
+    const srcDir = run("dirname $(dirname $(readlink -f /proc/self/exe || echo /usr/local/bin/baudbot))") || join(process.env.HOME || "/root", "baudbot");
+    const deployScript = join(srcDir, "bin", "deploy.sh");
+    if (!existsSync(deployScript)) {
+      return res.status(404).json({ ok: false, error: `deploy.sh not found at ${deployScript}` });
+    }
+    const output = run(`bash ${deployScript} 2>&1`, 30000);
+    res.json({ ok: true, action: "deploy", output });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
