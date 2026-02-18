@@ -232,6 +232,77 @@ else
   fi
 fi
 
+# ── Runtime Health ────────────────────────────────────────────────────────────
+
+echo ""
+echo "Runtime health:"
+
+# Slack bridge
+if curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null | grep -q "400"; then
+  pass "slack bridge responding (port 7890)"
+else
+  warn "slack bridge not responding on port 7890"
+fi
+
+# Disk usage
+DISK_PCT=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+if [ -n "$DISK_PCT" ]; then
+  if [ "$DISK_PCT" -ge 90 ]; then
+    fail "disk usage at ${DISK_PCT}% (critical)"
+  elif [ "$DISK_PCT" -ge 80 ]; then
+    warn "disk usage at ${DISK_PCT}%"
+  else
+    pass "disk usage at ${DISK_PCT}%"
+  fi
+fi
+
+# Stale session sockets
+SOCKET_DIR="$AGENT_HOME/.pi/session-control"
+if [ -d "$SOCKET_DIR" ]; then
+  STALE_SOCKS=0
+  if command -v fuser &>/dev/null; then
+    for sock in "$SOCKET_DIR"/*.sock; do
+      [ -e "$sock" ] || continue
+      if ! fuser "$sock" &>/dev/null 2>&1; then
+        STALE_SOCKS=$((STALE_SOCKS + 1))
+      fi
+    done
+  fi
+  if [ "$STALE_SOCKS" -gt 0 ]; then
+    warn "$STALE_SOCKS stale session socket(s) in $SOCKET_DIR"
+  else
+    pass "no stale session sockets"
+  fi
+fi
+
+# Orphaned worktrees
+WORKTREE_DIR="$AGENT_HOME/workspace/worktrees"
+if [ -d "$WORKTREE_DIR" ]; then
+  ORPHANS=0
+  for wt in "$WORKTREE_DIR"/*/; do
+    [ -d "$wt" ] || continue
+    ORPHANS=$((ORPHANS + 1))
+  done
+  if [ "$ORPHANS" -gt 5 ]; then
+    warn "$ORPHANS worktrees in $WORKTREE_DIR (consider cleanup)"
+  elif [ "$ORPHANS" -gt 0 ]; then
+    pass "$ORPHANS active worktree(s)"
+  fi
+fi
+
+# Session log size
+if [ -d "$AGENT_HOME/.pi/agent/sessions" ]; then
+  LOG_SIZE_KB=$(du -sk "$AGENT_HOME/.pi/agent/sessions" 2>/dev/null | cut -f1)
+  if [ -n "$LOG_SIZE_KB" ]; then
+    LOG_SIZE_MB=$((LOG_SIZE_KB / 1024))
+    if [ "$LOG_SIZE_MB" -ge 500 ]; then
+      warn "session logs total ${LOG_SIZE_MB}MB (consider pruning)"
+    else
+      pass "session logs total ${LOG_SIZE_MB}MB"
+    fi
+  fi
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 echo ""
