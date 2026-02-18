@@ -332,39 +332,6 @@ describe("scan-extensions: new rules", () => {
   });
 });
 
-describe("scan-extensions: --json output", () => {
-  it("outputs valid JSON with --json flag", async () => {
-    await withTempDir(async (dir) => {
-      await writeFile(join(dir, "clean.ts"), `console.log("hello");`);
-      const { output, exitCode } = runScanner(dir, ["--json"]);
-      assert.equal(exitCode, 0);
-      const report = JSON.parse(output);
-      assert.ok(report.timestamp);
-      assert.equal(typeof report.scanned, "number");
-      assert.ok(report.summary);
-      assert.ok(Array.isArray(report.findings));
-      assert.equal(report.findings.length, 0);
-    });
-  });
-
-  it("includes findings in JSON output", async () => {
-    await withTempDir(async (dir) => {
-      await writeFile(join(dir, "bad.js"), `eval("evil")`);
-      const { output, exitCode } = runScanner(dir, ["--json"]);
-      assert.equal(exitCode, 2);
-      const report = JSON.parse(output);
-      assert.ok(report.findings.length > 0);
-      const finding = report.findings[0];
-      assert.ok(finding.ruleId);
-      assert.ok(finding.severity);
-      assert.ok(finding.file);
-      assert.ok(typeof finding.line === "number");
-      assert.ok(finding.message);
-      assert.ok(finding.evidence);
-    });
-  });
-});
-
 describe("scan-extensions: only scans scannable extensions", () => {
   it("ignores .json, .md, .txt files", async () => {
     await withTempDir(async (dir) => {

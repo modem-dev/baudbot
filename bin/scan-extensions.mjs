@@ -15,7 +15,7 @@
  *
  * Ported from OpenClaw's skill-scanner.ts.
  *
- * Usage: node scan-extensions.mjs [--json] [dir1] [dir2] ...
+ * Usage: node scan-extensions.mjs [dir1] [dir2] ...
  *        Defaults to ~/baudbot/pi/extensions ~/baudbot/pi/skills
  */
 
@@ -140,14 +140,12 @@ const SOURCE_RULES = [
 
 // ── Scanner ─────────────────────────────────────────────────────────────────
 
-export function truncateEvidence(evidence, maxLen = 120) {
+function truncateEvidence(evidence, maxLen = 120) {
   if (evidence.length <= maxLen) return evidence;
   return evidence.slice(0, maxLen) + "…";
 }
 
-export { LINE_RULES, SOURCE_RULES, SCANNABLE_EXTENSIONS, STANDARD_PORTS };
-
-export function scanSource(source, filePath) {
+function scanSource(source, filePath) {
   const findings = [];
   const lines = source.split("\n");
   const matchedLineRules = new Set();
@@ -277,9 +275,7 @@ const SEVERITY_ORDER = { critical: 0, warn: 1, info: 2 };
 
 async function main() {
   const home = homedir();
-  const args = process.argv.slice(2);
-  const jsonOutput = args.includes("--json");
-  const dirs = args.filter((a) => !a.startsWith("--"));
+  const dirs = process.argv.slice(2);
   if (dirs.length === 0) {
     dirs.push(join(home, "baudbot/pi/extensions"), join(home, "baudbot/pi/skills"));
   }
@@ -289,20 +285,18 @@ async function main() {
   let totalWarn = 0;
   const allFindings = [];
 
-  if (!jsonOutput) {
-    console.log("");
-    console.log("🔍 Extension & Skill Scanner");
-    console.log("============================");
-  }
+  console.log("");
+  console.log("🔍 Extension & Skill Scanner");
+  console.log("============================");
 
   for (const dir of dirs) {
     const resolved = resolve(dir);
-    if (!jsonOutput) console.log(`\nScanning: ${resolved}`);
+    console.log(`\nScanning: ${resolved}`);
 
     try {
       await stat(resolved);
     } catch {
-      if (!jsonOutput) console.log("  (directory not found, skipping)");
+      console.log("  (directory not found, skipping)");
       continue;
     }
 
@@ -310,24 +304,18 @@ async function main() {
     totalScanned += scanned;
     allFindings.push(...findings);
 
-    if (!jsonOutput) {
-      if (findings.length === 0) {
-        console.log(`  ✅ ${scanned} files scanned, no findings`);
-      } else {
-        console.log(`  ${scanned} files scanned, ${findings.length} finding(s):`);
-      }
-    }
-    if (findings.length > 0) {
+    if (findings.length === 0) {
+      console.log(`  ✅ ${scanned} files scanned, no findings`);
+    } else {
+      console.log(`  ${scanned} files scanned, ${findings.length} finding(s):`);
       // Sort by severity
       findings.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 2) - (SEVERITY_ORDER[b.severity] ?? 2));
       for (const f of findings) {
-        if (!jsonOutput) {
-          const icon = SEVERITY_ICONS[f.severity] ?? "?";
-          const relPath = relative(resolved, f.file);
-          console.log(`  ${icon} ${f.severity.toUpperCase()}: ${f.message}`);
-          console.log(`     ${relPath}:${f.line}`);
-          console.log(`     ${f.evidence}`);
-        }
+        const icon = SEVERITY_ICONS[f.severity] ?? "?";
+        const relPath = relative(resolved, f.file);
+        console.log(`  ${icon} ${f.severity.toUpperCase()}: ${f.message}`);
+        console.log(`     ${relPath}:${f.line}`);
+        console.log(`     ${f.evidence}`);
         if (f.severity === "critical") totalCritical++;
         if (f.severity === "warn") totalWarn++;
       }
@@ -336,36 +324,24 @@ async function main() {
 
   const totalInfo = allFindings.filter((f) => f.severity === "info").length;
 
-  if (jsonOutput) {
-    const report = {
-      timestamp: new Date().toISOString(),
-      scanned: totalScanned,
-      summary: { critical: totalCritical, warn: totalWarn, info: totalInfo },
-      findings: allFindings,
-    };
-    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-  } else {
-    console.log("");
-    console.log("Summary");
-    console.log("───────");
-    console.log(`  Files scanned: ${totalScanned}`);
-    console.log(`  ❌ Critical:   ${totalCritical}`);
-    console.log(`  ⚠️  Warn:       ${totalWarn}`);
-    if (totalInfo > 0) console.log(`  ℹ️  Info:       ${totalInfo}`);
-    console.log("");
-  }
+  console.log("");
+  console.log("Summary");
+  console.log("───────");
+  console.log(`  Files scanned: ${totalScanned}`);
+  console.log(`  ❌ Critical:   ${totalCritical}`);
+  console.log(`  ⚠️  Warn:       ${totalWarn}`);
+  if (totalInfo > 0) console.log(`  ℹ️  Info:       ${totalInfo}`);
+  console.log("");
 
   if (totalCritical > 0) {
-    if (!jsonOutput) console.log(`🚨 ${totalCritical} critical finding(s) — review immediately!`);
+    console.log(`🚨 ${totalCritical} critical finding(s) — review immediately!`);
     process.exit(2);
   } else if (totalWarn > 0) {
-    if (!jsonOutput) console.log(`⚠️  ${totalWarn} warning(s) — review recommended.`);
+    console.log(`⚠️  ${totalWarn} warning(s) — review recommended.`);
     process.exit(1);
   } else {
-    if (!jsonOutput) {
-      if (totalInfo > 0) console.log(`ℹ️  ${totalInfo} info finding(s) — no action required.`);
-      else console.log("✅ All clean.");
-    }
+    if (totalInfo > 0) console.log(`ℹ️  ${totalInfo} info finding(s) — no action required.`);
+    else console.log("✅ All clean.");
     process.exit(0);
   }
 }
