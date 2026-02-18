@@ -22,7 +22,7 @@
 
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, openSync, readSync, closeSync, existsSync, readdirSync, statSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import express from "express";
@@ -346,10 +346,14 @@ function getRecentLogs({ session, lines = 50, messagesOnly = true } = {}) {
 function listSessions() {
   const files = findSessionFiles();
   return files.slice(0, 20).map((f) => {
-    // Parse session name from first line
+    // Read only the first line (small buffer) to avoid loading multi-MB files
     let sessionName = null;
     try {
-      const firstLine = readFileSync(f.path, "utf8").split("\n")[0];
+      const fd = openSync(f.path, "r");
+      const buf = Buffer.alloc(4096);
+      const bytesRead = readSync(fd, buf, 0, 4096, 0);
+      closeSync(fd);
+      const firstLine = buf.toString("utf8", 0, bytesRead).split("\n")[0];
       const parsed = JSON.parse(firstLine);
       if (parsed.type === "session") {
         sessionName = parsed.name || parsed.id;
@@ -424,7 +428,7 @@ app.get("/config", (_req, res) => {
 
 app.get("/logs", (req, res) => {
   const session = req.query.session || undefined;
-  const lines = Math.min(parseInt(req.query.lines || "50", 10), 500);
+  const lines = Math.min(parseInt(req.query.lines, 10) || 50, 500);
   const entries = getRecentLogs({ session, lines });
   res.json({ entries, count: entries.length });
 });
@@ -439,7 +443,7 @@ app.get("/sessions", (_req, res) => {
 app.get("/", (_req, res) => res.redirect("/dashboard"));
 
 app.get("/dashboard", (req, res) => {
-  const tab = req.query.tab || "status";
+  const tab = ["status", "logs"].includes(req.query.tab) ? req.query.tab : "status";
   const agent = getAgentStatus();
   const sessions = getPiSessionDetails();
   const system = getSystemInfo();
