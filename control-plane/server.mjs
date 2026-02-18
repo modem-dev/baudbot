@@ -273,29 +273,29 @@ function requireToken(req, res) {
 
 app.post("/restart-bridge", (req, res) => {
   if (!requireToken(req, res)) return;
+  // Kill existing bridge (ignore failure — may not be running)
+  run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t slack-bridge 2>/dev/null`);
+
+  // Find the control-agent socket UUID
+  const aliasPath = join(AGENT_HOME, ".pi", "session-control", "control-agent.alias");
+  let uuid = null;
   try {
-    // Kill existing bridge
-    run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t slack-bridge 2>/dev/null`);
+    const target = readlinkSync(aliasPath);
+    uuid = target.replace(".sock", "");
+  } catch {}
 
-    // Find the control-agent socket UUID
-    const aliasPath = join(AGENT_HOME, ".pi", "session-control", "control-agent.alias");
-    let uuid = null;
-    try {
-      const target = readlinkSync(aliasPath);
-      uuid = target.replace(".sock", "");
-    } catch {}
-
-    if (!uuid) {
-      return res.json({ ok: false, error: "Could not find control-agent socket UUID" });
-    }
-
-    // Start bridge in tmux
-    const cmd = `sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux new-session -d -s slack-bridge "export PATH=${AGENT_HOME}/.varlock/bin:${AGENT_HOME}/opt/node-v22.14.0-linux-x64/bin:\\$PATH && export PI_SESSION_ID=${uuid} && cd ${AGENT_HOME}/runtime/slack-bridge && exec varlock run --path ${AGENT_HOME}/.config/ -- node bridge.mjs"`;
-    run(cmd, 10000);
-    res.json({ ok: true, action: "restart-bridge", uuid });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+  // Validate UUID format to prevent shell injection from agent-controlled symlink
+  if (!uuid || !/^[a-f0-9-]+$/i.test(uuid)) {
+    return res.status(500).json({ ok: false, error: "Could not find valid control-agent socket UUID" });
   }
+
+  // Start bridge in tmux
+  const cmd = `sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux new-session -d -s slack-bridge "export PATH=${AGENT_HOME}/.varlock/bin:${AGENT_HOME}/opt/node-v22.14.0-linux-x64/bin:\\$PATH && export PI_SESSION_ID=${uuid} && cd ${AGENT_HOME}/runtime/slack-bridge && exec varlock run --path ${AGENT_HOME}/.config/ -- node bridge.mjs"`;
+  const result = run(cmd, 10000);
+  if (result === null) {
+    return res.status(500).json({ ok: false, error: "tmux new-session failed" });
+  }
+  res.json({ ok: true, action: "restart-bridge", uuid });
 });
 
 app.post("/kill-session/:name", (req, res) => {
@@ -305,28 +305,26 @@ app.post("/kill-session/:name", (req, res) => {
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     return res.status(400).json({ error: "Invalid session name" });
   }
-  try {
-    const result = run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t ${name} 2>&1`);
-    res.json({ ok: true, action: "kill-session", session: name, output: result });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+  const result = run(`sudo -u ${AGENT_USER} env TMUX_TMPDIR=${AGENT_HOME}/.tmux-sock tmux kill-session -t ${name} 2>&1`);
+  if (result === null) {
+    return res.status(500).json({ ok: false, error: `Failed to kill session '${name}' (may not exist)` });
   }
+  res.json({ ok: true, action: "kill-session", session: name, output: result });
 });
 
 app.post("/deploy", (req, res) => {
   if (!requireToken(req, res)) return;
-  try {
-    // deploy.sh runs as the current (admin) user
-    const srcDir = run("dirname $(dirname $(readlink -f /proc/self/exe || echo /usr/local/bin/baudbot))") || join(process.env.HOME || "/root", "baudbot");
-    const deployScript = join(srcDir, "bin", "deploy.sh");
-    if (!existsSync(deployScript)) {
-      return res.status(404).json({ ok: false, error: `deploy.sh not found at ${deployScript}` });
-    }
-    const output = run(`bash ${deployScript} 2>&1`, 30000);
-    res.json({ ok: true, action: "deploy", output });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+  // Use BAUDBOT_SRC or fall back to ~/baudbot
+  const srcDir = process.env.BAUDBOT_SRC || join(process.env.HOME || "/root", "baudbot");
+  const deployScript = join(srcDir, "bin", "deploy.sh");
+  if (!existsSync(deployScript)) {
+    return res.status(404).json({ ok: false, error: `deploy.sh not found at ${deployScript}` });
   }
+  const output = run(`bash ${deployScript} 2>&1`, 30000);
+  if (output === null) {
+    return res.status(500).json({ ok: false, error: "deploy.sh failed (non-zero exit or timeout)" });
+  }
+  res.json({ ok: true, action: "deploy", output });
 });
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
