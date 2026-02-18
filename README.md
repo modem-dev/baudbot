@@ -43,7 +43,7 @@ You need three things before running the installer:
 | Account | What for | Where to sign up |
 |---------|----------|-----------------|
 | **LLM provider** | Powers the agent (set at least one) | [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Gemini](https://aistudio.google.com/apikey), or [OpenCode Zen](https://opencode.ai) |
-| **GitHub** | Branches, commits, PRs | [github.com/settings/tokens](https://github.com/settings/tokens) — fine-grained PAT with `contents:write`, `pull_requests:write`, `issues:write` |
+| **GitHub** | Branches, commits, PRs | Create an account, then authenticate with `gh auth login` on the agent |
 | **Slack app** | Primary human ↔ agent interface | See [Slack app setup](#slack-app-setup) below |
 
 Setup generates an SSH key for the agent — you'll add the public key to the GitHub account.
