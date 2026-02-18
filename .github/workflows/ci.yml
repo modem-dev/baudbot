@@ -67,11 +67,16 @@ jobs:
         run: |
           # Scan the repo and compare against the audited baseline.
           # Fails if any NEW secrets are found that aren't in the baseline.
+          # Exclusion patterns match .detect-secrets.cfg and baseline filters.
           detect-secrets scan \
             --baseline .secrets.baseline \
             --exclude-files 'node_modules/.*' \
             --exclude-files '\.git/.*' \
-            --exclude-files 'package-lock\.json'
+            --exclude-files 'package-lock\.json' \
+            --exclude-files '.*\.test\.(mjs|sh)$' \
+            --exclude-files '(^|/)coverage/' \
+            --exclude-files '(^|/)\.c8_output/' \
+            --exclude-files '(^|/)bin/ci/'
 
           # Verify no unaudited secrets remain
           if detect-secrets audit --report --baseline .secrets.baseline 2>&1 | grep -q 'Unaudited'; then
