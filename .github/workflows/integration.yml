@@ -12,7 +12,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-scope:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.check.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect docs-only changes
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BASE="${{ github.event.before }}"
+          else
+            BASE="${{ github.event.pull_request.base.sha }}"
+          fi
+
+          CHANGED="$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "UNKNOWN")"
+          if [ "$CHANGED" = "UNKNOWN" ] || [ -z "$CHANGED" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          docs_only=true
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            case "$path" in
+              docs/*|*.md|*.mdx|LICENSE)
+                continue
+                ;;
+              *)
+                docs_only=false
+                break
+                ;;
+            esac
+          done <<< "$CHANGED"
+
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   integration:
+    needs: [docs-scope]
+    if: needs.docs-scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
