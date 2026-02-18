@@ -2,8 +2,10 @@
 *.key
 *.pem
 node_modules/
-node_modules/
 # Slack bridge
 slack-bridge/node_modules/
 slack-bridge/.env
 .pi/
+# Coverage
+coverage/
+.c8_output/

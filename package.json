@@ -6,6 +6,7 @@
     "test": "bin/test.sh",
     "test:js": "bin/test.sh js",
     "test:shell": "bin/test.sh shell",
+    "test:coverage": "bin/test.sh coverage",
     "lint": "biome lint",
     "lint:fix": "biome lint --write --unsafe",
     "typecheck": "tsc --noEmit"
@@ -16,6 +17,7 @@
     "@onkernel/sdk": "^0.33.0",
     "@sinclair/typebox": "^0.34.48",
     "agentmail": "^0.2.15",
+    "c8": "^10.1.3",
     "typescript": "^5.9.3"
   }
 }

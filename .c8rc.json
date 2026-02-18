@@ -1,0 +1,19 @@
+{
+  "all": false,
+  "include": [
+    "lib/**/*.mjs",
+    "slack-bridge/security.mjs",
+    "control-plane/server.mjs",
+    "bin/scan-extensions.mjs"
+  ],
+  "exclude": [
+    "**/*.test.mjs",
+    "**/node_modules/**"
+  ],
+  "reporter": ["text", "lcov"],
+  "check-coverage": true,
+  "lines": 50,
+  "functions": 50,
+  "branches": 40,
+  "statements": 50
+}

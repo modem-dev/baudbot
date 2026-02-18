@@ -2,9 +2,10 @@
 # Run all Baudbot tests. Exit code reflects overall pass/fail.
 #
 # Usage:
-#   bin/test.sh           # run all tests
-#   bin/test.sh js        # only JS/TS tests
-#   bin/test.sh shell     # only shell tests
+#   bin/test.sh                # run all tests
+#   bin/test.sh js             # only JS/TS tests
+#   bin/test.sh shell          # only shell tests
+#   bin/test.sh coverage       # JS tests with coverage report + thresholds
 #
 # Add new test files here — don't scatter test invocations across CI/docs.
 
@@ -43,25 +44,64 @@ run() {
   fi
 }
 
-echo "=== Baudbot Tests ==="
-echo ""
+# ── JS test file list (used for both normal runs and coverage) ───────────
+JS_TEST_FILES=(
+  pi/extensions/tool-guard.test.mjs
+  pi/extensions/heartbeat.test.mjs
+  pi/extensions/memory.test.mjs
+  slack-bridge/security.test.mjs
+  bin/scan-extensions.test.mjs
+  control-plane/server.test.mjs
+)
 
-if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
+JS_TEST_NAMES=(
+  "tool-guard"
+  "heartbeat"
+  "memory"
+  "bridge security"
+  "extension scanner"
+  "control-plane"
+)
+
+run_js_tests() {
   echo "JS/TS:"
-  run "tool-guard"        node --test pi/extensions/tool-guard.test.mjs
-  run "heartbeat"         node --test pi/extensions/heartbeat.test.mjs
-  run "memory"            node --test pi/extensions/memory.test.mjs
-  run "bridge security"   node --test slack-bridge/security.test.mjs
-  run "extension scanner" node --test bin/scan-extensions.test.mjs
-  run "control-plane"     node --test control-plane/server.test.mjs
+  for i in "${!JS_TEST_FILES[@]}"; do
+    run "${JS_TEST_NAMES[$i]}" node --test "${JS_TEST_FILES[$i]}"
+  done
   echo ""
-fi
+}
 
-if [ "$FILTER" = "all" ] || [ "$FILTER" = "shell" ]; then
+run_shell_tests() {
   echo "Shell:"
   run "safe-bash wrapper" bash bin/baudbot-safe-bash.test.sh
   run "log redaction"     bash bin/redact-logs.test.sh
   echo ""
+}
+
+# ── Coverage mode ────────────────────────────────────────────────────────
+if [ "$FILTER" = "coverage" ]; then
+  echo "=== Baudbot Tests (with coverage) ==="
+  echo ""
+
+  if ! command -v npx &>/dev/null; then
+    echo "Error: npx not found — install Node.js" >&2
+    exit 1
+  fi
+
+  npx c8 node --test "${JS_TEST_FILES[@]}"
+  exit $?
+fi
+
+# ── Normal mode ──────────────────────────────────────────────────────────
+echo "=== Baudbot Tests ==="
+echo ""
+
+if [ "$FILTER" = "all" ] || [ "$FILTER" = "js" ]; then
+  run_js_tests
+fi
+
+if [ "$FILTER" = "all" ] || [ "$FILTER" = "shell" ]; then
+  run_shell_tests
 fi
 
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="
