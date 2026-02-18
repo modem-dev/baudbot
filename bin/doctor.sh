@@ -275,33 +275,6 @@ if [ -d "$SOCKET_DIR" ]; then
   fi
 fi
 
-# Worktree count
-WORKTREE_DIR="$BAUDBOT_HOME/workspace/worktrees"
-if [ -d "$WORKTREE_DIR" ]; then
-  WORKTREE_COUNT=0
-  for wt in "$WORKTREE_DIR"/*/; do
-    [ -d "$wt" ] || continue
-    WORKTREE_COUNT=$((WORKTREE_COUNT + 1))
-  done
-  if [ "$WORKTREE_COUNT" -gt 5 ]; then
-    warn "$WORKTREE_COUNT worktrees in $WORKTREE_DIR (consider cleanup)"
-  elif [ "$WORKTREE_COUNT" -gt 0 ]; then
-    pass "$WORKTREE_COUNT active worktree(s)"
-  fi
-fi
-
-# Session log size
-if [ -d "$BAUDBOT_HOME/.pi/agent/sessions" ]; then
-  LOG_SIZE_KB=$(du -sk "$BAUDBOT_HOME/.pi/agent/sessions" 2>/dev/null | cut -f1)
-  if [ -n "$LOG_SIZE_KB" ]; then
-    LOG_SIZE_MB=$((LOG_SIZE_KB / 1024))
-    if [ "$LOG_SIZE_MB" -ge 500 ]; then
-      warn "session logs total ${LOG_SIZE_MB}MB (consider pruning)"
-    else
-      pass "session logs total ${LOG_SIZE_MB}MB"
-    fi
-  fi
-fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
