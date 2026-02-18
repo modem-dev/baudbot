@@ -49,8 +49,14 @@ grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" /home/baudbot_admin/.baudbot/.env
 grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" /home/baudbot_agent/.config/.env
 grep -q "SLACK_BOT_TOKEN=xoxb-test" /home/baudbot_agent/.config/.env
 grep -q "BAUDBOT_SOURCE_DIR=" /home/baudbot_agent/.config/.env
-# CLI installed
+# CLI installed and points at /opt release snapshot
 test -L /usr/local/bin/baudbot
+test -d /opt/baudbot/releases
+test -L /opt/baudbot/current
+CLI_TARGET=$(readlink -f /usr/local/bin/baudbot)
+echo "$CLI_TARGET" | grep -qE '^/opt/baudbot/releases/.+/bin/baudbot$'
+# /opt releases must be git-free
+! find /opt/baudbot/releases -type d -name .git -print -quit | grep -q .
 baudbot --version
 HELP_OUT=$(baudbot --help)
 echo "$HELP_OUT" | grep -q "baudbot"

@@ -45,19 +45,18 @@ The installer detects your distro, installs dependencies, creates the agent user
 <summary>Manual setup (without installer)</summary>
 
 ```bash
-# Creates user, firewall, permissions (run as root)
+# Creates user, firewall, /opt release layout, permissions (run as root)
 sudo bash ~/baudbot/setup.sh <admin_username>
 
 # Add secrets
-sudo -u baudbot_agent vim ~/.config/.env
+sudo baudbot config
 
-# Deploy source to agent runtime
-~/baudbot/bin/deploy.sh
+# Deploy config/source snapshot to runtime
+sudo baudbot deploy
 
 # Launch
 sudo -u baudbot_agent ~/runtime/start.sh
 ```
-
 See [CONFIGURATION.md](CONFIGURATION.md) for the full list of secrets and how to obtain them.
 </details>
 
@@ -133,10 +132,16 @@ admin_user (your account)
 │   ├── pi/extensions/               🔒 tool-guard, auto-name, etc.
 │   ├── pi/skills/                   agent skill templates
 │   ├── slack-bridge/                🔒 bridge + security module
-│   └── setup.sh / start.sh         system setup + launcher
+│   └── setup.sh / start.sh          system setup + launcher
+
+root-owned operational releases (git-free)
+├── /opt/baudbot/
+│   ├── releases/<sha>/              immutable snapshot (no .git)
+│   ├── current -> releases/<sha>    active release symlink
+│   └── previous -> releases/<sha>   previous release symlink
 
 baudbot_agent (unprivileged uid)
-├── ~/runtime/                   ← deployed copies of bin/, bridge
+├── ~/runtime/                       deployed copies used at runtime
 ├── ~/.pi/agent/
 │   ├── extensions/                  deployed extensions (read-only)
 │   ├── skills/                      agent-owned (can modify)
@@ -147,7 +152,7 @@ baudbot_agent (unprivileged uid)
 └── ~/.config/.env                   secrets (600 perms)
 ```
 
-Deploy is a one-way push: `~/baudbot/bin/deploy.sh` stages source to `/tmp`, copies as `baudbot_agent` via `sudo -u`, stamps an integrity manifest, and cleans up.
+`baudbot update` creates a temp checkout (`/tmp/baudbot-update.*`), runs preflight checks, publishes a git-free snapshot to `/opt/baudbot/releases/<sha>`, deploys runtime files, then atomically switches `/opt/baudbot/current` on success.
 
 ## Control Plane
 
@@ -175,8 +180,14 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:28800/config    # config
 ## Operations
 
 ```bash
-# Deploy after editing source
-~/baudbot/bin/deploy.sh
+# Update live bot from upstream (temp checkout -> /opt release snapshot -> deploy)
+sudo baudbot update
+
+# Roll back live bot to the previous snapshot
+sudo baudbot rollback previous
+
+# Deploy source/config from current active release
+sudo baudbot deploy
 
 # Launch agent (tmux for persistence)
 tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
@@ -198,11 +209,10 @@ sudo ~/baudbot/bin/uninstall.sh             # for real
 # Check deployed version
 sudo -u baudbot_agent cat ~/.pi/agent/baudbot-version.json
 ```
-
 ## Tests
 
 ```bash
-# All tests across 8 suites
+# All tests across 10 suites
 bin/test.sh
 
 # JS/TS only
@@ -221,7 +231,7 @@ An agent role is a skill file. Baudbot ships three but you can add more.
 
 1. Create `pi/skills/my-agent/SKILL.md` with role instructions.
 2. Add a tmux session spawn for the new agent in `pi/skills/control-agent/SKILL.md` (the control agent manages sub-agent lifecycle).
-3. Deploy: `~/baudbot/bin/deploy.sh`
+3. Deploy: `sudo baudbot deploy`
 
 See `pi/skills/dev-agent/SKILL.md` for the pattern.
 
@@ -229,7 +239,7 @@ See `pi/skills/dev-agent/SKILL.md` for the pattern.
 
 | Layer | What | Survives prompt injection? |
 |-------|------|---------------------------|
-| **Source isolation** | Source repo is admin-owned. Agent has zero read access. Deploy is one-way. | ✅ Filesystem |
+| **Source isolation** | Source repo is admin-owned. Agent has zero read access. Live `/opt/baudbot/releases/*` snapshots are git-free immutable artifacts. | ✅ Filesystem |
 | **iptables egress** | Per-UID port allowlist (80/443/22/53 + DB ports). Blocks non-standard ports, listeners, raw sockets. | ✅ Kernel |
 | **Process isolation** | `/proc` mounted `hidepid=2`. Agent can't see other PIDs. | ✅ Kernel |
 | **File permissions** | Security-critical files deployed `chmod a-w`. Agent can't modify `tool-guard.ts`, `security.mjs`, etc. even via `sed` or `python`. | ✅ Filesystem |

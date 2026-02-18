@@ -190,10 +190,12 @@ ENV_FILE="$BAUDBOT_HOME/.config/.env"
 # config.sh handles prompting, validation, and writing to the admin config dir.
 BAUDBOT_CONFIG_USER="$ADMIN_USER" bash "$REPO_DIR/bin/config.sh"
 
-# Deploy the config (and everything else) to the agent runtime.
-# This copies ~/.baudbot/.env → agent's ~/.config/.env with correct perms.
+# Publish and deploy the initial git-free release from the local checkout.
+# This also copies ~/.baudbot/.env → agent's ~/.config/.env with correct perms.
 header "Deploy"
-BAUDBOT_CONFIG_USER="$ADMIN_USER" bash "$REPO_DIR/bin/deploy.sh"
+BOOTSTRAP_BRANCH=$(sudo -u "$ADMIN_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" \
+  bash "$REPO_DIR/bin/update-release.sh" --repo "$REPO_DIR" --branch "$BOOTSTRAP_BRANCH" --skip-preflight --skip-restart
 
 # ── Launch ───────────────────────────────────────────────────────────────────
 

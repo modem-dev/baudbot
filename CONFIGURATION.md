@@ -76,6 +76,19 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | `BAUDBOT_AGENT_HOME` | Agent's home directory | `/home/$BAUDBOT_AGENT_USER` |
 | `BAUDBOT_SOURCE_DIR` | Path to admin-owned source repo | *(empty — set this to enable source repo write protection)* |
 
+### Release Updater / Rollback (CLI env overrides)
+
+These are **command-time overrides** for `baudbot update` / `baudbot rollback` (or the underlying scripts). They are not required in `~/.config/.env`.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BAUDBOT_RELEASE_ROOT` | Root directory for git-free release snapshots | `/opt/baudbot` |
+| `BAUDBOT_RELEASES_DIR` | Release snapshot directory | `$BAUDBOT_RELEASE_ROOT/releases` |
+| `BAUDBOT_CURRENT_LINK` | Active release symlink | `$BAUDBOT_RELEASE_ROOT/current` |
+| `BAUDBOT_PREVIOUS_LINK` | Previous release symlink | `$BAUDBOT_RELEASE_ROOT/previous` |
+| `BAUDBOT_UPDATE_REPO` | Update source repo URL/path override | auto-detected / remembered |
+| `BAUDBOT_UPDATE_BRANCH` | Update source branch override | remembered / `main` |
+
 ### Control Plane
 
 The control plane runs as the admin user, not `baudbot_agent`. These env vars are for the admin's environment.
@@ -151,9 +164,9 @@ BAUDBOT_SOURCE_DIR=/home/your_username/baudbot
 After editing `~/.config/.env`:
 
 ```bash
-# Restart the agent to pick up changes
-sudo -u baudbot_agent pkill -u baudbot_agent
-sudo -u baudbot_agent ~/runtime/start.sh
+# Re-deploy config and restart cleanly
+sudo baudbot deploy
+sudo baudbot restart
 ```
 
 The bridge and all sub-agents load `~/.config/.env` on startup. If varlock is installed, variables are validated against `.env.schema` before injection.

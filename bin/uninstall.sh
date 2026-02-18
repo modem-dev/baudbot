@@ -196,6 +196,14 @@ else
   skipped "/usr/local/bin/baudbot (not found)"
 fi
 
+echo "=== Removing /opt release snapshots ==="
+if [ -d /opt/baudbot ]; then
+  run rm -rf /opt/baudbot
+  removed "/opt/baudbot releases"
+else
+  skipped "/opt/baudbot (not found)"
+fi
+
 echo "=== Removing sudoers ==="
 if [ -f /etc/sudoers.d/baudbot-agent ]; then
   run rm -f /etc/sudoers.d/baudbot-agent

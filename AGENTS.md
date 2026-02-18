@@ -7,7 +7,9 @@ Baudbot is hardened infrastructure for running always-on AI agents. Source is ad
 ```
 bin/                        security & operations scripts
   baudbot                   CLI (attach, sessions, update, deploy)
-  deploy.sh                 stages source → /tmp → agent runtime (run as admin)
+  deploy.sh                 deploys a prepared source tree → agent runtime
+  update-release.sh         temp checkout → git-free /opt release snapshot → deploy
+  rollback-release.sh       rollback to previous or specified /opt release snapshot
   security-audit.sh         security posture audit
   setup-firewall.sh         iptables per-UID egress allowlist
   baudbot-safe-bash          shell command deny list (installed to /usr/local/bin)
@@ -60,16 +62,26 @@ See [CONFIGURATION.md](CONFIGURATION.md) for all env vars and how to obtain them
 
 ## Architecture: Source / Runtime Separation
 
-The admin owns the source (`~/baudbot/`). The agent (`baudbot_agent` user) owns the runtime. The agent **cannot read the source repo** — admin home is `700`.
+The admin owns source checkouts (for example `~/baudbot/`). The agent (`baudbot_agent` user) owns runtime state. The agent **cannot read the source repo** — admin home is `700`.
 
-Deploy is a one-way push:
+Live operations are now release-based under `/opt/baudbot` (git-free):
+
 ```
-admin: ~/baudbot/bin/deploy.sh
-  → stages to /tmp/baudbot-deploy.XXXXXX (world-readable)
-  → copies as baudbot_agent via sudo -u
-  → stamps baudbot-version.json + baudbot-manifest.json (SHA256 hashes)
-  → cleans up staging dir
+/opt/baudbot/
+├── releases/<sha>/          immutable snapshot (no .git)
+├── current -> releases/<sha>   active release symlink
+└── previous -> releases/<sha>  previous release symlink (for rollback)
 ```
+
+`baudbot update` flow:
+1) clone target ref into `/tmp/baudbot-update.*`
+2) run preflight checks in temp checkout
+3) publish git-free snapshot to `/opt/baudbot/releases/<sha>`
+4) deploy runtime files from snapshot
+5) restart + health check
+6) atomically switch `/opt/baudbot/current`
+
+`baudbot rollback previous|<sha>` re-deploys an existing snapshot and flips `current`/`previous` without network access.
 
 Agent runtime layout:
 ```
@@ -97,10 +109,16 @@ sudo ~/baudbot/install.sh
 
 # Edit source files directly in ~/baudbot/
 
-# Deploy to agent runtime
+# For source-only changes (extensions/skills/bridge), deploy directly:
 ~/baudbot/bin/deploy.sh
 
-# Launch agent
+# For operational updates from git (recommended for live bot):
+sudo baudbot update
+
+# Roll back live bot to previous snapshot if needed:
+sudo baudbot rollback previous
+
+# Launch agent directly (debug/dev)
 sudo -u baudbot_agent ~/runtime/start.sh
 
 # Or in tmux
@@ -110,7 +128,7 @@ tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 ## Running Tests
 
 ```bash
-# All tests (8 suites)
+# All tests (10 suites)
 bin/test.sh
 
 # Only JS/TS tests

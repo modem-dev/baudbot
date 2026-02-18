@@ -288,9 +288,13 @@ ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
 if [ -f "$ADMIN_CONFIG" ]; then
   if [ "$DRY_RUN" -eq 0 ]; then
     as_agent bash -c "mkdir -p '$BAUDBOT_HOME/.config'"
-    cp "$ADMIN_CONFIG" "$BAUDBOT_HOME/.config/.env"
-    chown "$AGENT_USER:$AGENT_USER" "$BAUDBOT_HOME/.config/.env"
-    chmod 600 "$BAUDBOT_HOME/.config/.env"
+    # Copy via staging to handle 600 perms on target (admin can't write directly)
+    env_tmp=$(mktemp)
+    cp "$ADMIN_CONFIG" "$env_tmp"
+    chmod 644 "$env_tmp"
+    as_agent cp "$env_tmp" "$BAUDBOT_HOME/.config/.env"
+    as_agent chmod 600 "$BAUDBOT_HOME/.config/.env"
+    rm -f "$env_tmp"
     log "✓ .env → ~/.config/.env (600)"
   else
     log "would copy: $ADMIN_CONFIG → ~/.config/.env"
@@ -313,10 +317,25 @@ VERSION_FILE="$VERSION_DIR/baudbot-version.json"
 MANIFEST_FILE="$VERSION_DIR/baudbot-manifest.json"
 
 if [ "$DRY_RUN" -eq 0 ]; then
-  # Get git info from source (admin can read it)
-  GIT_SHA=$(cd "$BAUDBOT_SRC" && git rev-parse HEAD 2>/dev/null || echo "unknown")
-  GIT_SHA_SHORT=$(cd "$BAUDBOT_SRC" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-  GIT_BRANCH=$(cd "$BAUDBOT_SRC" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  # Get source metadata from git (dev checkout) or release metadata (git-free /opt release).
+  RELEASE_META_FILE="$BAUDBOT_SRC/baudbot-release.json"
+  GIT_SHA=""
+  GIT_SHA_SHORT=""
+  GIT_BRANCH=""
+
+  if cd "$BAUDBOT_SRC" && git rev-parse HEAD >/dev/null 2>&1; then
+    GIT_SHA=$(cd "$BAUDBOT_SRC" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+    GIT_SHA_SHORT=$(cd "$BAUDBOT_SRC" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    GIT_BRANCH=$(cd "$BAUDBOT_SRC" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  elif [ -f "$RELEASE_META_FILE" ]; then
+    GIT_SHA=$(grep '"sha"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    GIT_SHA_SHORT=$(grep '"short"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    GIT_BRANCH=$(grep '"branch"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+  fi
+
+  [ -n "$GIT_SHA" ] || GIT_SHA="unknown"
+  [ -n "$GIT_SHA_SHORT" ] || GIT_SHA_SHORT="unknown"
+  [ -n "$GIT_BRANCH" ] || GIT_BRANCH="unknown"
   DEPLOY_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   # Write version file via agent

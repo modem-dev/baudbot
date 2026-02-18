@@ -60,7 +60,8 @@ usage() {
   echo "  doctor         Health check (perms, firewall, secrets, deps)"
   echo "  audit          Security posture audit"
   echo "  test           Run test suite"
-  echo "  update         Pull latest and redeploy"
+  echo "  update         Build/test in temp checkout, publish git-free release, deploy"
+  echo "  rollback       Re-deploy previous (or specified) git-free release snapshot"
   echo "  uninstall      Remove everything"
   echo ""
   echo -e "${BOLD}Options:${RESET}"
@@ -255,27 +256,13 @@ case "${1:-}" in
   update)
     shift
     require_root "update"
-    echo "=== Pulling latest ==="
-    cd "$BAUDBOT_ROOT"
-    git pull origin main
-    echo ""
-    echo "=== Deploying ==="
-    "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
-    echo ""
-    # Restart if currently running
-    if has_systemd && systemctl is-active baudbot &>/dev/null; then
-      echo "=== Restarting ==="
-      systemctl restart baudbot
-      # Wait for ExecStartPre hooks + process init
-      sleep 3
-      if systemctl is-active baudbot &>/dev/null; then
-        echo "✅ Updated and running"
-      else
-        echo "⚠️  Deployed but agent didn't restart — check: baudbot logs"
-      fi
-    else
-      echo "✅ Updated. Start with: sudo baudbot start"
-    fi
+    exec "$BAUDBOT_ROOT/bin/update-release.sh" "$@"
+    ;;
+
+  rollback)
+    shift
+    require_root "rollback"
+    exec "$BAUDBOT_ROOT/bin/rollback-release.sh" "$@"
     ;;
 
   uninstall)

@@ -73,8 +73,10 @@ run_js_tests() {
 
 run_shell_tests() {
   echo "Shell:"
-  run "safe-bash wrapper" bash bin/baudbot-safe-bash.test.sh
-  run "log redaction"     bash bin/redact-logs.test.sh
+  run "safe-bash wrapper"   bash bin/baudbot-safe-bash.test.sh
+  run "log redaction"       bash bin/redact-logs.test.sh
+  run "update release flow" bash bin/update-release.test.sh
+  run "rollback release"    bash bin/rollback-release.test.sh
   echo ""
 }
 

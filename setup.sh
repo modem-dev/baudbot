@@ -200,11 +200,14 @@ else
   sudo -u baudbot_agent bash -c 'curl -sSfL https://varlock.dev/install.sh | sh -s'
 fi
 
-echo "=== Deploying from source to runtime ==="
-# deploy.sh runs as admin (needs read access to source, write+chown to agent home).
-# It copies extensions, skills, bridge, and utility scripts to runtime dirs.
-"$REPO_DIR/bin/deploy.sh"
-echo "Deployed extensions, skills, and bridge to runtime directories"
+echo "=== Publishing initial git-free /opt release ==="
+# Build an immutable release snapshot from the local source checkout, then deploy
+# from /opt/baudbot/releases/<sha>. This keeps live operations decoupled from
+# the mutable source checkout.
+BOOTSTRAP_BRANCH=$(sudo -u "$ADMIN_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" \
+  "$REPO_DIR/bin/update-release.sh" --repo "$REPO_DIR" --branch "$BOOTSTRAP_BRANCH" --skip-preflight --skip-restart
+echo "Published /opt release and deployed runtime files"
 
 echo "=== Protecting source repo ==="
 # Source is now admin-owned (outside baudbot_agent's home), so the agent
@@ -222,12 +225,12 @@ systemctl daemon-reload
 systemctl enable baudbot-firewall
 echo "Firewall will be restored on boot via systemd"
 
-echo "=== Installing baudbot CLI ==="
-if [ ! -f /usr/local/bin/baudbot ] || [ "$(readlink -f /usr/local/bin/baudbot 2>/dev/null)" != "$REPO_DIR/bin/baudbot" ]; then
-  ln -sf "$REPO_DIR/bin/baudbot" /usr/local/bin/baudbot
-  echo "Installed /usr/local/bin/baudbot → $REPO_DIR/bin/baudbot"
+echo "=== Verifying baudbot CLI path ==="
+if [ -x /usr/local/bin/baudbot ]; then
+  CLI_TARGET=$(readlink -f /usr/local/bin/baudbot 2>/dev/null || true)
+  echo "Installed /usr/local/bin/baudbot → ${CLI_TARGET:-unknown}"
 else
-  echo "baudbot CLI already installed, skipping"
+  echo "⚠️  /usr/local/bin/baudbot not found after bootstrap release"
 fi
 
 echo "=== Installing baudbot systemd unit ==="
