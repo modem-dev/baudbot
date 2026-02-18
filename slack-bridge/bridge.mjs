@@ -68,6 +68,31 @@ console.log(`🔒 Access control: ${ALLOWED_USERS.length} allowed user(s)`);
 const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });
 const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
 
+// ── Thread Registry ─────────────────────────────────────────────────────────
+// Maps friendly thread IDs (e.g. "thread-1") to { channel, thread_ts }.
+// Deterministic: same channel+thread_ts always maps to the same ID.
+
+const threadRegistry = new Map();   // thread-N → { channel, thread_ts }
+const threadLookup = new Map();     // "channel:thread_ts" → thread-N
+let threadCounter = 0;
+
+/**
+ * Get or create a friendly thread ID for a channel + thread_ts pair.
+ * Returns the thread ID string (e.g. "thread-3").
+ */
+function getThreadId(channel, threadTs) {
+  const key = `${channel}:${threadTs}`;
+  let id = threadLookup.get(key);
+  if (!id) {
+    threadCounter++;
+    id = `thread-${threadCounter}`;
+    threadRegistry.set(id, { channel, thread_ts: threadTs });
+    threadLookup.set(key, id);
+    console.log(`🧵 Registered ${id} → channel=${channel} thread_ts=${threadTs}`);
+  }
+  return id;
+}
+
 // ── Session Socket ──────────────────────────────────────────────────────────
 
 function findSessionSocket(targetId) {
@@ -248,13 +273,17 @@ async function handleMessage(userMessage, event, say) {
     }
 
     // Wrap the message with security boundaries before sending to agent
-    const contextMessage = wrapExternalContent({
+    const wrappedMessage = wrapExternalContent({
       text: userMessage,
       source: "Slack",
       user: event.user,
       channel: event.channel,
       threadTs: event.ts,
     });
+
+    // Enrich with friendly thread ID so the agent can use /reply endpoint
+    const threadId = getThreadId(event.channel, event.ts);
+    const contextMessage = `${wrappedMessage}\nThread-ID: ${threadId}`;
 
     const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
     const formatted = formatForSlack(reply);
@@ -305,13 +334,18 @@ app.event("message", async ({ event, say }) => {
     const text = event.text?.trim();
     if (!text) return;
     // Don't filter bot_id here — Sentry posts as a bot
-    const contextMessage = wrapExternalContent({
+    const wrappedSentryMessage = wrapExternalContent({
       text,
       source: "Slack (#bots-sentry)",
       user: event.user || event.bot_id || "sentry-bot",
       channel: event.channel,
       threadTs: event.ts,
     });
+
+    // Enrich with friendly thread ID
+    const sentryThreadId = getThreadId(event.channel, event.ts);
+    const contextMessage = `${wrappedSentryMessage}\nThread-ID: ${sentryThreadId}`;
+
     try {
       // Re-resolve socket before sending (capture local to avoid TOCTOU)
       refreshSocket();
@@ -343,6 +377,9 @@ app.event("message", async ({ event, say }) => {
 //
 // POST http://localhost:7890/send
 //   { "channel": "C07...", "text": "hello", "thread_ts": "1234.5678" }
+//
+// POST http://localhost:7890/reply
+//   { "thread_id": "thread-1", "text": "hello" }
 //
 // POST http://localhost:7890/react
 //   { "channel": "C07...", "timestamp": "1234.5678", "emoji": "white_check_mark" }
@@ -408,6 +445,44 @@ function startApiServer() {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts, channel: result.channel }));
 
+      } else if (pathname === "/reply") {
+        // Look up thread by friendly ID and post a reply
+        const { thread_id, text } = params;
+
+        if (typeof thread_id !== "string" || !thread_id) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "thread_id must be a non-empty string" }));
+          return;
+        }
+        if (typeof text !== "string" || text.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "text must be a non-empty string" }));
+          return;
+        }
+        if (text.length > 4000) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "text too long (max 4000)" }));
+          return;
+        }
+
+        const thread = threadRegistry.get(thread_id);
+        if (!thread) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Unknown thread_id: ${thread_id}` }));
+          return;
+        }
+
+        const result = await app.client.chat.postMessage({
+          token: process.env.SLACK_BOT_TOKEN,
+          channel: thread.channel,
+          text,
+          thread_ts: thread.thread_ts,
+        });
+
+        console.log(`📤 Reply to ${thread_id} (${thread.channel}): ${text.slice(0, 80)}${text.length > 80 ? "..." : ""}`);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: result.ts, channel: result.channel }));
+
       } else if (pathname === "/react") {
         const validationError = validateReactParams(params);
         if (validationError) {
@@ -429,7 +504,7 @@ function startApiServer() {
 
       } else {
         res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Not found. Endpoints: POST /send, POST /react" }));
+        res.end(JSON.stringify({ error: "Not found. Endpoints: POST /send, POST /reply, POST /react" }));
       }
     } catch (err) {
       console.error("API error:", err.message);
@@ -441,6 +516,7 @@ function startApiServer() {
   server.listen(API_PORT, "127.0.0.1", () => {
     console.log(`📡 Outbound API listening on http://127.0.0.1:${API_PORT}`);
     console.log(`   POST /send   {"channel":"C...","text":"...","thread_ts":"..."}`);
+    console.log(`   POST /reply  {"thread_id":"thread-1","text":"..."}`);
     console.log(`   POST /react  {"channel":"C...","timestamp":"...","emoji":"..."}`);
   });
 }
