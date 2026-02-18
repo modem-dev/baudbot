@@ -1,5 +1,7 @@
 # Security
 
+For product overview and team workflow context, start with [README.md](README.md). For architecture and operations docs, see [`docs/architecture.md`](docs/architecture.md) and [`docs/operations.md`](docs/operations.md).
+
 ## Architecture: Source / Runtime Separation
 
 ```

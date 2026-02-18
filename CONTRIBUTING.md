@@ -7,10 +7,17 @@ git clone https://github.com/modem-dev/baudbot.git ~/baudbot
 npm install
 ```
 
+## Documentation map
+
+- Product/team workflow overview: [README.md](README.md)
+- Deep architecture and operations docs: [`docs/`](docs)
+- Security model: [SECURITY.md](SECURITY.md)
+- Configuration reference: [CONFIGURATION.md](CONFIGURATION.md)
+
 ## Running Tests
 
 ```bash
-# All tests (8 suites)
+# All tests (10 suites)
 bin/test.sh
 
 # JS/TS only

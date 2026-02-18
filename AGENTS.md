@@ -150,7 +150,7 @@ Add new test files to `bin/test.sh` — don't scatter test invocations across CI
 - Extensions are deployed from `pi/extensions/` → agent's `~/.pi/agent/extensions/`.
 - Skills are deployed from `pi/skills/` → agent's `~/.pi/agent/skills/`.
 - Agent commits operational learnings to its own skills dir (not back to source).
-- **When changing behavior, update all docs.** Check and update: `README.md`, `CONFIGURATION.md`, skill files (`pi/skills/*/SKILL.md`), and `AGENTS.md`. Inline code examples in docs must match the actual implementation.
+- **When changing behavior, update all docs.** Check and update: `README.md`, relevant pages in `docs/`, `CONFIGURATION.md`, skill files (`pi/skills/*/SKILL.md`), and `AGENTS.md`. Inline code examples in docs must match the actual implementation.
 - **No distro-specific commands.** Scripts must work on both Arch and Ubuntu (and any standard Linux). Use `grep -E` (not `grep -P`), POSIX-compatible tools, and avoid package manager calls (`pacman`, `apt`, etc.). If a package is needed, document it as a prerequisite rather than auto-installing it.
 
 ## Testing on Droplets
