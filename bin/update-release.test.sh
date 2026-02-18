@@ -107,6 +107,8 @@ test_publish_git_free_release() {
 
     [ "$current_target" = "$release_root/releases/$sha" ]
     [ -f "$current_target/baudbot-release.json" ]
+    # Release root must be traversable so /usr/local/bin/baudbot is discoverable.
+    [ "$(stat -c '%a' "$current_target")" = "755" ]
     assert_no_git_dirs "$release_root/releases"
   )
 }
