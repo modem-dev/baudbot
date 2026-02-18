@@ -72,9 +72,29 @@ const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
 // Maps friendly thread IDs (e.g. "thread-1") to { channel, thread_ts }.
 // Deterministic: same channel+thread_ts always maps to the same ID.
 
-const threadRegistry = new Map();   // thread-N → { channel, thread_ts }
+const threadRegistry = new Map();   // thread-N → { channel, thread_ts, createdAt }
 const threadLookup = new Map();     // "channel:thread_ts" → thread-N
 let threadCounter = 0;
+const MAX_THREADS = 10_000;
+
+/**
+ * Evict the oldest entries when the registry exceeds MAX_THREADS.
+ * Maps iterate in insertion order, so the first entries are the oldest.
+ */
+function evictOldThreads() {
+  if (threadRegistry.size < MAX_THREADS) return;
+  // Evict the oldest 10% to avoid evicting on every single new thread
+  const evictCount = Math.max(1, Math.floor(MAX_THREADS * 0.1));
+  let removed = 0;
+  for (const [id, entry] of threadRegistry) {
+    if (removed >= evictCount) break;
+    const lookupKey = `${entry.channel}:${entry.thread_ts}`;
+    threadLookup.delete(lookupKey);
+    threadRegistry.delete(id);
+    removed++;
+  }
+  console.log(`🧹 Evicted ${removed} old thread entries (registry size: ${threadRegistry.size})`);
+}
 
 /**
  * Get or create a friendly thread ID for a channel + thread_ts pair.
@@ -84,9 +104,10 @@ function getThreadId(channel, threadTs) {
   const key = `${channel}:${threadTs}`;
   let id = threadLookup.get(key);
   if (!id) {
+    evictOldThreads();
     threadCounter++;
     id = `thread-${threadCounter}`;
-    threadRegistry.set(id, { channel, thread_ts: threadTs });
+    threadRegistry.set(id, { channel, thread_ts: threadTs, createdAt: Date.now() });
     threadLookup.set(key, id);
     console.log(`🧵 Registered ${id} → channel=${channel} thread_ts=${threadTs}`);
   }
@@ -282,8 +303,8 @@ async function handleMessage(userMessage, event, say) {
     });
 
     // Enrich with friendly thread ID so the agent can use /reply endpoint
-    const threadId = getThreadId(event.channel, event.ts);
-    const contextMessage = `${wrappedMessage}\nThread-ID: ${threadId}`;
+    const threadId = getThreadId(event.channel, event.thread_ts || event.ts);
+    const contextMessage = `${wrappedMessage}\n[Bridge-Thread-ID: ${threadId}]`;
 
     const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
     const formatted = formatForSlack(reply);
@@ -343,8 +364,8 @@ app.event("message", async ({ event, say }) => {
     });
 
     // Enrich with friendly thread ID
-    const sentryThreadId = getThreadId(event.channel, event.ts);
-    const contextMessage = `${wrappedSentryMessage}\nThread-ID: ${sentryThreadId}`;
+    const sentryThreadId = getThreadId(event.channel, event.thread_ts || event.ts);
+    const contextMessage = `${wrappedSentryMessage}\n[Bridge-Thread-ID: ${sentryThreadId}]`;
 
     try {
       // Re-resolve socket before sending (capture local to avoid TOCTOU)
