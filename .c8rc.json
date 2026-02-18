@@ -1,7 +1,6 @@
 {
   "all": false,
   "include": [
-    "lib/**/*.mjs",
     "slack-bridge/security.mjs",
     "control-plane/server.mjs",
     "bin/scan-extensions.mjs"

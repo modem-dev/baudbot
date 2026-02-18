@@ -45,11 +45,11 @@ jobs:
           cd slack-bridge && npm ci
           cd ../control-plane && npm ci
 
-      - name: Run all tests
-        run: bin/test.sh
-
-      - name: Run coverage check
+      - name: Run JS tests with coverage
         run: npm run test:coverage
+
+      - name: Run shell tests
+        run: bin/test.sh shell
 
       # security-audit.sh checks live system state (running services, firewall,
       # /proc mounts) that doesn't exist in CI. Run it locally instead:
