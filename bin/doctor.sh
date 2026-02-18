@@ -267,11 +267,13 @@ if [ -d "$SOCKET_DIR" ]; then
         STALE_SOCKS=$((STALE_SOCKS + 1))
       fi
     done
-  fi
-  if [ "$STALE_SOCKS" -gt 0 ]; then
-    warn "$STALE_SOCKS stale session socket(s) in $SOCKET_DIR"
+    if [ "$STALE_SOCKS" -gt 0 ]; then
+      warn "$STALE_SOCKS stale session socket(s) in $SOCKET_DIR"
+    else
+      pass "no stale session sockets"
+    fi
   else
-    pass "no stale session sockets"
+    warn "fuser not installed; skipping stale socket check"
   fi
 fi
 
