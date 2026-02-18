@@ -24,9 +24,13 @@ fi
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
   BOLD='\033[1m'
+  DIM='\033[2m'
+  CYAN='\033[0;36m'
+  YELLOW='\033[0;33m'
+  GREEN='\033[0;32m'
   RESET='\033[0m'
 else
-  BOLD='' RESET=''
+  BOLD='' DIM='' CYAN='' YELLOW='' GREEN='' RESET=''
 fi
 
 version() {
@@ -208,6 +212,20 @@ resolve_pi_session_id() {
   return 1
 }
 
+pause_before_attach() {
+  if [ "${BAUDBOT_ATTACH_NO_PAUSE:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if [ -t 0 ] && [ -t 1 ]; then
+    echo -e "${DIM}Press Enter to attach (Ctrl+C to cancel)...${RESET}"
+    # shellcheck disable=SC2162
+    read _
+  else
+    sleep 2
+  fi
+}
+
 case "${1:-}" in
   start)
     shift
@@ -383,20 +401,22 @@ case "${1:-}" in
 
     attach_tmux_session() {
       local tmux_target="$1"
-      echo "Attaching to tmux session: $tmux_target"
-      echo "Safe detach: Ctrl+b, d (keeps agent running)"
+      echo -e "${BOLD}${CYAN}Attaching to tmux session:${RESET} $tmux_target"
+      echo -e "${GREEN}Safe detach:${RESET} Ctrl+b, d ${DIM}(keeps agent running)${RESET}"
       echo ""
+      pause_before_attach
       exec sudo -u "$AGENT_USER" tmux attach-session -t "$tmux_target"
     }
 
     attach_pi_session() {
       local pi_target="$1"
-      echo "Attaching to pi session: $pi_target"
-      echo "Safe detach (does NOT stop the agent):"
-      echo "  1) Press Ctrl+C once to clear input/cancel local prompt"
-      echo "  2) Press Ctrl+C again to exit this client"
-      echo "Agent keeps running under systemd in the background."
+      echo -e "${BOLD}${CYAN}Attaching to pi session:${RESET} $pi_target"
+      echo -e "${BOLD}${YELLOW}Safe detach (does NOT stop the agent):${RESET}"
+      echo -e "  ${YELLOW}1)${RESET} Press Ctrl+C once to clear input/cancel local prompt"
+      echo -e "  ${YELLOW}2)${RESET} Press Ctrl+C again to exit this client"
+      echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
       echo ""
+      pause_before_attach
       exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; pi --session '$pi_target'"
     }
 
