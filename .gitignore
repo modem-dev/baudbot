@@ -7,3 +7,4 @@ node_modules/
 slack-bridge/node_modules/
 slack-bridge/.env
 .pi/
+.droplets

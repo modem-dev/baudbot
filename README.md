@@ -25,12 +25,48 @@ No sandbox friction. Agents make real branches, run real tests, push real PRs. B
 
 ## Requirements
 
+### Server
+
 | | Minimum | Recommended |
 |--|---------|-------------|
 | **OS** | Ubuntu 24.04 or Arch Linux | Any systemd-based Linux |
 | **RAM** | 4 GB (3 agents) | 8 GB (6 agents + builds/tests) |
 | **CPU** | 2 vCPU | 4 vCPU |
 | **Disk** | 20 GB | 40 GB+ (repos, node_modules, Docker images) |
+
+The installer handles system dependencies (git, curl, tmux, iptables). Docker is optional — only needed if your agents build or run containers.
+
+### Accounts
+
+You need three things before running the installer:
+
+| Account | What for | Where to sign up |
+|---------|----------|-----------------|
+| **LLM provider** | Powers the agent (set at least one) | [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Gemini](https://aistudio.google.com/apikey), or [OpenCode Zen](https://opencode.ai) |
+| **GitHub** | Branches, commits, PRs | [github.com/settings/tokens](https://github.com/settings/tokens) — fine-grained PAT with `contents:write`, `pull_requests:write`, `issues:write` |
+| **Slack app** | Primary human ↔ agent interface | See [Slack app setup](#slack-app-setup) below |
+
+Setup generates an SSH key for the agent — you'll add the public key to the GitHub account.
+
+**Optional** (add anytime):
+
+| Account | What for | Where to sign up |
+|---------|----------|-----------------|
+| **AgentMail** | Email-based task submission | [app.agentmail.to](https://app.agentmail.to) |
+| **Sentry** | Auto-triage production errors | [sentry.io](https://sentry.io/settings/account/api/auth-tokens/) |
+| **Kernel** | Cloud browser automation | [kernel.computer](https://kernel.computer) |
+
+### Slack App Setup
+
+1. [Create a new Slack app](https://api.slack.com/apps) → **From scratch**
+2. **Socket Mode** → Enable
+3. **Basic Information** → **App-Level Tokens** → Generate with `connections:write` scope → save the `xapp-...` token
+4. **OAuth & Permissions** → Add bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `reactions:write`, `im:history`, `im:read`, `im:write`
+5. **Install to Workspace** → save the `xoxb-...` Bot User OAuth Token
+6. **Event Subscriptions** → Enable → Subscribe to bot events: `app_mention`, `message.im`
+7. Invite the bot to channels you want it to monitor
+
+You'll need three values for the installer: the bot token (`xoxb-...`), the app token (`xapp-...`), and your Slack user ID (click your profile → **⋯** → **Copy member ID**).
 
 ## Quick Start
 

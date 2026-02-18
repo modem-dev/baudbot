@@ -128,14 +128,14 @@ install_prereqs_ubuntu() {
     done
   fi
   apt-get update -qq
-  apt-get install -y -qq git curl tmux iptables docker.io sudo 2>&1 | tail -3
+  apt-get install -y -qq git curl tmux iptables sudo 2>&1 | tail -3
 }
 
 install_prereqs_arch() {
-  pacman -Syu --noconfirm --needed git curl tmux iptables docker sudo 2>&1 | tail -5
+  pacman -Syu --noconfirm --needed git curl tmux iptables sudo 2>&1 | tail -5
 }
 
-info "Installing: git, curl, tmux, iptables, docker, sudo"
+info "Installing: git, curl, tmux, iptables, sudo"
 "install_prereqs_$DISTRO"
 info "Prerequisites installed"
 
