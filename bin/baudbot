@@ -384,7 +384,7 @@ case "${1:-}" in
     attach_tmux_session() {
       local tmux_target="$1"
       echo "Attaching to tmux session: $tmux_target"
-      echo "Detach with: Ctrl+b, d"
+      echo "Safe detach: Ctrl+b, d (keeps agent running)"
       echo ""
       exec sudo -u "$AGENT_USER" tmux attach-session -t "$tmux_target"
     }
@@ -392,7 +392,10 @@ case "${1:-}" in
     attach_pi_session() {
       local pi_target="$1"
       echo "Attaching to pi session: $pi_target"
-      echo "Detach with: Ctrl+C twice"
+      echo "Safe detach (does NOT stop the agent):"
+      echo "  1) Press Ctrl+C once to clear input/cancel local prompt"
+      echo "  2) Press Ctrl+C again to exit this client"
+      echo "Agent keeps running under systemd in the background."
       echo ""
       exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; pi --session '$pi_target'"
     }
