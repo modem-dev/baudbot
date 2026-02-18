@@ -100,6 +100,28 @@ git push -u origin <branch-name>
 
 **Do NOT clean up your worktree** — Baudbot handles worktree removal after you exit.
 
+## Code Quality Standards
+
+### Security
+
+- **Never interpolate user input into queries.** Use parameterized queries / prepared statements for SQL, GraphQL variables for GraphQL, etc. This applies even when the input comes from tool parameters or internal sources.
+- **Validate and sanitize inputs** at trust boundaries (API endpoints, webhook handlers, user-facing forms).
+
+### External APIs & Libraries
+
+- **Read the official API docs** before building an integration — don't rely on general knowledge or what the task prompt says for auth formats, endpoint structures, or field names. Verify it yourself.
+- **Use the `variables` / parameters mechanism** provided by the API client (e.g. GraphQL variables, SQL bind params) — never build queries via string concatenation or template literals with user input.
+
+### Follow Repo Conventions
+
+On startup, you read `CODEX.md` / `AGENTS.md` for project context. **Reading is not enough — you must follow the conventions you find.** If the repo's guidance says "update X when you add Y", do it. Common examples:
+- Documentation updates (changelogs, config docs, READMEs)
+- Env var schemas or registries
+- Testing requirements
+- Commit message conventions
+
+Don't skip these. Reviewers will flag them and you'll have to come back to fix it.
+
 ## Post-Push Lifecycle
 
 After pushing code, you own the full loop until the PR is green and review comments are addressed.

@@ -182,6 +182,7 @@ When dev-agent reports milestones (PR opened, CI status, preview URL), post upda
 ### 7. Close out
 
 When dev-agent reports completion:
+- **Spot-check the PR diff** before reporting success to the user — especially for new code. Use `gh pr diff <number>` or read the changed files. Look for obvious issues: string interpolation in queries, missing auth prefixes, hardcoded values, missing doc updates. Don't take "task complete" at face value for complex tasks.
 - Update the todo with results, set status to `done`
 - Reply to the **original channel** (Slack → Slack thread, email → email reply, chat → chat)
 - Share PR link and preview URL
