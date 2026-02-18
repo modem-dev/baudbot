@@ -128,14 +128,14 @@ install_prereqs_ubuntu() {
     done
   fi
   apt-get update -qq
-  apt-get install -y -qq git curl tmux iptables docker.io sudo 2>&1 | tail -3
+  apt-get install -y -qq git curl tmux iptables docker.io gh sudo 2>&1 | tail -3
 }
 
 install_prereqs_arch() {
-  pacman -Syu --noconfirm --needed git curl tmux iptables docker sudo 2>&1 | tail -5
+  pacman -Syu --noconfirm --needed git curl tmux iptables docker github-cli sudo 2>&1 | tail -5
 }
 
-info "Installing: git, curl, tmux, iptables, docker, sudo"
+info "Installing: git, curl, tmux, iptables, docker, gh, sudo"
 "install_prereqs_$DISTRO"
 info "Prerequisites installed"
 
@@ -210,7 +210,7 @@ fi
 if [ "$HAS_LLM" = false ]; then
   MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)\n"
 fi
-for key in GITHUB_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
+for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
   if ! grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
     MISSING+="  - $key\n"
   fi
@@ -271,5 +271,8 @@ if [ -f "$SSH_PUB" ]; then
   echo -e "     ${DIM}https://github.com/settings/keys${RESET}"
   echo ""
 fi
+echo -e "  ${YELLOW}⚠${RESET}  Authenticate GitHub CLI:"
+echo -e "     sudo -u baudbot_agent gh auth login"
+echo ""
 echo -e "  ${DIM}Full configuration reference: $REPO_DIR/CONFIGURATION.md${RESET}"
 echo ""
