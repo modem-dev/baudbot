@@ -10,7 +10,8 @@
  *   GET  /health     — liveness check (no auth required)
  *   GET  /status     — agent processes, sessions, system info
  *   GET  /config     — agent configuration (secrets redacted)
- *   GET  /dashboard  — server-rendered HTML overview
+ *   GET  /logs       — recent session log entries (JSON)
+ *   GET  /dashboard  — server-rendered HTML overview (status + logs tabs)
  *
  * Env vars:
  *   BAUDBOT_CP_PORT       — listen port (default: 28800)
@@ -21,7 +22,7 @@
 
 import { createServer } from "node:http";
 import { execSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, openSync, readSync, closeSync, existsSync, readdirSync, statSync } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import express from "express";
@@ -198,6 +199,177 @@ function getConfig() {
   };
 }
 
+// ── Session logs ────────────────────────────────────────────────────────────
+
+/**
+ * Find all session JSONL files under the agent's session directory.
+ * Returns them sorted by modification time (most recent first).
+ */
+function findSessionFiles() {
+  const sessionsDir = join(AGENT_HOME, ".pi", "agent", "sessions");
+  const files = [];
+  try {
+    if (!existsSync(sessionsDir)) return files;
+    for (const subdir of readdirSync(sessionsDir)) {
+      const subdirPath = join(sessionsDir, subdir);
+      try {
+        const entries = readdirSync(subdirPath);
+        for (const f of entries) {
+          if (!f.endsWith(".jsonl")) continue;
+          const fullPath = join(subdirPath, f);
+          try {
+            const st = statSync(fullPath);
+            files.push({ path: fullPath, name: f, dir: subdir, mtime: st.mtimeMs, size: st.size });
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+  files.sort((a, b) => b.mtime - a.mtime);
+  return files;
+}
+
+/**
+ * Read the last N entries from a JSONL session file.
+ * Returns parsed objects, filtered to useful types (messages and tool results).
+ */
+function tailSessionFile(filePath, maxEntries = 50) {
+  try {
+    const content = readFileSync(filePath, "utf8");
+    const lines = content.trim().split("\n").filter(Boolean);
+    const entries = [];
+    // Read from the end
+    for (let i = lines.length - 1; i >= 0 && entries.length < maxEntries * 3; i--) {
+      try {
+        entries.unshift(JSON.parse(lines[i]));
+      } catch {}
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Extract a readable summary from a session entry.
+ */
+function summarizeEntry(entry) {
+  const base = {
+    type: entry.type,
+    timestamp: entry.timestamp,
+    id: entry.id,
+  };
+
+  if (entry.type === "session") {
+    return { ...base, detail: `Session started (cwd: ${entry.cwd || "unknown"})` };
+  }
+
+  if (entry.type === "message") {
+    const msg = entry.message || {};
+    const role = msg.role || "unknown";
+    let text = "";
+
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content.filter((c) => c.type === "text").map((c) => c.text || "");
+      text = textParts.join(" ");
+    } else if (typeof msg.content === "string") {
+      text = msg.content;
+    }
+
+    // For tool calls, extract the tool name
+    if (role === "assistant" && Array.isArray(msg.content)) {
+      const toolUse = msg.content.find((c) => c.type === "tool_use");
+      if (toolUse) {
+        return { ...base, role, detail: `Tool call: ${toolUse.name}`, toolName: toolUse.name };
+      }
+    }
+
+    // For tool results, show tool name and truncated output
+    if (role === "toolResult" || msg.role === "tool") {
+      const toolName = msg.toolName || "unknown";
+      return { ...base, role: "toolResult", detail: text.slice(0, 200), toolName };
+    }
+
+    return { ...base, role, detail: text.slice(0, 300) };
+  }
+
+  if (entry.type === "compaction") {
+    return { ...base, detail: "Session compacted" };
+  }
+
+  // Skip noise: thinking_level_change, model_change, custom, etc.
+  return null;
+}
+
+/**
+ * Get recent log entries across all sessions or a specific one.
+ * @param {object} opts
+ * @param {string} [opts.session] - Filter by session filename substring
+ * @param {number} [opts.lines=50] - Max entries to return
+ * @param {boolean} [opts.messagesOnly=true] - Only show message-type entries
+ */
+function getRecentLogs({ session, lines = 50, messagesOnly = true } = {}) {
+  let files = findSessionFiles();
+
+  // Filter by session name if provided
+  if (session) {
+    files = files.filter((f) => f.name.includes(session) || f.dir.includes(session));
+  }
+
+  // Take the most recent files (limit to 10 to avoid reading too many)
+  files = files.slice(0, 10);
+
+  const allEntries = [];
+
+  for (const file of files) {
+    const raw = tailSessionFile(file.path, lines);
+    // Extract session name from the first entry
+    const sessionEntry = raw.find((e) => e.type === "session");
+    const sessionId = sessionEntry?.id || file.name.replace(".jsonl", "");
+
+    for (const entry of raw) {
+      const summary = summarizeEntry(entry);
+      if (!summary) continue;
+      if (messagesOnly && !["message", "session", "compaction"].includes(summary.type)) continue;
+      allEntries.push({ ...summary, sessionId });
+    }
+  }
+
+  // Sort by timestamp descending, take the requested number
+  allEntries.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+  return allEntries.slice(0, lines);
+}
+
+/**
+ * List available sessions with metadata (for session picker).
+ */
+function listSessions() {
+  const files = findSessionFiles();
+  return files.slice(0, 20).map((f) => {
+    // Read only the first line (small buffer) to avoid loading multi-MB files
+    let sessionName = null;
+    try {
+      const fd = openSync(f.path, "r");
+      const buf = Buffer.alloc(4096);
+      const bytesRead = readSync(fd, buf, 0, 4096, 0);
+      closeSync(fd);
+      const firstLine = buf.toString("utf8", 0, bytesRead).split("\n")[0];
+      const parsed = JSON.parse(firstLine);
+      if (parsed.type === "session") {
+        sessionName = parsed.name || parsed.id;
+      }
+    } catch {}
+
+    return {
+      file: f.name,
+      dir: f.dir,
+      sessionId: sessionName || f.name.replace(".jsonl", ""),
+      modified: new Date(f.mtime).toISOString(),
+      sizeKb: Math.round(f.size / 1024),
+    };
+  });
+}
+
 // ── Express app ─────────────────────────────────────────────────────────────
 
 const app = express();
@@ -254,11 +426,24 @@ app.get("/config", (_req, res) => {
   res.json(config);
 });
 
+app.get("/logs", (req, res) => {
+  const session = req.query.session || undefined;
+  const lines = Math.min(parseInt(req.query.lines, 10) || 50, 500);
+  const entries = getRecentLogs({ session, lines });
+  res.json({ entries, count: entries.length });
+});
+
+app.get("/sessions", (_req, res) => {
+  const sessions = listSessions();
+  res.json({ sessions });
+});
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 app.get("/", (_req, res) => res.redirect("/dashboard"));
 
-app.get("/dashboard", (_req, res) => {
+app.get("/dashboard", (req, res) => {
+  const tab = ["status", "logs"].includes(req.query.tab) ? req.query.tab : "status";
   const agent = getAgentStatus();
   const sessions = getPiSessionDetails();
   const system = getSystemInfo();
@@ -293,6 +478,29 @@ app.get("/dashboard", (_req, res) => {
   const versionHtml = version
     ? `<code>${esc(version.gitSha?.slice(0, 8) || "unknown")}</code> &mdash; ${esc(version.deployedAt || version.timestamp || "unknown")}`
     : '<span class="muted">No version info</span>';
+
+  // Build logs HTML
+  const logs = getRecentLogs({ lines: 100 });
+  const logsHtml = logs.length
+    ? logs
+        .map((entry) => {
+          const time = entry.timestamp
+            ? new Date(entry.timestamp).toLocaleTimeString("en-US", { hour12: false })
+            : "";
+          const date = entry.timestamp
+            ? new Date(entry.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+            : "";
+          const roleClass = entry.role === "user" ? "log-user" : entry.role === "assistant" ? "log-assistant" : "log-tool";
+          const roleLabel = entry.role === "user" ? "USER" : entry.role === "assistant" ? "AGENT" : entry.role === "toolResult" ? "TOOL" : entry.type?.toUpperCase() || "";
+          const detail = esc(entry.detail || "").replace(/\n/g, "<br>");
+          const toolBadge = entry.toolName ? `<span class="tool-badge">${esc(entry.toolName)}</span> ` : "";
+          return `<div class="log-entry ${roleClass}"><span class="log-time">${date} ${time}</span><span class="log-role">${roleLabel}</span>${toolBadge}<span class="log-detail">${detail}</span></div>`;
+        })
+        .join("")
+    : '<div class="muted" style="padding:16px">No session logs found</div>';
+
+  const statusTabClass = tab === "status" ? "tab-active" : "";
+  const logsTabClass = tab === "logs" ? "tab-active" : "";
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!DOCTYPE html>
@@ -336,74 +544,112 @@ app.get("/dashboard", (_req, res) => {
     .refresh-note { color: #444; font-size: 0.75em; margin-top: 32px; text-align: center; }
     a { color: #6a9ef5; text-decoration: none; }
     a:hover { text-decoration: underline; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid #222; }
+    .tab { padding: 8px 20px; color: #666; cursor: pointer; text-decoration: none;
+           font-size: 0.9em; border-bottom: 2px solid transparent; transition: all 0.15s; }
+    .tab:hover { color: #aaa; }
+    .tab-active { color: #fff; border-bottom-color: #6a9ef5; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Logs */
+    .log-entry { padding: 4px 8px; border-bottom: 1px solid #1a1a1a; font-size: 0.82em;
+                 display: flex; gap: 8px; align-items: baseline; }
+    .log-entry:hover { background: #151515; }
+    .log-time { color: #555; font-family: "SF Mono", monospace; font-size: 0.85em; white-space: nowrap; min-width: 110px; }
+    .log-role { font-family: "SF Mono", monospace; font-size: 0.8em; min-width: 50px;
+                font-weight: 600; text-transform: uppercase; }
+    .log-user .log-role { color: #6a9ef5; }
+    .log-assistant .log-role { color: #7ec87e; }
+    .log-tool .log-role { color: #c89b6e; }
+    .log-detail { color: #bbb; word-break: break-word; flex: 1; }
+    .tool-badge { background: #1a1a2e; color: #8888cc; padding: 1px 6px; border-radius: 3px;
+                  font-size: 0.85em; font-family: "SF Mono", monospace; }
+    .log-scroll { max-height: 600px; overflow-y: auto; }
   </style>
 </head>
 <body>
   <h1>⚡ baudbot</h1>
   <div class="subtitle">control plane &mdash; port ${PORT}</div>
 
-  <h2>Agent</h2>
-  <div class="row">
-    <div class="card">
-      <div class="stat-label">Status</div>
-      <div class="stat-value">${statusDot} ${agent.running ? "Running" : "Stopped"}</div>
+  <div class="tabs">
+    <a href="/dashboard?tab=status" class="tab ${statusTabClass}">Status</a>
+    <a href="/dashboard?tab=logs" class="tab ${logsTabClass}">Logs</a>
+  </div>
+
+  <div class="tab-content ${tab === "status" ? "active" : ""}">
+    <h2>Agent</h2>
+    <div class="row">
+      <div class="card">
+        <div class="stat-label">Status</div>
+        <div class="stat-value">${statusDot} ${agent.running ? "Running" : "Stopped"}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Processes</div>
+        <div class="stat-value">${agent.processCount}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Slack Bridge</div>
+        <div class="stat-value">${bridgeDot} ${agent.bridge ? `PID ${agent.bridge.pid} &mdash; ${agent.bridge.uptime}` : "Not running"}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Deploy Version</div>
+        <div class="stat-value" style="font-size:0.95em">${versionHtml}</div>
+      </div>
     </div>
+
+    <h2>Pi Sessions</h2>
     <div class="card">
-      <div class="stat-label">Processes</div>
-      <div class="stat-value">${agent.processCount}</div>
+      <table>
+        <thead><tr><th>PID</th><th>Command</th><th>Uptime</th></tr></thead>
+        <tbody>${sessionsHtml}</tbody>
+      </table>
     </div>
+
     <div class="card">
-      <div class="stat-label">Slack Bridge</div>
-      <div class="stat-value">${bridgeDot} ${agent.bridge ? `PID ${agent.bridge.pid} &mdash; ${agent.bridge.uptime}` : "Not running"}</div>
+      <div class="stat-label" style="margin-bottom:8px">Named Sockets</div>
+      <ul>${socketSessionsHtml}</ul>
     </div>
+
+    <h2>System</h2>
+    <div class="row">
+      <div class="card">
+        <div class="stat-label">Host</div>
+        <div class="stat-value mono">${esc(system.hostname || "unknown")}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Load Average</div>
+        <div class="stat-value mono">${esc(system.loadAvg || "n/a")}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Memory</div>
+        <div class="stat-value">${system.memory ? `${system.memory.usedMb}/${system.memory.totalMb} MB` : "n/a"}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Disk</div>
+        <div class="stat-value">${system.disk ? `${system.disk.used}/${system.disk.size} (${system.disk.pct})` : "n/a"}</div>
+      </div>
+    </div>
+
+    <h2>Configuration</h2>
     <div class="card">
-      <div class="stat-label">Deploy Version</div>
-      <div class="stat-value" style="font-size:0.95em">${versionHtml}</div>
+      <table>
+        <thead><tr><th>Variable</th><th>Status</th></tr></thead>
+        <tbody>${configHtml}</tbody>
+      </table>
     </div>
   </div>
 
-  <h2>Pi Sessions</h2>
-  <div class="card">
-    <table>
-      <thead><tr><th>PID</th><th>Command</th><th>Uptime</th></tr></thead>
-      <tbody>${sessionsHtml}</tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <div class="stat-label" style="margin-bottom:8px">Named Sockets</div>
-    <ul>${socketSessionsHtml}</ul>
-  </div>
-
-  <h2>System</h2>
-  <div class="row">
+  <div class="tab-content ${tab === "logs" ? "active" : ""}">
+    <h2>Recent Activity</h2>
     <div class="card">
-      <div class="stat-label">Host</div>
-      <div class="stat-value mono">${esc(system.hostname || "unknown")}</div>
-    </div>
-    <div class="card">
-      <div class="stat-label">Load Average</div>
-      <div class="stat-value mono">${esc(system.loadAvg || "n/a")}</div>
-    </div>
-    <div class="card">
-      <div class="stat-label">Memory</div>
-      <div class="stat-value">${system.memory ? `${system.memory.usedMb}/${system.memory.totalMb} MB` : "n/a"}</div>
-    </div>
-    <div class="card">
-      <div class="stat-label">Disk</div>
-      <div class="stat-value">${system.disk ? `${system.disk.used}/${system.disk.size} (${system.disk.pct})` : "n/a"}</div>
+      <div class="log-scroll">${logsHtml}</div>
     </div>
   </div>
 
-  <h2>Configuration</h2>
-  <div class="card">
-    <table>
-      <thead><tr><th>Variable</th><th>Status</th></tr></thead>
-      <tbody>${configHtml}</tbody>
-    </table>
-  </div>
-
-  <div class="refresh-note">Auto-refreshes every 30 seconds &mdash; <a href="/dashboard">refresh now</a> &mdash; <a href="/status">JSON</a></div>
+  <div class="refresh-note">Auto-refreshes every 30s &mdash; <a href="/dashboard?tab=${tab}">refresh now</a> &mdash; JSON: <a href="/status">/status</a> <a href="/logs">/logs</a> <a href="/sessions">/sessions</a></div>
 </body>
 </html>`);
 });
