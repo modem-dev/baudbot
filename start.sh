@@ -37,13 +37,17 @@ umask 077
 SOCKET_DIR="$HOME/.pi/session-control"
 if [ -d "$SOCKET_DIR" ]; then
   echo "Cleaning stale session sockets..."
-  for sock in "$SOCKET_DIR"/*.sock; do
-    [ -e "$sock" ] || continue
-    # If no process has the socket open, it's stale
-    if ! fuser "$sock" &>/dev/null 2>&1; then
-      rm -f "$sock"
-    fi
-  done
+  if command -v fuser &>/dev/null; then
+    for sock in "$SOCKET_DIR"/*.sock; do
+      [ -e "$sock" ] || continue
+      # If no process has the socket open, it's stale
+      if ! fuser "$sock" &>/dev/null 2>&1; then
+        rm -f "$sock"
+      fi
+    done
+  else
+    echo "  fuser not found, skipping socket cleanup (install psmisc)"
+  fi
   # Clean broken alias symlinks
   for alias in "$SOCKET_DIR"/*.alias; do
     [ -L "$alias" ] || continue

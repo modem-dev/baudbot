@@ -238,9 +238,11 @@ async function handleMessage(userMessage, event, say) {
   } catch {}
 
   try {
-    // Always re-resolve the socket before sending (handles agent restarts)
+    // Always re-resolve the socket before sending (handles agent restarts).
+    // Capture into a local to avoid TOCTOU with concurrent handleMessage calls.
     refreshSocket();
-    if (!socketPath) {
+    const currentSocket = socketPath;
+    if (!currentSocket) {
       await say({ text: "⏳ Agent is starting up — try again in a moment.", thread_ts: event.ts });
       return;
     }
@@ -254,7 +256,7 @@ async function handleMessage(userMessage, event, say) {
       threadTs: event.ts,
     });
 
-    const reply = await enqueue(() => sendToAgent(socketPath, contextMessage));
+    const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
     const formatted = formatForSlack(reply);
     await say({ text: formatted, thread_ts: event.ts });
 
@@ -311,14 +313,15 @@ app.event("message", async ({ event, say }) => {
       threadTs: event.ts,
     });
     try {
-      // Re-resolve socket before sending
+      // Re-resolve socket before sending (capture local to avoid TOCTOU)
       refreshSocket();
-      if (!socketPath) {
+      const currentSocket = socketPath;
+      if (!currentSocket) {
         console.log("⏳ Sentry alert dropped — agent not ready yet");
         return;
       }
       // Fire and forget — don't wait for agent response, don't reply in channel
-      await enqueue(() => sendToAgent(socketPath, contextMessage));
+      await enqueue(() => sendToAgent(currentSocket, contextMessage));
     } catch (err) {
       console.error("Sentry alert forward error:", err.message);
       refreshSocket();
