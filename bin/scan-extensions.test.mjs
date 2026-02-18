@@ -274,6 +274,62 @@ describe("scan-extensions: new rules", () => {
       assert.ok(output.includes("prototype") || output.includes("pollution"), output);
     });
   });
+
+  it("detects credential logging (same line)", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), `
+        console.log(process.env.SECRET_KEY);
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.ok(exitCode > 0);
+      assert.ok(output.includes("credential") || output.includes("logging"), output);
+    });
+  });
+
+  it("detects credential logging (multiline console.log with process.env)", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), `
+        console.log(
+          "token:",
+          process.env.SECRET_TOKEN
+        );
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.ok(exitCode > 0);
+      assert.ok(output.includes("credential") || output.includes("logging"), output);
+    });
+  });
+
+  it("detects unsafe deserialization", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), `
+        const data = JSON.parse(req.body);
+      `);
+      const { output, exitCode } = runScanner(dir);
+      assert.ok(exitCode > 0);
+      assert.ok(output.includes("deserialization") || output.includes("Unsafe"), output);
+    });
+  });
+
+  it("detects dynamic require", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.js"), `
+        const mod = require(userInput);
+      `);
+      const { output, exitCode } = runScanner(dir);
+      // info severity = exit 0, but should appear in output
+      assert.ok(output.includes("dynamic") || output.includes("Dynamic") || output.includes("require"), output);
+    });
+  });
+
+  it("detects template literal fs write to system path", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "bad.ts"), "import { writeFileSync } from 'node:fs';\nwriteFileSync(`/etc/shadow`, data);");
+      const { output, exitCode } = runScanner(dir);
+      assert.equal(exitCode, 2);
+      assert.ok(output.includes("system path"), output);
+    });
+  });
 });
 
 describe("scan-extensions: --json output", () => {

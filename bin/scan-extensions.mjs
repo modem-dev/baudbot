@@ -62,7 +62,7 @@ const LINE_RULES = [
     id: "fs-write-outside-home",
     severity: "critical",
     message: "Filesystem write to system path detected",
-    pattern: /writeFileSync?\s*\(\s*["'](\/etc\/|\/usr\/|\/var\/|\/root\/)/,
+    pattern: /writeFileSync?\s*\(\s*["'`](\/etc\/|\/usr\/|\/var\/|\/root\/)/,
   },
   {
     id: "privilege-escalation",
@@ -127,7 +127,8 @@ const SOURCE_RULES = [
     severity: "warn",
     message: "Possible credential logging (process.env written to log/console)",
     pattern: /process\.env/,
-    requiresContext: /console\.(log|info|warn|error|debug)\s*\(.*process\.env/,
+    // Uses [\s\S]*? to match across newlines in full-source context check
+    requiresContext: /console\.(log|info|warn|error|debug)\s*\([\s\S]*?process\.env/,
   },
   {
     id: "dynamic-require",
@@ -361,7 +362,10 @@ async function main() {
     if (!jsonOutput) console.log(`⚠️  ${totalWarn} warning(s) — review recommended.`);
     process.exit(1);
   } else {
-    if (!jsonOutput) console.log("✅ All clean.");
+    if (!jsonOutput) {
+      if (totalInfo > 0) console.log(`ℹ️  ${totalInfo} info finding(s) — no action required.`);
+      else console.log("✅ All clean.");
+    }
     process.exit(0);
   }
 }
