@@ -19,6 +19,10 @@ BAUDBOT_HOME="/home/baudbot_agent"
 PASS=0
 FAIL=0
 WARN=0
+IS_ROOT=0
+if [ "$(id -u)" -eq 0 ]; then
+  IS_ROOT=1
+fi
 
 pass() { echo "  ✓ $1"; PASS=$((PASS + 1)); }
 fail() { echo "  ✗ $1"; FAIL=$((FAIL + 1)); }
@@ -26,6 +30,11 @@ warn() { echo "  ⚠ $1"; WARN=$((WARN + 1)); }
 
 echo "Baudbot Doctor"
 echo ""
+if [ "$IS_ROOT" -ne 1 ]; then
+  echo "ℹ Running without root: some checks may be inconclusive."
+  echo "  For full accuracy, run: sudo baudbot doctor"
+  echo ""
+fi
 
 # ── User ─────────────────────────────────────────────────────────────────────
 
@@ -125,7 +134,11 @@ if [ -f "$ENV_FILE" ]; then
     fi
   done
 else
-  fail ".env not found at $ENV_FILE"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.config" ]; then
+    warn "cannot verify agent .env as non-root (run: sudo baudbot doctor)"
+  else
+    fail ".env not found at $ENV_FILE"
+  fi
 fi
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
@@ -136,26 +149,42 @@ echo "Runtime:"
 if [ -f "$BAUDBOT_HOME/runtime/start.sh" ]; then
   pass "start.sh deployed"
 else
-  fail "start.sh not found (run: baudbot deploy)"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/runtime" ]; then
+    warn "cannot verify start.sh as non-root (run: sudo baudbot doctor)"
+  else
+    fail "start.sh not found (run: baudbot deploy)"
+  fi
 fi
 
 if [ -d "$BAUDBOT_HOME/.pi/agent/extensions" ]; then
   EXT_COUNT=$(find "$BAUDBOT_HOME/.pi/agent/extensions" -maxdepth 1 -name '*.ts' -o -name '*.mjs' 2>/dev/null | wc -l)
   pass "extensions deployed ($EXT_COUNT files)"
 else
-  fail "extensions not deployed (run: baudbot deploy)"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME" ]; then
+    warn "cannot verify extensions as non-root (run: sudo baudbot doctor)"
+  else
+    fail "extensions not deployed (run: baudbot deploy)"
+  fi
 fi
 
 if [ -d "$BAUDBOT_HOME/.pi/agent/skills" ]; then
   pass "skills deployed"
 else
-  fail "skills not deployed (run: baudbot deploy)"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME" ]; then
+    warn "cannot verify skills as non-root (run: sudo baudbot doctor)"
+  else
+    fail "skills not deployed (run: baudbot deploy)"
+  fi
 fi
 
 if [ -d "$BAUDBOT_HOME/runtime/slack-bridge" ] && [ -f "$BAUDBOT_HOME/runtime/slack-bridge/bridge.mjs" ]; then
   pass "slack bridge deployed"
 else
-  fail "slack bridge not deployed (run: baudbot deploy)"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/runtime" ]; then
+    warn "cannot verify slack bridge files as non-root (run: sudo baudbot doctor)"
+  else
+    fail "slack bridge not deployed (run: baudbot deploy)"
+  fi
 fi
 
 # ── Security ─────────────────────────────────────────────────────────────────
@@ -168,7 +197,11 @@ if command -v iptables &>/dev/null && iptables -w -L BAUDBOT_OUTPUT -n &>/dev/nu
   RULE_COUNT=$(iptables -w -L BAUDBOT_OUTPUT -n 2>/dev/null | tail -n +3 | wc -l)
   pass "firewall active ($RULE_COUNT rules)"
 else
-  warn "firewall not active (run: baudbot setup)"
+  if command -v iptables &>/dev/null && [ "$IS_ROOT" -ne 1 ]; then
+    warn "cannot verify firewall as non-root (run: sudo baudbot doctor)"
+  else
+    warn "firewall not active (run: baudbot setup)"
+  fi
 fi
 
 # /proc hidepid
@@ -204,7 +237,11 @@ if [ -f "$TOOL_GUARD" ]; then
     fi
   fi
 else
-  fail "tool-guard.ts not found"
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME" ]; then
+    warn "cannot verify tool-guard.ts as non-root (run: sudo baudbot doctor)"
+  else
+    fail "tool-guard.ts not found"
+  fi
 fi
 
 # ── Agent Status ─────────────────────────────────────────────────────────────
@@ -213,13 +250,20 @@ echo ""
 echo "Agent:"
 
 if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
-  if systemctl is-enabled baudbot &>/dev/null 2>&1; then
+  enabled_state=$(systemctl is-enabled baudbot 2>&1 || true)
+  if [ "$enabled_state" = "enabled" ]; then
     pass "systemd unit enabled"
-    if systemctl is-active baudbot &>/dev/null 2>&1; then
+
+    active_state=$(systemctl is-active baudbot 2>&1 || true)
+    if [ "$active_state" = "active" ]; then
       pass "agent is running (systemd)"
+    elif [ "$IS_ROOT" -ne 1 ] && echo "$active_state" | grep -qiE 'access denied|not authorized|interactive authentication|required'; then
+      warn "cannot verify agent runtime as non-root (run: sudo baudbot doctor)"
     else
       warn "agent is not running"
     fi
+  elif [ "$IS_ROOT" -ne 1 ] && echo "$enabled_state" | grep -qiE 'access denied|not authorized|interactive authentication|required'; then
+    warn "cannot verify systemd unit state as non-root (run: sudo baudbot doctor)"
   else
     warn "systemd unit not installed (run: baudbot setup)"
   fi
