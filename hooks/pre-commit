@@ -70,3 +70,18 @@ if [ ${#blocked[@]} -gt 0 ]; then
   echo ""
   exit 1
 fi
+
+# ── Lint & format staged JS/TS files ────────────────────────────────────────
+# Auto-fix lint/format issues on staged files and re-stage them.
+# Skips if biome is not available (e.g., agent runtime without devDependencies).
+
+JS_FILES=$(echo "$STAGED" | grep -E '\.(ts|js|mjs|mts|cjs|cts|jsx|tsx)$' || true)
+
+if [ -n "$JS_FILES" ] && command -v npx &>/dev/null; then
+  # Check if biome is installed
+  if npx biome --version &>/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    echo "$JS_FILES" | xargs npx biome check --write --no-errors-on-unmatched 2>/dev/null || true
+    echo "$JS_FILES" | xargs git diff --name-only 2>/dev/null | xargs git add 2>/dev/null || true
+  fi
+fi
