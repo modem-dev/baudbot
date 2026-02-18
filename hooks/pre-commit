@@ -82,6 +82,6 @@ if [ -n "$JS_FILES" ] && command -v npx &>/dev/null; then
   if npx biome --version &>/dev/null 2>&1; then
     # shellcheck disable=SC2086
     echo "$JS_FILES" | xargs npx biome check --write --no-errors-on-unmatched 2>/dev/null || true
-    echo "$JS_FILES" | xargs git add 2>/dev/null || true
+    echo "$JS_FILES" | xargs git diff --name-only 2>/dev/null | xargs git add 2>/dev/null || true
   fi
 fi
