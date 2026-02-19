@@ -46,7 +46,7 @@ usage() {
   echo "  start          Start the agent (systemd, or --direct for foreground)"
   echo "  stop           Stop the agent"
   echo "  restart        Restart the agent"
-  echo "  status         Show agent status"
+  echo "  status         Show agent status + deployed version"
   echo "  logs           Tail agent logs"
   echo "  attach         Attach to a tmux session (default: first available)"
   echo "  sessions       List agent tmux and pi sessions"
@@ -79,6 +79,53 @@ require_root() {
 # Detect systemd
 has_systemd() {
   command -v systemctl &>/dev/null && [ -d /run/systemd/system ]
+}
+
+print_deployed_version() {
+  local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+  local version_file="/home/$agent_user/.pi/agent/baudbot-version.json"
+  local version_json=""
+  local short=""
+  local sha=""
+  local branch=""
+  local deployed_at=""
+  local line=""
+
+  if [ -r "$version_file" ]; then
+    version_json="$(cat "$version_file" 2>/dev/null || true)"
+  elif [ "$(id -u)" -eq 0 ] && id "$agent_user" >/dev/null 2>&1; then
+    version_json="$(sudo -u "$agent_user" cat "$version_file" 2>/dev/null || true)"
+  fi
+
+  if [ -z "$version_json" ]; then
+    local release_target=""
+    local release_sha=""
+
+    release_target="$(readlink -f /opt/baudbot/current 2>/dev/null || true)"
+    if printf '%s\n' "$release_target" | grep -Eq '/releases/[0-9a-f]{7,40}$'; then
+      release_sha="${release_target##*/}"
+      echo -e "${BOLD}deployed version:${RESET} ${release_sha:0:7} sha: $release_sha (from /opt/baudbot/current)"
+    else
+      echo -e "${BOLD}deployed version:${RESET} unavailable"
+    fi
+    return 0
+  fi
+
+  short="$(printf '%s\n' "$version_json" | grep -E '"short"[[:space:]]*:' | head -1 | sed 's/.*"short"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  sha="$(printf '%s\n' "$version_json" | grep -E '"sha"[[:space:]]*:' | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  branch="$(printf '%s\n' "$version_json" | grep -E '"branch"[[:space:]]*:' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  deployed_at="$(printf '%s\n' "$version_json" | grep -E '"deployed_at"[[:space:]]*:' | head -1 | sed 's/.*"deployed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+
+  if [ -z "$short" ] && [ -n "$sha" ]; then
+    short="${sha:0:7}"
+  fi
+
+  line="${short:-unknown}"
+  [ -n "$branch" ] && line="$line (branch: $branch)"
+  [ -n "$deployed_at" ] && line="$line deployed: $deployed_at"
+  [ -n "$sha" ] && line="$line sha: $sha"
+
+  echo -e "${BOLD}deployed version:${RESET} $line"
 }
 
 case "${1:-}" in
@@ -125,7 +172,11 @@ case "${1:-}" in
   status)
     shift
     if has_systemd && systemctl is-enabled baudbot &>/dev/null; then
-      exec systemctl status baudbot "$@"
+      status_rc=0
+      systemctl status baudbot "$@" || status_rc=$?
+      echo ""
+      print_deployed_version
+      exit "$status_rc"
     else
       # Fallback: check if baudbot_agent has pi running
       if pgrep -u baudbot_agent -f "pi --session-control" &>/dev/null; then
@@ -134,6 +185,8 @@ case "${1:-}" in
       else
         echo "baudbot is not running"
       fi
+      echo ""
+      print_deployed_version
     fi
     ;;
 
