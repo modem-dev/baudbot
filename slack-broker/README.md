@@ -113,7 +113,7 @@ Supported actions: `chat.postMessage`, `reactions.add`, `chat.update`.
 
 | Primitive | Use | Library |
 |-----------|-----|---------|
-| `crypto_box_seal` (X25519 + XSalsa20-Poly1305) | Inbound: Slack → server | tweetnacl |
+| `crypto_box_seal` (X25519 + XSalsa20-Poly1305) | Inbound: Slack → server | libsodium-wrappers-sumo |
 | `crypto_box` (X25519 + XSalsa20-Poly1305) | Outbound: server → Slack | tweetnacl |
 | Ed25519 | Envelope signatures | tweetnacl |
 | HMAC-SHA256 | Slack request verification | Web Crypto API |
@@ -133,13 +133,15 @@ Supported actions: `chat.postMessage`, `reactions.add`, `chat.update`.
 - ✅ Server authenticates broker (broker signs envelopes)
 - ✅ Broker authenticates server (server signs outbound requests)
 - ✅ Replay protection (timestamps + nonces on all messages)
-- ✅ Auth code verification for server registration
+- ✅ Auth code verification for server registration (one-time use, HMAC-SHA256)
+- ✅ Bot tokens encrypted at rest in KV (nacl.secretbox)
 - ❌ Perfect forward secrecy (would need session keys — future enhancement)
+- ❌ Rate limiting (Phase 3 — pre-production requirement)
 
 ### What the Broker Can See
 
 - Routing metadata: workspace_id, channel, thread_ts, timestamps
-- Outbound message content: **transiently** (decrypted in memory to post to Slack, then zeroed)
+- Outbound message content: **transiently** (decrypted in memory to post to Slack, then best-effort zeroed — JS strings from JSON.parse cannot be deterministically zeroed, only the underlying Uint8Array buffer is cleared)
 
 ### What the Broker Cannot See
 

@@ -20,8 +20,12 @@ import {
   activateWorkspace,
   getWorkspace,
   hashAuthCode,
+  decryptBotToken,
   type KVNamespace,
 } from "../src/routing/registry.js";
+
+/** Test broker key (base64-encoded 32-byte key). */
+const TEST_BROKER_KEY = encodeBase64(nacl.randomBytes(32));
 
 /** In-memory KV mock. */
 function createMockKV(): KVNamespace {
@@ -246,21 +250,25 @@ describe("end-to-end registration flow", () => {
   it("full OAuth → register → activate cycle", async () => {
     // 1. OAuth completes — create pending workspace
     const authCode = "secret-auth-code-12345";
-    const authCodeHashed = await hashAuthCode(authCode);
+    const authCodeHashed = await hashAuthCode(authCode, TEST_BROKER_KEY);
 
-    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-fake-token", authCodeHashed);
+    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-fake-token", authCodeHashed, TEST_BROKER_KEY);
 
     // Verify pending state
     let ws = await getWorkspace(kv, "T123");
     expect(ws!.status).toBe("pending");
     expect(ws!.server_url).toBe("");
 
+    // Verify bot token is encrypted (not plaintext)
+    expect(ws!.bot_token).not.toBe("xoxb-fake-token");
+    expect(decryptBotToken(ws!.bot_token, TEST_BROKER_KEY)).toBe("xoxb-fake-token");
+
     // 2. Server generates keys and registers
     const serverBoxKeypair = nacl.box.keyPair();
     const serverSignKeypair = nacl.sign.keyPair();
 
     // Verify auth code matches
-    const providedHash = await hashAuthCode(authCode);
+    const providedHash = await hashAuthCode(authCode, TEST_BROKER_KEY);
     expect(providedHash).toBe(ws!.auth_code_hash);
 
     // 3. Activate
@@ -274,20 +282,28 @@ describe("end-to-end registration flow", () => {
 
     expect(activated!.status).toBe("active");
     expect(activated!.server_url).toBe("https://my-server.example.com/broker/inbound");
+    // Auth code hash should be cleared after activation
+    expect(activated!.auth_code_hash).toBe("");
 
     // 4. Verify the stored keys can be used for crypto
     ws = await getWorkspace(kv, "T123");
     const storedPubkey = decodeBase64(ws!.server_pubkey);
     expect(storedPubkey).toEqual(serverBoxKeypair.publicKey);
+
+    // 5. Re-registration should be rejected (workspace is active)
+    const reactivated = await activateWorkspace(
+      kv, "T123", "https://evil.example.com", "pk", "spk",
+    );
+    expect(reactivated).toBeNull();
   });
 
   it("rejects registration with wrong auth code", async () => {
     const authCode = "correct-code";
-    const authCodeHashed = await hashAuthCode(authCode);
+    const authCodeHashed = await hashAuthCode(authCode, TEST_BROKER_KEY);
 
-    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-fake", authCodeHashed);
+    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-fake", authCodeHashed, TEST_BROKER_KEY);
 
-    const wrongHash = await hashAuthCode("wrong-code");
+    const wrongHash = await hashAuthCode("wrong-code", TEST_BROKER_KEY);
     const ws = await getWorkspace(kv, "T123");
     expect(wrongHash).not.toBe(ws!.auth_code_hash);
   });

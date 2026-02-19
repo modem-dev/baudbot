@@ -50,6 +50,16 @@ export async function forwardEvent(
     return { ok: false, error: "workspace missing server configuration" };
   }
 
+  // Enforce HTTPS for all server callback URLs
+  try {
+    const url = new URL(workspace.server_url);
+    if (url.protocol !== "https:") {
+      return { ok: false, error: "server URL must use HTTPS" };
+    }
+  } catch {
+    return { ok: false, error: "invalid server URL" };
+  }
+
   // Serialize and encrypt
   const plaintext = encodeUTF8(JSON.stringify(event));
   const serverPubkey = decodeBase64(workspace.server_pubkey);

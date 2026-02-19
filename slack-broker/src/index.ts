@@ -84,6 +84,10 @@ export default {
       _ctx: ctx,
     };
 
+    // TODO(Phase 3): Add rate limiting before production deployment.
+    // Per-workspace and per-IP limits on /api/send, /api/register, and /slack/events.
+    // Cloudflare Rate Limiting rules or a KV-based token bucket are both viable.
+
     // Route requests
     try {
       // Health check

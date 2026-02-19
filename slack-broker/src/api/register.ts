@@ -73,6 +73,12 @@ export async function handleRegister(
     return jsonResponse({ ok: false, error: "missing required fields" }, 400);
   }
 
+  // Validate workspace_id matches Slack team ID format to prevent
+  // pipe-delimiter injection in canonicalized signatures.
+  if (!/^T[A-Z0-9]+$/.test(body.workspace_id)) {
+    return jsonResponse({ ok: false, error: "invalid workspace_id format" }, 400);
+  }
+
   // Validate callback URL
   try {
     const url = new URL(body.server_callback_url);
@@ -89,8 +95,18 @@ export async function handleRegister(
     return jsonResponse({ ok: false, error: "workspace not found — complete OAuth install first" }, 404);
   }
 
-  // Verify auth code
-  const providedHash = await hashAuthCode(body.auth_code);
+  // Reject re-registration of already-active workspaces.
+  // The current server must unregister first (DELETE /api/register).
+  if (workspace.status === "active") {
+    return jsonResponse({ ok: false, error: "workspace already active — unregister the current server first" }, 409);
+  }
+
+  // Verify auth code (must not be empty — cleared after first successful registration)
+  if (!workspace.auth_code_hash) {
+    return jsonResponse({ ok: false, error: "auth code already consumed — re-install the Slack app to generate a new one" }, 403);
+  }
+
+  const providedHash = await hashAuthCode(body.auth_code, env.BROKER_PRIVATE_KEY);
   if (providedHash !== workspace.auth_code_hash) {
     return jsonResponse({ ok: false, error: "invalid auth code" }, 403);
   }

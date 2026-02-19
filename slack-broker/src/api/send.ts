@@ -29,7 +29,7 @@
 import { boxDecrypt, zeroBytes } from "../crypto/box.js";
 import { verify, canonicalizeOutbound } from "../crypto/verify.js";
 import { decodeBase64, decodeUTF8 } from "../util/encoding.js";
-import { getWorkspace } from "../routing/registry.js";
+import { getWorkspace, decryptBotToken } from "../routing/registry.js";
 import { postMessage, addReaction, updateMessage } from "../slack/api.js";
 import type { Env } from "../index.js";
 
@@ -140,9 +140,12 @@ export async function handleSend(
 
   // Execute the Slack API call
   try {
+    // Decrypt the bot token (encrypted at rest in KV)
+    const botToken = decryptBotToken(workspace.bot_token, env.BROKER_PRIVATE_KEY);
+
     const result = await executeSlackAction(
       body.action as SlackAction,
-      workspace.bot_token,
+      botToken,
       body.routing,
       decryptedBody,
     );

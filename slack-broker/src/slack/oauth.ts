@@ -12,7 +12,7 @@
  * server registration to prove workspace ownership.
  */
 
-import { createPendingWorkspace, hashAuthCode } from "../routing/registry.js";
+import { createPendingWorkspace, getWorkspace, hashAuthCode } from "../routing/registry.js";
 import type { Env } from "../index.js";
 
 /** Required OAuth scopes for the Prime app. */
@@ -129,17 +129,34 @@ export async function handleOAuthCallback(
     );
   }
 
+  // Reject re-install if workspace is already active.
+  // The current server must unregister first to prevent silent disconnection.
+  const existing = await getWorkspace(env.WORKSPACE_ROUTING, tokenData.team.id);
+  if (existing && existing.status === "active") {
+    return new Response(
+      `<html>
+<body>
+  <h1>⚠️ Workspace already active</h1>
+  <p>Baudbot is already connected to <strong>${escapeHtml(tokenData.team.name)}</strong> with an active server.</p>
+  <p>To re-install, first unregister the current server (run <code>baudbot unregister</code>), then try again.</p>
+</body>
+</html>`,
+      { status: 200, headers: { "Content-Type": "text/html" } },
+    );
+  }
+
   // Generate auth code for server registration
   const authCode = generateRandomString(32);
-  const authCodeHashed = await hashAuthCode(authCode);
+  const authCodeHashed = await hashAuthCode(authCode, env.BROKER_PRIVATE_KEY);
 
-  // Store workspace with pending status
+  // Store workspace with pending status (bot token encrypted at rest)
   await createPendingWorkspace(
     env.WORKSPACE_ROUTING,
     tokenData.team.id,
     tokenData.team.name,
     tokenData.access_token,
     authCodeHashed,
+    env.BROKER_PRIVATE_KEY,
   );
 
   // Return success page with auth code

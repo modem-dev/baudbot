@@ -10,12 +10,17 @@ import {
   activateWorkspace,
   deactivateWorkspace,
   hashAuthCode,
+  encryptBotToken,
+  decryptBotToken,
   type WorkspaceRecord,
   type KVNamespace,
 } from "../src/routing/registry.js";
 import { forwardEvent, type ForwardResult } from "../src/routing/forward.js";
 import nacl from "tweetnacl";
 import { encodeBase64 } from "../src/util/encoding.js";
+
+/** Test broker key (base64-encoded 32-byte key). */
+const TEST_BROKER_KEY = encodeBase64(nacl.randomBytes(32));
 
 /** In-memory KV mock. */
 function createMockKV(): KVNamespace {
@@ -45,12 +50,15 @@ describe("registry", () => {
     expect(result).toBeNull();
   });
 
-  it("creates a pending workspace", async () => {
-    const record = await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123");
+  it("creates a pending workspace with encrypted bot token", async () => {
+    const record = await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123", TEST_BROKER_KEY);
 
     expect(record.workspace_id).toBe("T123");
     expect(record.team_name).toBe("Test Team");
-    expect(record.bot_token).toBe("xoxb-token");
+    // bot_token is now encrypted — should NOT be plaintext
+    expect(record.bot_token).not.toBe("xoxb-token");
+    // Decrypting should yield the original
+    expect(decryptBotToken(record.bot_token, TEST_BROKER_KEY)).toBe("xoxb-token");
     expect(record.status).toBe("pending");
     expect(record.auth_code_hash).toBe("hash123");
     expect(record.server_url).toBe("");
@@ -61,8 +69,8 @@ describe("registry", () => {
     expect(fetched).toEqual(record);
   });
 
-  it("activates a workspace with server details", async () => {
-    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123");
+  it("activates a workspace with server details and clears auth_code_hash", async () => {
+    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123", TEST_BROKER_KEY);
 
     const activated = await activateWorkspace(
       kv,
@@ -77,6 +85,21 @@ describe("registry", () => {
     expect(activated!.server_url).toBe("https://server.example.com/broker/inbound");
     expect(activated!.server_pubkey).toBe("server_pubkey_base64");
     expect(activated!.server_signing_pubkey).toBe("server_signing_pubkey_base64");
+    // Auth code hash should be cleared after activation
+    expect(activated!.auth_code_hash).toBe("");
+  });
+
+  it("rejects activation of already-active workspace", async () => {
+    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123", TEST_BROKER_KEY);
+    await activateWorkspace(kv, "T123", "https://server1.example.com", "pk1", "spk1");
+
+    // Second activation should fail
+    const result = await activateWorkspace(kv, "T123", "https://server2.example.com", "pk2", "spk2");
+    expect(result).toBeNull();
+
+    // Original server should still be registered
+    const ws = await getWorkspace(kv, "T123");
+    expect(ws!.server_url).toBe("https://server1.example.com");
   });
 
   it("returns null when activating non-existent workspace", async () => {
@@ -85,7 +108,7 @@ describe("registry", () => {
   });
 
   it("deactivates a workspace", async () => {
-    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123");
+    await createPendingWorkspace(kv, "T123", "Test Team", "xoxb-token", "hash123", TEST_BROKER_KEY);
     await activateWorkspace(kv, "T123", "https://server.example.com", "pk", "spk");
 
     const result = await deactivateWorkspace(kv, "T123");
@@ -121,22 +144,76 @@ describe("registry", () => {
   });
 });
 
-describe("hashAuthCode", () => {
+describe("hashAuthCode (HMAC-SHA256)", () => {
   it("produces a hex string", async () => {
-    const hash = await hashAuthCode("test-code");
+    const hash = await hashAuthCode("test-code", "broker-secret");
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("is deterministic", async () => {
-    const h1 = await hashAuthCode("same-code");
-    const h2 = await hashAuthCode("same-code");
+    const h1 = await hashAuthCode("same-code", "broker-secret");
+    const h2 = await hashAuthCode("same-code", "broker-secret");
     expect(h1).toBe(h2);
   });
 
   it("differs for different inputs", async () => {
-    const h1 = await hashAuthCode("code-a");
-    const h2 = await hashAuthCode("code-b");
+    const h1 = await hashAuthCode("code-a", "broker-secret");
+    const h2 = await hashAuthCode("code-b", "broker-secret");
     expect(h1).not.toBe(h2);
+  });
+
+  it("differs for different secrets (keyed)", async () => {
+    const h1 = await hashAuthCode("same-code", "secret-1");
+    const h2 = await hashAuthCode("same-code", "secret-2");
+    expect(h1).not.toBe(h2);
+  });
+});
+
+describe("workspace_id validation", () => {
+  it("accepts valid Slack team IDs", () => {
+    expect(/^T[A-Z0-9]+$/.test("T09192W1Z34")).toBe(true);
+    expect(/^T[A-Z0-9]+$/.test("T123")).toBe(true);
+    expect(/^T[A-Z0-9]+$/.test("TABCDEF012")).toBe(true);
+  });
+
+  it("rejects IDs with pipe delimiter (injection)", () => {
+    expect(/^T[A-Z0-9]+$/.test("T123|evil")).toBe(false);
+  });
+
+  it("rejects IDs that don't start with T", () => {
+    expect(/^T[A-Z0-9]+$/.test("U123")).toBe(false);
+    expect(/^T[A-Z0-9]+$/.test("123")).toBe(false);
+  });
+
+  it("rejects empty or T-only IDs", () => {
+    expect(/^T[A-Z0-9]+$/.test("")).toBe(false);
+    expect(/^T[A-Z0-9]+$/.test("T")).toBe(false);
+  });
+});
+
+describe("bot token encryption", () => {
+  it("encrypts and decrypts a bot token", () => {
+    const token = "xoxb-1234567890-abcdefghij";
+    const encrypted = encryptBotToken(token, TEST_BROKER_KEY);
+    expect(encrypted).not.toBe(token);
+    expect(decryptBotToken(encrypted, TEST_BROKER_KEY)).toBe(token);
+  });
+
+  it("different encryptions produce different ciphertexts (random nonce)", () => {
+    const token = "xoxb-same-token";
+    const e1 = encryptBotToken(token, TEST_BROKER_KEY);
+    const e2 = encryptBotToken(token, TEST_BROKER_KEY);
+    expect(e1).not.toBe(e2);
+    // Both decrypt to the same value
+    expect(decryptBotToken(e1, TEST_BROKER_KEY)).toBe(token);
+    expect(decryptBotToken(e2, TEST_BROKER_KEY)).toBe(token);
+  });
+
+  it("fails to decrypt with wrong key", () => {
+    const token = "xoxb-secret";
+    const wrongKey = encodeBase64(nacl.randomBytes(32));
+    const encrypted = encryptBotToken(token, TEST_BROKER_KEY);
+    expect(() => decryptBotToken(encrypted, wrongKey)).toThrow("decryption failed");
   });
 });
 
@@ -178,6 +255,13 @@ describe("forwardEvent", () => {
     const result = await forwardEvent({}, workspace, brokerSignKeypair.secretKey);
     expect(result.ok).toBe(false);
     expect(result.error).toContain("missing server configuration");
+  });
+
+  it("rejects non-HTTPS server URL", async () => {
+    const workspace = makeActiveWorkspace({ server_url: "http://server.example.com/inbound" });
+    const result = await forwardEvent({}, workspace, brokerSignKeypair.secretKey);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("HTTPS");
   });
 
   it("forwards an event to a server (mocked fetch)", async () => {

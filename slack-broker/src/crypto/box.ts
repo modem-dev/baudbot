@@ -74,8 +74,13 @@ export function boxDecrypt(
 }
 
 /**
- * Zero out a Uint8Array to minimize plaintext residence in memory.
- * Call this after posting the decrypted content to Slack.
+ * Best-effort memory cleanup — zeroes a Uint8Array to reduce plaintext
+ * residence in memory. Call this after posting the decrypted content to Slack.
+ *
+ * NOTE: This only zeroes the Uint8Array buffer. JS strings derived from the
+ * buffer (e.g. via TextDecoder or JSON.parse) are immutable and cannot be
+ * deterministically zeroed — they remain in memory until garbage collected.
+ * This is a limitation of the JS runtime, not a bug.
  */
 export function zeroBytes(arr: Uint8Array): void {
   arr.fill(0);
