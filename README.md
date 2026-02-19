@@ -50,12 +50,11 @@ Baudbot is designed as shared engineering infrastructure, not a single-user desk
 ## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bin/baudbot -o /tmp/baudbot
-chmod +x /tmp/baudbot
-/tmp/baudbot install
+curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh | bash
+baudbot install
 ```
 
-This bootstrap command downloads the installer and only escalates when privileged steps are needed.
+The bootstrap command installs a lightweight `baudbot` CLI to `/usr/local/bin`, then `baudbot install` performs full system setup and publishes the runtime release to `/opt/baudbot`.
 
 Alternative (if you want a local source checkout first):
 
