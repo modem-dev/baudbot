@@ -186,7 +186,7 @@ bin/ci/droplet.sh destroy "$DROPLET_ID" "$SSH_KEY_ID"
 
 Droplets take ~15s to create, ~10s for SSH, ~90s for full setup+tests. Always destroy after — they cost ~$0.003 per run but add up if forgotten.
 
-The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run `install.sh` with simulated input, verify the result, then run the full test suite. Use them as-is or SSH in and test manually.
+The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run the bootstrap flow (`bootstrap.sh` → `baudbot install`) with simulated input, verify the result, then run the full test suite. Use them as-is or SSH in and test manually.
 
 ## Security Notes
 

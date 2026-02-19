@@ -18,12 +18,17 @@ tar xzf /tmp/baudbot-src.tar.gz
 chown -R baudbot_admin:baudbot_admin /home/baudbot_admin/
 sudo -u baudbot_admin bash -c 'cd ~/baudbot && git init -q && git config user.email "ci@test" && git config user.name "CI" && git add -A && git commit -q -m "init"'
 
-echo "=== Running install.sh ==="
+echo "=== Running bootstrap + baudbot install ==="
+# Bootstrap installs /usr/local/bin/baudbot, then baudbot install runs install.sh.
+# Use file:// URLs so CI tests the uploaded source bundle (not GitHub main).
+BAUDBOT_CLI_URL="file:///home/baudbot_admin/baudbot/bin/baudbot" \
+BAUDBOT_BOOTSTRAP_TARGET="/usr/local/bin/baudbot" \
+  bash /home/baudbot_admin/baudbot/bootstrap.sh
 # Simulate interactive input: admin user, required secrets, skip optionals, decline launch
 # Prompts: admin user, Anthropic, OpenAI(skip), Gemini(skip), OpenCode(skip),
 #   Slack bot, Slack app, Slack users, AgentMail(skip), email(skip), Sentry(skip), Kernel(skip), launch(n)
 printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\nn\n' \
-  | bash /home/baudbot_admin/baudbot/install.sh
+  | BAUDBOT_INSTALL_SCRIPT_URL="file:///home/baudbot_admin/baudbot/install.sh" baudbot install
 
 echo "=== Verifying install ==="
 # .env exists with correct permissions
@@ -55,7 +60,7 @@ echo "$HELP_OUT" | grep -q "baudbot"
 test -x /home/baudbot_agent/.varlock/bin/varlock
 # Agent can load env (smoke test — varlock validates schema + .env)
 sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
-echo "  ✓ install.sh verification passed"
+echo "  ✓ bootstrap + install verification passed"
 
 echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:$PATH"
