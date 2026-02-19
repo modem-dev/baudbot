@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {
   DEFAULT_BROKER_URL,
+  DEFAULT_CALLBACK_PATH,
   parseArgs,
   normalizeBrokerUrl,
   validateWorkspaceId,
@@ -10,6 +11,8 @@ import {
   mapRegisterError,
   registerWithBroker,
   resolveBrokerUrlInput,
+  buildDefaultCallbackUrl,
+  resolveCallbackUrlInput,
   upsertEnvContent,
   runRegistration,
 } from "./broker-register.mjs";
@@ -63,6 +66,21 @@ test("resolveBrokerUrlInput prefers cli then existing then default", () => {
     "https://existing.example.com",
   );
   assert.equal(resolveBrokerUrlInput("", ""), DEFAULT_BROKER_URL);
+});
+
+test("resolveCallbackUrlInput prefers cli then existing then broker-derived default", () => {
+  assert.equal(
+    resolveCallbackUrlInput("https://cli.example.com/cb", "https://existing.example.com/cb", "https://broker.example.com"),
+    "https://cli.example.com/cb",
+  );
+  assert.equal(
+    resolveCallbackUrlInput("", "https://existing.example.com/cb", "https://broker.example.com"),
+    "https://existing.example.com/cb",
+  );
+
+  const derived = resolveCallbackUrlInput("", "", "https://broker.example.com");
+  assert.equal(derived, `https://broker.example.com${DEFAULT_CALLBACK_PATH}`);
+  assert.equal(buildDefaultCallbackUrl("https://broker.example.com/anything"), `https://broker.example.com${DEFAULT_CALLBACK_PATH}`);
 });
 
 test("validation helpers normalize and enforce broker/workspace/callback formats", () => {

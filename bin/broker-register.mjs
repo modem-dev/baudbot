@@ -22,6 +22,7 @@ const { subtle } = webcrypto;
 
 const WORKSPACE_ID_RE = /^T[A-Z0-9]+$/;
 export const DEFAULT_BROKER_URL = "https://broker.baudbot.ai";
+export const DEFAULT_CALLBACK_PATH = "/slack/broker/callback";
 
 const ENV_KEYS = [
   "SLACK_BROKER_URL",
@@ -44,10 +45,10 @@ export function usageText() {
     `  --broker-url URL       Broker base URL (default: ${DEFAULT_BROKER_URL})`,
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
     "  --auth-code CODE       One-time auth code from broker OAuth callback",
-    "  --callback-url URL     Public HTTPS callback URL for this server",
+    "  --callback-url URL     Public HTTPS callback URL (default: <broker-url>/slack/broker/callback)",
     "  -h, --help             Show this help",
     "",
-    "If options are omitted, the command prompts interactively.",
+    "If required options are omitted, the command prompts for missing values.",
   ].join("\n");
 }
 
@@ -377,6 +378,20 @@ export function resolveBrokerUrlInput(cliBrokerUrl, existingBrokerUrl) {
   return String(selected).trim();
 }
 
+export function buildDefaultCallbackUrl(brokerUrl) {
+  const parsed = new URL(normalizeBrokerUrl(brokerUrl));
+  parsed.protocol = "https:";
+  parsed.pathname = DEFAULT_CALLBACK_PATH;
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+export function resolveCallbackUrlInput(cliCallbackUrl, existingCallbackUrl, brokerUrl) {
+  const selected = cliCallbackUrl || existingCallbackUrl || buildDefaultCallbackUrl(brokerUrl);
+  return String(selected).trim();
+}
+
 export function resolveConfigTargets({ env = process.env } = {}) {
   const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
   const explicitConfigUser = env.BAUDBOT_CONFIG_USER;
@@ -478,9 +493,11 @@ async function collectInputs(parsedArgs) {
     || existing.SLACK_BROKER_WORKSPACE_ID
     || (await prompt("Workspace ID (starts with T): "));
 
-  const callbackUrl = parsedArgs.callbackUrl
-    || existing.SLACK_BROKER_CALLBACK_URL
-    || (await prompt("Server callback URL (https://...): "));
+  const callbackUrl = resolveCallbackUrlInput(
+    parsedArgs.callbackUrl,
+    existing.SLACK_BROKER_CALLBACK_URL,
+    brokerUrl,
+  );
 
   const authCode = parsedArgs.authCode || (await prompt("Auth code: "));
 

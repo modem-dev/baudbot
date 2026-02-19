@@ -52,6 +52,7 @@ sudo baudbot broker register \
 ```
 
 If `--broker-url` is omitted, baudbot defaults to `https://broker.baudbot.ai`.
+If `--callback-url` is omitted, baudbot defaults to `<broker-url>/slack/broker/callback`.
 
 `baudbot setup` is host provisioning only; do not use `baudbot setup --slack-broker`.
 
