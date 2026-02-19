@@ -71,6 +71,14 @@ sudo baudbot status
 sudo baudbot doctor
 ```
 
+Upgrade later:
+
+```bash
+sudo baudbot update
+sudo baudbot status
+sudo baudbot doctor
+```
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## Core agents
