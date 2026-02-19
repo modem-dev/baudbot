@@ -4,6 +4,9 @@
 
 [![CI](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/ci.yml)
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/modem-dev/baudbot)](https://github.com/modem-dev/baudbot/commits/main)
+[![Security Policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 
 **Always-on, multiplayer coding agent infrastructure for engineering teams.**
 
