@@ -19,6 +19,7 @@ bin/                        security & operations scripts
   redact-logs.sh            secret scrubber for session logs
   prune-session-logs.sh     retention cleanup for old pi session logs
   config.sh                 env var validation helper
+  broker-register.mjs       Slack broker workspace registration CLI
   control-plane.sh          starts the admin web dashboard
   doctor.sh                 system health checks
   uninstall.sh              clean removal of baudbot
@@ -118,6 +119,9 @@ sudo baudbot update
 
 # Roll back live bot to previous snapshot if needed:
 sudo baudbot rollback previous
+
+# Register a server with Slack broker (after OAuth callback)
+sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --auth-code <code> --callback-url https://server.example.com/slack/broker/callback
 
 # Launch agent directly (debug/dev)
 sudo -u baudbot_agent ~/runtime/start.sh

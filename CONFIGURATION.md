@@ -41,6 +41,18 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | `SLACK_APP_TOKEN` | Slack app-level token (Socket Mode) | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
 | `SLACK_ALLOWED_USERS` | Comma-separated Slack user IDs | **Required** — the bridge refuses to start without at least one user ID. Find your Slack user ID: click your profile → "..." → "Copy member ID". Example: `U01ABCDEF,U02GHIJKL` |
 
+If you're using the Slack broker OAuth flow, register this server after install:
+
+```bash
+sudo baudbot broker register \
+  --broker-url https://your-broker.example.com \
+  --workspace-id T0123ABCD \
+  --auth-code <auth-code-from-oauth-callback> \
+  --callback-url https://your-server.example.com/slack/broker/callback
+```
+
+`baudbot setup` is host provisioning only; do not use `baudbot setup --slack-broker`.
+
 ### Email Monitor
 
 | Variable | Description | How to get it |
@@ -73,6 +85,22 @@ The `linear` extension provides a tool for interacting with the Linear issue tra
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
 | `SLACK_CHANNEL_ID` | Additional monitored channel | If set, the bridge responds to all messages in this channel (not just @mentions). |
+
+### Slack Broker Registration (optional)
+
+Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_BROKER_URL` | Broker base URL |
+| `SLACK_BROKER_WORKSPACE_ID` | Slack workspace/team ID (`T...`) |
+| `SLACK_BROKER_CALLBACK_URL` | Public HTTPS callback URL advertised during registration |
+| `SLACK_BROKER_SERVER_PRIVATE_KEY` | Server X25519 private key (base64) |
+| `SLACK_BROKER_SERVER_PUBLIC_KEY` | Server X25519 public key (base64) |
+| `SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY` | Server Ed25519 private signing key (base64) |
+| `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Server Ed25519 public signing key (base64) |
+| `SLACK_BROKER_PUBLIC_KEY` | Broker X25519 public key (base64) |
+| `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
 
 ### Kernel (Cloud Browsers)
 
@@ -152,6 +180,11 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 SLACK_ALLOWED_USERS=U01ABCDEF,U02GHIJKL
 SENTRY_CHANNEL_ID=C0987654321
+
+# Slack broker registration (optional, set by: sudo baudbot broker register)
+SLACK_BROKER_URL=https://broker.example.com
+SLACK_BROKER_WORKSPACE_ID=T0123ABCD
+SLACK_BROKER_CALLBACK_URL=https://server.example.com/slack/broker/callback
 
 # Email
 AGENTMAIL_API_KEY=...

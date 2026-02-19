@@ -77,6 +77,16 @@ Upgrade later:
 sudo baudbot update
 ```
 
+Slack broker registration (after OAuth callback):
+
+```bash
+sudo baudbot broker register \
+  --broker-url https://your-broker.example.com \
+  --workspace-id T0123ABCD \
+  --auth-code <auth-code-from-oauth-callback> \
+  --callback-url https://your-server.example.com/slack/broker/callback
+```
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## Core agents

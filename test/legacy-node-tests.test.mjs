@@ -30,4 +30,8 @@ describe("legacy node:test suites", () => {
   it("extension scanner", () => {
     expect(() => runNodeTest("bin/scan-extensions.test.mjs")).not.toThrow();
   });
+
+  it("broker register", () => {
+    expect(() => runNodeTest("bin/broker-register.test.mjs")).not.toThrow();
+  });
 });

@@ -51,6 +51,7 @@ JS_TEST_FILES=(
   pi/extensions/memory.test.mjs
   slack-bridge/security.test.mjs
   bin/scan-extensions.test.mjs
+  bin/broker-register.test.mjs
   control-plane/server.test.mjs
 )
 
@@ -60,6 +61,7 @@ JS_TEST_NAMES=(
   "memory"
   "bridge security"
   "extension scanner"
+  "broker register"
   "control-plane"
 )
 

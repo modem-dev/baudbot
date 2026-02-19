@@ -60,6 +60,7 @@ usage() {
   echo "  setup          One-time system setup (user, deps, firewall, systemd)"
   echo "  config         Interactive secrets and config setup"
   echo "  deploy         Deploy source + config to agent runtime"
+  echo "  broker         Slack broker commands (register workspace linkage)"
   echo ""
   echo -e "${BOLD}Operations:${RESET}"
   echo "  doctor         Health check (perms, firewall, secrets, deps)"
@@ -559,6 +560,12 @@ case "${1:-}" in
 
   setup)
     shift
+    if [ "${1:-}" = "--slack-broker" ]; then
+      shift
+      require_root "broker register"
+      echo "⚠️  'baudbot setup --slack-broker' is deprecated. Use: sudo baudbot broker register"
+      exec node "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
+    fi
     require_root "setup"
     exec "$BAUDBOT_ROOT/setup.sh" "$@"
     ;;
@@ -566,6 +573,25 @@ case "${1:-}" in
   config)
     shift
     exec "$BAUDBOT_ROOT/bin/config.sh" "$@"
+    ;;
+
+  broker)
+    shift
+    case "${1:-}" in
+      register)
+        shift
+        require_root "broker register"
+        exec node "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
+        ;;
+      --help|-h|"")
+        echo "Usage: sudo baudbot broker register [--broker-url URL] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
+        ;;
+      *)
+        echo "Unknown broker subcommand: ${1:-}"
+        echo "Usage: sudo baudbot broker register [--broker-url URL] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
+        exit 1
+        ;;
+    esac
     ;;
 
   deploy)
