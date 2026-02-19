@@ -435,6 +435,7 @@ case "${1:-}" in
   attach)
     shift
     require_root "attach"
+    AGENT_USER="baudbot_agent"
     AGENT_HOME="/home/$AGENT_USER"
 
     ATTACH_MODE="auto"
