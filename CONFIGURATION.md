@@ -184,3 +184,5 @@ sudo baudbot restart
 ```
 
 The bridge and all sub-agents load `~/.config/.env` on startup. If varlock is installed, variables are validated against `.env.schema` before injection.
+
+Session logs are pruned on startup with a default 14-day retention window (`~/runtime/bin/prune-session-logs.sh --days 14`) and then redacted for common secret patterns.

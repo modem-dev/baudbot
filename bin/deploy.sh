@@ -48,7 +48,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
   cp -r --no-preserve=ownership "$BAUDBOT_SRC/slack-bridge" "$STAGE_DIR/slack-bridge"
   cp --no-preserve=ownership "$BAUDBOT_SRC/start.sh" "$STAGE_DIR/start.sh"
   mkdir -p "$STAGE_DIR/bin"
-  for script in harden-permissions.sh redact-logs.sh; do
+  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
     [ -f "$BAUDBOT_SRC/bin/$script" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/$script" "$STAGE_DIR/bin/$script"
   done
   [ -f "$BAUDBOT_SRC/pi/settings.json" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/pi/settings.json" "$STAGE_DIR/settings.json"
@@ -223,7 +223,7 @@ echo "Deploying runtime scripts..."
 if [ "$DRY_RUN" -eq 0 ]; then
   as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin"
 
-  for script in harden-permissions.sh redact-logs.sh; do
+  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
     if [ -f "$STAGE_DIR/bin/$script" ]; then
       as_agent cp "$STAGE_DIR/bin/$script" "$BAUDBOT_HOME/runtime/bin/$script"
       as_agent chmod u+x "$BAUDBOT_HOME/runtime/bin/$script"

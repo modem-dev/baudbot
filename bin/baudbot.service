@@ -9,8 +9,9 @@ User=baudbot_agent
 Group=baudbot_agent
 WorkingDirectory=/home/baudbot_agent
 
-# Pre-start: lock down perms and scrub secrets from old logs
+# Pre-start: lock down perms, prune old logs, and scrub leaked secrets
 ExecStartPre=/home/baudbot_agent/runtime/bin/harden-permissions.sh
+ExecStartPre=/bin/bash -c '/home/baudbot_agent/runtime/bin/prune-session-logs.sh --days 14 2>/dev/null || true'
 ExecStartPre=/bin/bash -c '/home/baudbot_agent/runtime/bin/redact-logs.sh 2>/dev/null || true'
 
 # Main process

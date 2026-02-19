@@ -106,6 +106,7 @@ Baudbot is built for utility **and** containment:
 - per-UID firewall controls + process isolation
 - source/runtime separation with deploy manifests
 - read-only protection for security-critical files
+- session log hygiene (startup redaction + retention pruning)
 - layered tool and shell guardrails
 
 See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and known risks.

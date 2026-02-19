@@ -152,8 +152,8 @@ Even with port-based firewall rules, the agent can reach any host over HTTPS. Da
 ### Content wrapping is a soft defense
 The `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` boundaries and security notice ask the LLM to ignore injected instructions. This raises the bar but is not a hard security boundary.
 
-### Session logs contain full history
-Pi session logs (`.jsonl` files) contain the complete conversation history. If permissions are not hardened (see `bin/harden-permissions.sh`), these are group-readable.
+### Session logs are sensitive transcripts
+Pi session logs (`.jsonl` files) contain full conversation transcripts for retained sessions. Baudbot now prunes old logs on startup (14-day retention) and redacts common secret patterns, but retained logs are still sensitive data and should stay owner-only (see `bin/harden-permissions.sh`).
 
 ## Security Scripts
 
@@ -162,6 +162,7 @@ Pi session logs (`.jsonl` files) contain the complete conversation history. If p
 | `bin/security-audit.sh` | Check current security posture + integrity checks | baudbot_agent or admin |
 | `bin/deploy.sh` | Deploy from source to runtime with correct permissions | root or admin |
 | `bin/harden-permissions.sh` | Lock down pi state file permissions | baudbot_agent |
+| `bin/prune-session-logs.sh` | Delete old pi session transcripts (retention cleanup) | baudbot_agent |
 | `bin/setup-firewall.sh` | Apply port-based network restrictions | root |
 
 ## Reporting Vulnerabilities

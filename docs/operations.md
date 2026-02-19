@@ -81,6 +81,7 @@ Default local dashboard:
 - verify Slack bridge responsiveness
 - verify control/sentry/dev sessions are healthy
 - clean stale worktrees
+- prune old session logs if needed (`sudo -u baudbot_agent ~/runtime/bin/prune-session-logs.sh --days 14`)
 - verify deployed version/manifests
 - perform rollback when upgrade regressions are detected
 

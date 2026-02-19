@@ -7,3 +7,4 @@ Check each item and take action only if something is wrong.
 - Check email monitor is running (`email_monitor status` — should show active)
 - Check for stale worktrees in `~/workspace/worktrees/` that don't correspond to active in-progress todos — clean them up with `git worktree remove`
 - Check for stuck todos (status `in-progress` for more than 2 hours with no corresponding dev-agent session) — escalate to user via Slack
+- Optional: if disk usage is growing, prune old session logs (`~/runtime/bin/prune-session-logs.sh --days 14`)

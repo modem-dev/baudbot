@@ -17,6 +17,7 @@ bin/                        security & operations scripts
   harden-permissions.sh     filesystem hardening (runs on boot)
   scan-extensions.mjs       extension static analysis
   redact-logs.sh            secret scrubber for session logs
+  prune-session-logs.sh     retention cleanup for old pi session logs
   config.sh                 env var validation helper
   control-plane.sh          starts the admin web dashboard
   doctor.sh                 system health checks
@@ -98,7 +99,7 @@ Agent runtime layout:
 /home/baudbot_agent/
 ├── runtime/
 │   ├── start.sh                deployed launcher
-│   ├── bin/                    harden-permissions.sh, redact-logs.sh
+│   ├── bin/                    harden-permissions.sh, redact-logs.sh, prune-session-logs.sh
 │   └── slack-bridge/           deployed bridge
 ├── .pi/agent/
 │   ├── extensions/             deployed extensions
@@ -205,7 +206,7 @@ The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run `install.s
 - The firewall (`setup-firewall.sh`) restricts `baudbot_agent`'s network egress to an allowlist.
 - `/proc` is mounted with `hidepid=2` — agent can only see its own processes.
 - Secrets in `~/.config/.env` are `600` perms, never committed.
-- Session logs are auto-redacted of API keys/tokens on boot.
+- Session logs are auto-pruned on startup (14-day retention) and auto-redacted for API keys/tokens.
 
 ## Git Workflow
 

@@ -30,7 +30,10 @@ set +a
 umask 077
 ~/runtime/bin/harden-permissions.sh
 
-# Redact any secrets that leaked into session logs
+# Prune old session logs to limit transcript retention window
+~/runtime/bin/prune-session-logs.sh --days 14 2>/dev/null || true
+
+# Redact any secrets that leaked into retained session logs
 ~/runtime/bin/redact-logs.sh 2>/dev/null || true
 
 # Clean stale session sockets from previous runs
