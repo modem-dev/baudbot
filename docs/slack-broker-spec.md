@@ -29,7 +29,7 @@ Both modes use the same bridge interface internally — the agent code is identi
 │                      │
 │  @baudbot do X ──────┼──► Slack Platform
 └─────────────────────┘         │
-                                │ Socket Mode / Events API
+                                │ Events API (HTTP)
                                 ▼
                     ┌───────────────────────┐
                     │   Cloudflare Worker    │
@@ -196,7 +196,7 @@ The `auth_code` ensures only the workspace admin can link a server. Options:
 ### Public Endpoints (Cloudflare Worker)
 
 ```
-POST /slack/events          — Slack event webhook (or Socket Mode handler)
+POST /slack/events          — Slack Events API webhook
 POST /slack/oauth/callback  — OAuth callback from Slack app install
 POST /api/register          — Register a baudbot server for a workspace
 POST /api/heartbeat         — Server health check (keepalive)
@@ -352,16 +352,15 @@ The broker is a **trust minimization** layer, not a zero-trust layer. The securi
 ### Phase 4: Enhanced Security (v2)
 16. **Direct bot token mode** — Encrypted token delivery for true E2E outbound
 17. **Session keys** — Ephemeral keys for perfect forward secrecy
-18. **Multi-server** — One workspace routing to multiple baudbot instances
 
-## Open Questions
+## Decisions
 
-1. **Socket Mode vs Events API?** Socket Mode is simpler (no public URL needed for Slack→broker) but requires a persistent WebSocket connection from the Worker. Events API needs a public endpoint but is more natural for Workers. *Recommendation: Events API for the broker, since Workers handle HTTP natively.*
+1. **Events API** for Slack→broker. Workers handle HTTP natively — stateless, globally distributed, auto-scaling. Socket Mode would require Durable Objects for persistent WebSocket connections (added complexity/cost). The ~200ms latency difference is inconsequential for chat.
 
-2. **What if a server goes offline?** Queue messages in KV with TTL? Drop them? Notify the workspace? *Recommendation: Short TTL queue (5 min) + Slack DM to workspace admin if server is unreachable.*
+2. **No storage, no queuing.** If the server is offline, the message is dropped. The broker is a pure pass-through — encrypt and forward, nothing persisted. Slack shows the message was sent (broker ACKs the event), but baudbot won't respond. User retries when their server is back.
 
-3. **Multi-workspace per server?** Some users might want one baudbot handling multiple Slack workspaces. The routing table supports this (multiple workspace_ids → same server_url). Worth designing for from the start.
+3. **One workspace per server.** Strict 1:1 mapping. Simplifies routing and security model.
 
-4. **Pricing model?** Free tier with rate limits? Usage-based? This affects the broker's KV/Worker usage costs. *Not a technical decision but affects architecture (metering, quotas).*
+4. **Free.** Cloudflare Workers free tier (100k requests/day, 10ms CPU) and KV free tier (100k reads/day, 1k writes/day) are more than sufficient for a forwarding broker with a rarely-changing routing table. Zero infrastructure cost.
 
-5. **Slack app distribution?** The Prime app needs to be listed in the Slack App Directory for easy install. This requires Slack's review process. Start with "Install from link" for beta, then submit for directory listing.
+5. **Direct OAuth link for install** (e.g. `baudbot.dev/slack/install`). Slack App Directory listing can come later when there's demand — not a launch blocker.
