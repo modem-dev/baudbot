@@ -1,7 +1,12 @@
 #!/bin/bash
 # Baudbot Interactive Installer
 #
-# One-command setup:
+# One-command setup (bootstrap CLI):
+#   curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bin/baudbot -o /tmp/baudbot
+#   chmod +x /tmp/baudbot
+#   /tmp/baudbot install
+#
+# Or if you prefer source checkout first:
 #   git clone https://github.com/modem-dev/baudbot.git ~/baudbot && sudo ~/baudbot/install.sh
 #
 # Or if already cloned:

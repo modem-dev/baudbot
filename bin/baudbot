@@ -52,6 +52,7 @@ usage() {
   echo "  sessions       List agent tmux and pi sessions"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
+  echo "  install        Bootstrap install from GitHub (download script, then escalate)"
   echo "  setup          One-time system setup (user, deps, firewall, systemd)"
   echo "  config         Interactive secrets and config setup"
   echo "  deploy         Deploy source + config to agent runtime"
@@ -74,6 +75,72 @@ require_root() {
     echo "❌ baudbot $1 requires root. Run: sudo baudbot $1"
     exit 1
   fi
+}
+
+escalate_prefix() {
+  if [ "$(id -u)" -eq 0 ]; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    echo "sudo"
+    return 0
+  fi
+
+  if command -v doas >/dev/null 2>&1; then
+    echo "doas"
+    return 0
+  fi
+
+  echo ""
+  return 1
+}
+
+download_file() {
+  local url="$1"
+  local dest="$2"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$dest"
+    return 0
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$dest"
+    return 0
+  fi
+
+  echo "❌ install requires curl or wget to download installer"
+  exit 1
+}
+
+bootstrap_install() {
+  local install_url="${BAUDBOT_INSTALL_SCRIPT_URL:-https://raw.githubusercontent.com/modem-dev/baudbot/main/install.sh}"
+  local install_script
+  local escalator=""
+
+  install_script="$(mktemp /tmp/baudbot-install.XXXXXX.sh)"
+  trap 'rm -f "$install_script"' RETURN
+
+  download_file "$install_url" "$install_script"
+  chmod 700 "$install_script"
+
+  echo "Downloaded installer: $install_script"
+
+  if [ "$(id -u)" -eq 0 ]; then
+    bash "$install_script" "$@"
+    return 0
+  fi
+
+  escalator="$(escalate_prefix || true)"
+  if [ -z "$escalator" ]; then
+    echo "❌ install requires root privileges but no sudo/doas was found"
+    echo "Re-run as root, or install sudo/doas first."
+    return 1
+  fi
+
+  echo "Escalating with $escalator for system setup..."
+  "$escalator" bash "$install_script" "$@"
 }
 
 # Detect systemd
@@ -129,6 +196,11 @@ print_deployed_version() {
 }
 
 case "${1:-}" in
+  install)
+    shift
+    bootstrap_install "$@"
+    ;;
+
   start)
     shift
     if [ "${1:-}" = "--direct" ]; then
