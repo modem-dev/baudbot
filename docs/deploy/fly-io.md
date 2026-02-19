@@ -73,8 +73,7 @@ FROM ubuntu:24.04
 # Prevent interactive prompts during package install
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base dependencies (baudbot install.sh will install the rest,
-# but these are needed for the install script itself to run)
+# Install base dependencies that baudbot's setup needs
 RUN apt-get update && apt-get install -y \
     git curl tmux iptables sudo docker.io gh \
     openssh-client ca-certificates \
@@ -99,9 +98,11 @@ set -euo pipefail
 VOLUME="/data"
 BAUDBOT_HOME="/home/baudbot_agent"
 
-# First-run: run the baudbot installer
+# First-run: run baudbot setup (non-interactive core installer)
+# Note: setup.sh is used here instead of install.sh because prerequisites
+# are already installed via the Dockerfile and we need non-interactive setup.
 if [ ! -f "$VOLUME/.baudbot-installed" ]; then
-  echo "=== First run: installing baudbot ==="
+  echo "=== First run: setting up baudbot ==="
   /root/baudbot/setup.sh root
   touch "$VOLUME/.baudbot-installed"
 
