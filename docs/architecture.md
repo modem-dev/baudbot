@@ -10,7 +10,8 @@ admin user
 │   ├── bin/
 │   ├── pi/extensions/
 │   ├── pi/skills/
-│   └── slack-bridge/
+│   ├── slack-bridge/              # direct Slack integration (Socket Mode)
+│   └── slack-broker/              # shared Slack broker (Cloudflare Worker)
 
 root-managed releases
 ├── /opt/baudbot/
