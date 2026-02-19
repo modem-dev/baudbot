@@ -122,14 +122,17 @@ See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and know
 ## Tests
 
 ```bash
-# All tests across 10 suites
-bin/test.sh
+# All tests (unified Vitest runner)
+npm test
 
-# JS/TS only
-bin/test.sh js
+# JS/TS suites only
+npm run test:js
 
-# Shell only
-bin/test.sh shell
+# Shell/security script suites only
+npm run test:shell
+
+# JS/TS coverage
+npm run test:coverage
 
 # Lint + typecheck
 npm run lint && npm run typecheck

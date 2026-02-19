@@ -23,6 +23,6 @@ Per-repo knowledge: build quirks, CI gotchas, architecture notes, common failure
 
 <!-- Example:
 - Agent infrastructure repo
-- Tests: `bin/test.sh` (207 tests across 5 suites)
+- Tests: `npm test` (unified Vitest runner)
 - Protected files are read-only — don't try to modify them
 -->

@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "bin/test.sh",
-    "test:js": "bin/test.sh js",
-    "test:shell": "bin/test.sh shell",
-    "test:coverage": "bin/test.sh coverage",
+    "test": "vitest run --config vitest.config.mjs",
+    "test:js": "vitest run --config vitest.config.mjs pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs",
+    "test:shell": "vitest run --config vitest.config.mjs test/shell-scripts.test.mjs test/security-audit.test.mjs",
+    "test:coverage": "vitest run --config vitest.config.mjs --coverage pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs",
     "lint": "biome lint",
     "lint:fix": "biome lint --write --unsafe",
     "typecheck": "tsc --noEmit"
@@ -16,8 +16,10 @@
     "@mariozechner/pi-coding-agent": "^0.52.12",
     "@onkernel/sdk": "^0.33.0",
     "@sinclair/typebox": "^0.34.48",
+    "@vitest/coverage-v8": "^4.0.18",
     "agentmail": "^0.2.15",
-    "c8": "^10.1.3",
-    "typescript": "^5.9.3"
+    "express": "^5.2.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

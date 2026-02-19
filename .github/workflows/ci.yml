@@ -40,20 +40,13 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd slack-bridge && npm ci
-          cd ../control-plane && npm ci
+        run: npm ci
 
-      - name: Run JS tests with coverage
+      - name: Run unified test suite
+        run: npm test
+
+      - name: Run coverage suite
         run: npm run test:coverage
-
-      - name: Run shell tests
-        run: bin/test.sh shell
-
-      # security-audit.sh checks live system state (running services, firewall,
-      # /proc mounts) that doesn't exist in CI. Run it locally instead:
-      #   cd bin && bash security-audit.test.sh
 
   secret-scan:
     runs-on: ubuntu-latest

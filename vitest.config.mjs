@@ -1,0 +1,17 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: [
+      "pi/extensions/heartbeat.test.mjs",
+      "pi/extensions/memory.test.mjs",
+      "control-plane/server.test.mjs",
+      "test/legacy-node-tests.test.mjs",
+      "test/shell-scripts.test.mjs",
+      "test/security-audit.test.mjs",
+    ],
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    fileParallelism: false,
+  },
+});

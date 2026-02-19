@@ -17,14 +17,17 @@ npm install
 ## Running Tests
 
 ```bash
-# All tests (10 suites)
-bin/test.sh
+# All tests (unified Vitest runner)
+npm test
 
 # JS/TS only
-bin/test.sh js
+npm run test:js
 
-# Shell only
-bin/test.sh shell
+# Shell/security script tests only
+npm run test:shell
+
+# Coverage
+npm run test:coverage
 
 # Lint + typecheck
 npm run lint && npm run typecheck

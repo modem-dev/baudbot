@@ -5,10 +5,10 @@
  * Memory is a convention (Markdown files + deploy script), not a runtime
  * module, so we test file structure, content, and deploy behavior.
  *
- * Run: node --test pi/extensions/memory.test.mjs
+ * Run: npx vitest run pi/extensions/memory.test.mjs
  */
 
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
