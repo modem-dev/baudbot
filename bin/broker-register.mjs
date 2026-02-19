@@ -424,6 +424,10 @@ function writeEnvFile(target, updates) {
   const dir = path.dirname(target.path);
   fs.mkdirSync(dir, { recursive: true });
 
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    fs.chownSync(dir, target.uid, target.gid);
+  }
+
   const existing = fs.existsSync(target.path)
     ? fs.readFileSync(target.path, "utf8")
     : "";
@@ -437,7 +441,6 @@ function writeEnvFile(target, updates) {
 
   if (typeof process.getuid === "function" && process.getuid() === 0) {
     fs.chownSync(target.path, target.uid, target.gid);
-    fs.chownSync(dir, target.uid, target.gid);
   }
 }
 
