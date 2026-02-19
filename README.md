@@ -54,17 +54,6 @@ curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh
 baudbot install
 ```
 
-The bootstrap command installs a lightweight `baudbot` CLI to `/usr/local/bin`, then `baudbot install` performs full system setup and publishes the runtime release to `/opt/baudbot`.
-
-Alternative (if you want a local source checkout first):
-
-```bash
-git clone https://github.com/modem-dev/baudbot.git ~/baudbot
-sudo ~/baudbot/install.sh
-```
-
-Installer handles setup, dependencies, agent user creation, firewall setup, and initial configuration prompts. It also publishes a git-free runtime release to `/opt/baudbot/releases/<sha>` and points `/opt/baudbot/current` at the active version.
-
 After install:
 
 ```bash
