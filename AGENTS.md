@@ -52,16 +52,6 @@ slack-bridge/
   bridge.mjs                Slack ↔ agent bridge (direct mode — Socket Mode)
   security.mjs              🔒 content wrapping, rate limiting, auth
   security.test.mjs         🔒 tests for security module
-slack-broker/
-  src/                      Cloudflare Worker source (broker mode — Events API)
-    index.ts                Worker entry point + request router
-    slack/                  Slack signature verification, OAuth, API helpers
-    crypto/                 Sealed boxes, authenticated encryption, signatures
-    routing/                KV-backed workspace registry + event forwarding
-    api/                    Server registration + outbound message handling
-  test/                     Vitest test suites (crypto, routing, integration)
-  wrangler.toml             Cloudflare Workers config (KV namespaces, secrets)
-  package.json              Dependencies: tweetnacl, vitest
 setup.sh                    one-time system setup (creates user, firewall, etc.)
 start.sh                    agent launcher (deployed to ~/runtime/start.sh)
 ```
