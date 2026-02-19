@@ -48,7 +48,7 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status + deployed version"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to a tmux session (default: first available)"
+  echo "  attach         Attach to control-agent output (or tmux session by name)"
   echo "  sessions       List agent tmux and pi sessions"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
@@ -333,22 +333,50 @@ case "${1:-}" in
     shift
     require_root "attach"
     AGENT_USER="baudbot_agent"
-    TARGET="${1:-}"
-    if [ -z "$TARGET" ]; then
-      # Default: attach to first available tmux session
-      FIRST_SESSION=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
-      if [ -n "$FIRST_SESSION" ]; then
-        TARGET="$FIRST_SESSION"
-      else
-        echo "No tmux sessions running. Start the agent first:"
-        echo "  sudo baudbot start"
-        exit 1
+    TARGET="${1:-control-agent}"
+
+    if [ "$TARGET" = "control-agent" ] || [ "$TARGET" = "control" ]; then
+      # Legacy/optional mode: if control-agent is running in tmux, attach there.
+      if sudo -u "$AGENT_USER" tmux has-session -t control-agent 2>/dev/null; then
+        echo "Attaching to tmux session: control-agent"
+        echo "Detach with: Ctrl+b, d"
+        echo ""
+        exec sudo -u "$AGENT_USER" tmux attach-session -t control-agent
       fi
+
+      # Default modern mode: control-agent runs under systemd via start.sh.
+      if has_systemd && systemctl is-enabled baudbot &>/dev/null; then
+        echo "control-agent runs under systemd (not tmux) in this setup."
+        echo "Following live service logs..."
+        echo "Press Ctrl+C to exit."
+        echo ""
+        exec journalctl -u baudbot -f
+      fi
+
+      if pgrep -u "$AGENT_USER" -f "pi --session-control" &>/dev/null; then
+        echo "control-agent appears to be running without systemd/tmux."
+        echo "Cannot interactive-attach in this mode."
+        exit 0
+      fi
+
+      echo "control-agent is not running. Start it with:"
+      echo "  sudo baudbot start"
+      exit 1
     fi
-    echo "Attaching to tmux session: $TARGET"
-    echo "Detach with: Ctrl+b, d"
-    echo ""
-    exec sudo -u "$AGENT_USER" tmux attach-session -t "$TARGET"
+
+    if sudo -u "$AGENT_USER" tmux has-session -t "$TARGET" 2>/dev/null; then
+      echo "Attaching to tmux session: $TARGET"
+      echo "Detach with: Ctrl+b, d"
+      echo ""
+      exec sudo -u "$AGENT_USER" tmux attach-session -t "$TARGET"
+    fi
+
+    echo "tmux session '$TARGET' not found."
+    echo "Available tmux sessions:"
+    if ! sudo -u "$AGENT_USER" tmux ls 2>/dev/null; then
+      echo "  (none)"
+    fi
+    exit 1
     ;;
 
   setup)
