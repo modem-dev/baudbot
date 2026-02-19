@@ -52,7 +52,7 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status + deployed version"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to tmux; falls back to pi session (name/id). Use --pi to force"
+  echo "  attach         Attach to control-agent by default; supports --pi/--tmux"
   echo "  sessions       List agent tmux and pi sessions (name → id)"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
@@ -435,7 +435,6 @@ case "${1:-}" in
   attach)
     shift
     require_root "attach"
-    AGENT_USER="baudbot_agent"
     AGENT_HOME="/home/$AGENT_USER"
 
     ATTACH_MODE="auto"
@@ -454,10 +453,10 @@ case "${1:-}" in
           echo "Usage: sudo baudbot attach [--pi|--tmux] [session-name|session-id]"
           echo ""
           echo "Examples:"
-          echo "  sudo baudbot attach                  # tmux first, else control-agent pi session"
+          echo "  sudo baudbot attach                  # defaults to control-agent"
           echo "  sudo baudbot attach --pi control-agent"
           echo "  sudo baudbot attach --pi <uuid>"
-          echo "  sudo baudbot attach --tmux baudbot"
+          echo "  sudo baudbot attach --tmux slack-bridge"
           exit 0
           ;;
         *)
@@ -470,6 +469,11 @@ case "${1:-}" in
           ;;
       esac
     done
+
+    # Default attach target should always be control-agent.
+    if [ -z "$TARGET" ]; then
+      TARGET="control-agent"
+    fi
 
     attach_tmux_session() {
       local tmux_target="$1"
@@ -539,13 +543,13 @@ case "${1:-}" in
       exit 1
     fi
 
-    # Auto mode: prefer tmux if available/targeted, otherwise fall back to pi.
-    if tmux_target=$(choose_tmux_target "$TARGET"); then
-      attach_tmux_session "$tmux_target"
-    fi
-
+    # Auto mode: prefer named pi session (control-agent by default), then tmux.
     if pi_target=$(choose_pi_target "$TARGET"); then
       attach_pi_session "$pi_target"
+    fi
+
+    if tmux_target=$(choose_tmux_target "$TARGET"); then
+      attach_tmux_session "$tmux_target"
     fi
 
     echo "❌ No matching tmux/pi session found. See: sudo baudbot sessions"
