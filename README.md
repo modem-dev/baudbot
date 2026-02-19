@@ -1,4 +1,4 @@
-<img src="https://github.com/user-attachments/assets/7d02e019-5680-4c70-a68e-03a50be08f54" width="256" height="256"/>
+<img src="https://github.com/user-attachments/assets/66ab2c6d-2e21-48d0-b95f-0d9dbdb57384" width="256" height="256"/>
 
 # Baudbot
 
