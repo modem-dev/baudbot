@@ -147,18 +147,26 @@ info "Prerequisites installed"
 
 header "Source"
 
-REPO_DIR="$ADMIN_HOME/baudbot"
+REPO_DIR="${BAUDBOT_REPO_DIR:-$ADMIN_HOME/baudbot}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/setup.sh" ] && [ -f "$SCRIPT_DIR/bin/deploy.sh" ]; then
-  # Running from an existing clone
+  # Running from an existing checkout/snapshot
   REPO_DIR="$SCRIPT_DIR"
-  info "Using existing clone: $REPO_DIR"
+  info "Using existing source: $REPO_DIR"
 else
-  # Need to clone
+  # Need to locate or clone source
   if [ -d "$REPO_DIR/.git" ]; then
-    info "Repo already exists at $REPO_DIR, pulling latest..."
-    sudo -u "$ADMIN_USER" git -C "$REPO_DIR" pull --ff-only 2>&1 | tail -1
+    if sudo -u "$ADMIN_USER" git -C "$REPO_DIR" remote get-url origin >/dev/null 2>&1; then
+      info "Repo already exists at $REPO_DIR, pulling latest..."
+      sudo -u "$ADMIN_USER" git -C "$REPO_DIR" pull --ff-only 2>&1 | tail -1
+    elif [ -f "$REPO_DIR/setup.sh" ] && [ -f "$REPO_DIR/bin/deploy.sh" ]; then
+      info "Repo exists at $REPO_DIR (no origin remote), using local source snapshot"
+    else
+      die "Repo at $REPO_DIR has no origin and missing setup files"
+    fi
+  elif [ -f "$REPO_DIR/setup.sh" ] && [ -f "$REPO_DIR/bin/deploy.sh" ]; then
+    info "Using local source snapshot: $REPO_DIR"
   else
     REPO_URL="https://github.com/modem-dev/baudbot.git"
     info "Cloning $REPO_URL → $REPO_DIR"
