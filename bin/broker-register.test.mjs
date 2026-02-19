@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import {
+  DEFAULT_BROKER_URL,
   parseArgs,
   normalizeBrokerUrl,
   validateWorkspaceId,
   validateCallbackUrl,
   mapRegisterError,
   registerWithBroker,
+  resolveBrokerUrlInput,
   upsertEnvContent,
   runRegistration,
 } from "./broker-register.mjs";
@@ -49,6 +51,18 @@ test("parseArgs parses long-form options", () => {
 
 test("parseArgs rejects unknown arguments", () => {
   assert.throws(() => parseArgs(["--wat"]), /unknown argument/);
+});
+
+test("resolveBrokerUrlInput prefers cli then existing then default", () => {
+  assert.equal(
+    resolveBrokerUrlInput("https://cli.example.com", "https://existing.example.com"),
+    "https://cli.example.com",
+  );
+  assert.equal(
+    resolveBrokerUrlInput("", "https://existing.example.com"),
+    "https://existing.example.com",
+  );
+  assert.equal(resolveBrokerUrlInput("", ""), DEFAULT_BROKER_URL);
 });
 
 test("validation helpers normalize and enforce broker/workspace/callback formats", () => {

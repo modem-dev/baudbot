@@ -584,11 +584,11 @@ case "${1:-}" in
         exec node "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
         ;;
       --help|-h|"")
-        echo "Usage: sudo baudbot broker register [--broker-url URL] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
+        echo "Usage: sudo baudbot broker register [--broker-url URL(default: https://broker.baudbot.ai)] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
         ;;
       *)
         echo "Unknown broker subcommand: ${1:-}"
-        echo "Usage: sudo baudbot broker register [--broker-url URL] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
+        echo "Usage: sudo baudbot broker register [--broker-url URL(default: https://broker.baudbot.ai)] [--workspace-id ID] [--auth-code CODE] [--callback-url URL]"
         exit 1
         ;;
     esac

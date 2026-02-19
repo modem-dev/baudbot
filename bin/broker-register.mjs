@@ -21,6 +21,8 @@ import { webcrypto } from "node:crypto";
 const { subtle } = webcrypto;
 
 const WORKSPACE_ID_RE = /^T[A-Z0-9]+$/;
+export const DEFAULT_BROKER_URL = "https://broker.baudbot.ai";
+
 const ENV_KEYS = [
   "SLACK_BROKER_URL",
   "SLACK_BROKER_WORKSPACE_ID",
@@ -39,7 +41,7 @@ export function usageText() {
     "  sudo baudbot broker register [options]",
     "",
     "Options:",
-    "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
+    `  --broker-url URL       Broker base URL (default: ${DEFAULT_BROKER_URL})`,
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
     "  --auth-code CODE       One-time auth code from broker OAuth callback",
     "  --callback-url URL     Public HTTPS callback URL for this server",
@@ -370,6 +372,11 @@ function readEnvFile(filePath) {
   return out;
 }
 
+export function resolveBrokerUrlInput(cliBrokerUrl, existingBrokerUrl) {
+  const selected = cliBrokerUrl || existingBrokerUrl || DEFAULT_BROKER_URL;
+  return String(selected).trim();
+}
+
 export function resolveConfigTargets({ env = process.env } = {}) {
   const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
   const explicitConfigUser = env.BAUDBOT_CONFIG_USER;
@@ -462,9 +469,10 @@ async function collectInputs(parsedArgs) {
   const configTargets = resolveConfigTargets();
   const existing = readEnvFile(configTargets[0].path);
 
-  const brokerUrl = parsedArgs.brokerUrl
-    || existing.SLACK_BROKER_URL
-    || (await prompt("Broker URL: "));
+  const brokerUrl = resolveBrokerUrlInput(
+    parsedArgs.brokerUrl,
+    existing.SLACK_BROKER_URL,
+  );
 
   const workspaceId = parsedArgs.workspaceId
     || existing.SLACK_BROKER_WORKSPACE_ID

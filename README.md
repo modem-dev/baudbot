@@ -87,6 +87,8 @@ sudo baudbot broker register \
   --callback-url https://your-server.example.com/slack/broker/callback
 ```
 
+If `--broker-url` is omitted, baudbot defaults to `https://broker.baudbot.ai`.
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## Core agents
