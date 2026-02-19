@@ -24,9 +24,13 @@ fi
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
   BOLD='\033[1m'
+  DIM='\033[2m'
+  CYAN='\033[0;36m'
+  YELLOW='\033[0;33m'
+  GREEN='\033[0;32m'
   RESET='\033[0m'
 else
-  BOLD='' RESET=''
+  BOLD='' DIM='' CYAN='' YELLOW='' GREEN='' RESET=''
 fi
 
 version() {
@@ -48,8 +52,8 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status + deployed version"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to a tmux session (default: first available)"
-  echo "  sessions       List agent tmux and pi sessions"
+  echo "  attach         Attach to tmux; falls back to pi session (name/id). Use --pi to force"
+  echo "  sessions       List agent tmux and pi sessions (name → id)"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
@@ -195,6 +199,100 @@ print_deployed_version() {
   echo -e "${BOLD}deployed version:${RESET} $line"
 }
 
+pi_control_dir() {
+  local agent_user="${1:-baudbot_agent}"
+  echo "/home/$agent_user/.pi/session-control"
+}
+
+pi_alias_to_uuid() {
+  local alias_path="$1"
+  local target
+
+  target=$(readlink "$alias_path" 2>/dev/null || true)
+  target=$(basename "$target")
+  target="${target%.sock}"
+
+  if [ -n "$target" ]; then
+    echo "$target"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_pi_session_id() {
+  local agent_user="$1"
+  local query="${2:-}"
+  local dir
+  local first_sock
+  local matches
+  local count
+
+  dir=$(pi_control_dir "$agent_user")
+  [ -d "$dir" ] || return 1
+
+  if [ -z "$query" ]; then
+    if [ -L "$dir/control-agent.alias" ]; then
+      pi_alias_to_uuid "$dir/control-agent.alias"
+      return 0
+    fi
+
+    first_sock=$(find "$dir" -maxdepth 1 -type s -name '*.sock' -printf '%f\n' 2>/dev/null | sort | head -1)
+    if [ -n "$first_sock" ]; then
+      echo "${first_sock%.sock}"
+      return 0
+    fi
+
+    return 1
+  fi
+
+  # Exact UUID/socket name.
+  if [ -S "$dir/$query.sock" ]; then
+    echo "$query"
+    return 0
+  fi
+
+  # Named alias format used by pi extensions (e.g. control-agent.alias).
+  if [ -L "$dir/$query.alias" ]; then
+    pi_alias_to_uuid "$dir/$query.alias"
+    return 0
+  fi
+
+  # Back-compat alias format (<name>.sock symlink).
+  if [ -L "$dir/$query.sock" ]; then
+    pi_alias_to_uuid "$dir/$query.sock"
+    return 0
+  fi
+
+  # Unique UUID prefix.
+  matches=$(find "$dir" -maxdepth 1 -type s -name "$query*.sock" -printf '%f\n' 2>/dev/null | sort)
+  count=$(echo "$matches" | grep -c . || true)
+  if [ "$count" -eq 1 ]; then
+    echo "${matches%.sock}"
+    return 0
+  fi
+  if [ "$count" -gt 1 ]; then
+    echo "❌ Multiple pi sessions match '$query'. Use full UUID or alias from: baudbot sessions" >&2
+    return 2
+  fi
+
+  return 1
+}
+
+pause_before_attach() {
+  if [ "${BAUDBOT_ATTACH_NO_PAUSE:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if [ -t 0 ] && [ -t 1 ]; then
+    echo -e "${DIM}Press Enter to attach (Ctrl+C to cancel)...${RESET}"
+    # shellcheck disable=SC2162
+    read _
+  else
+    sleep 2
+  fi
+}
+
 case "${1:-}" in
   install)
     shift
@@ -284,36 +382,40 @@ case "${1:-}" in
     fi
     echo ""
     echo -e "${BOLD}pi sessions:${RESET}"
-    # Pi stores live session control sockets in ~/.pi/session-control/<uuid>.sock
-    # Named sessions have symlinks: <name>.sock → <uuid>.sock
-    PI_CONTROL_DIR="/home/$AGENT_USER/.pi/session-control"
+    PI_CONTROL_DIR="$(pi_control_dir "$AGENT_USER")"
     if [ -d "$PI_CONTROL_DIR" ]; then
       found=0
-      # Collect alias symlinks: name → uuid
       declare -A ALIASES
-      for sock in "$PI_CONTROL_DIR"/*.sock; do
-        [ -e "$sock" ] || continue
-        base=$(basename "$sock" .sock)
-        if [ -L "$sock" ]; then
-          # Symlink = alias. Resolve target to get the uuid.
-          target=$(readlink "$sock")
-          target_uuid=$(basename "$target" .sock)
-          ALIASES[$target_uuid]="$base"
-        fi
+
+      # New alias format: <name>.alias -> <uuid>.sock
+      for alias in "$PI_CONTROL_DIR"/*.alias; do
+        [ -L "$alias" ] || continue
+        alias_name=$(basename "$alias" .alias)
+        alias_uuid=$(pi_alias_to_uuid "$alias" || true)
+        [ -n "$alias_uuid" ] && ALIASES[$alias_uuid]="$alias_name"
       done
-      # List actual sockets (non-symlinks)
+
+      # Back-compat alias format: <name>.sock symlink -> <uuid>.sock
+      for alias in "$PI_CONTROL_DIR"/*.sock; do
+        [ -L "$alias" ] || continue
+        alias_name=$(basename "$alias" .sock)
+        alias_uuid=$(pi_alias_to_uuid "$alias" || true)
+        [ -n "$alias_uuid" ] && ALIASES[$alias_uuid]="$alias_name"
+      done
+
+      # Real socket files are UUIDs.
       for sock in "$PI_CONTROL_DIR"/*.sock; do
-        [ -e "$sock" ] || continue
-        [ -L "$sock" ] && continue  # skip alias symlinks
+        [ -S "$sock" ] || continue
+        [ -L "$sock" ] && continue
+
         sess_id=$(basename "$sock" .sock)
         name="${ALIASES[$sess_id]:-}"
-        # Liveness check: try connecting to the socket
+
         status="stopped (stale)"
-        if sudo -u "$AGENT_USER" bash -c "echo '' | socat - UNIX-CONNECT:'$sock' 2>/dev/null" 2>/dev/null; then
-          status="running"
-        elif sudo -u "$AGENT_USER" bash -c "python3 -c \"import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(0.3); s.connect('$sock'); s.close()\" 2>/dev/null" 2>/dev/null; then
+        if sudo -u "$AGENT_USER" bash -c "python3 -c \"import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(0.3); s.connect('$sock'); s.close()\" 2>/dev/null" 2>/dev/null; then
           status="running"
         fi
+
         if [ -n "$name" ]; then
           echo "  $name ($sess_id) [$status]"
         else
@@ -321,6 +423,7 @@ case "${1:-}" in
         fi
         found=$((found + 1))
       done
+
       if [ "$found" -eq 0 ]; then
         echo "  (none)"
       fi
@@ -333,22 +436,120 @@ case "${1:-}" in
     shift
     require_root "attach"
     AGENT_USER="baudbot_agent"
-    TARGET="${1:-}"
-    if [ -z "$TARGET" ]; then
-      # Default: attach to first available tmux session
-      FIRST_SESSION=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
-      if [ -n "$FIRST_SESSION" ]; then
-        TARGET="$FIRST_SESSION"
-      else
-        echo "No tmux sessions running. Start the agent first:"
-        echo "  sudo baudbot start"
-        exit 1
+    AGENT_HOME="/home/$AGENT_USER"
+
+    ATTACH_MODE="auto"
+    TARGET=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --pi)
+          ATTACH_MODE="pi"
+          shift
+          ;;
+        --tmux)
+          ATTACH_MODE="tmux"
+          shift
+          ;;
+        -h|--help)
+          echo "Usage: sudo baudbot attach [--pi|--tmux] [session-name|session-id]"
+          echo ""
+          echo "Examples:"
+          echo "  sudo baudbot attach                  # tmux first, else control-agent pi session"
+          echo "  sudo baudbot attach --pi control-agent"
+          echo "  sudo baudbot attach --pi <uuid>"
+          echo "  sudo baudbot attach --tmux baudbot"
+          exit 0
+          ;;
+        *)
+          if [ -n "$TARGET" ]; then
+            echo "❌ Too many arguments for attach"
+            exit 1
+          fi
+          TARGET="$1"
+          shift
+          ;;
+      esac
+    done
+
+    attach_tmux_session() {
+      local tmux_target="$1"
+      echo -e "${BOLD}${CYAN}Attaching to tmux session:${RESET} $tmux_target"
+      echo -e "${GREEN}Safe detach:${RESET} Ctrl+b, d ${DIM}(keeps agent running)${RESET}"
+      echo ""
+      pause_before_attach
+      exec sudo -u "$AGENT_USER" tmux attach-session -t "$tmux_target"
+    }
+
+    attach_pi_session() {
+      local pi_target="$1"
+      echo -e "${BOLD}${CYAN}Attaching to pi session:${RESET} $pi_target"
+      echo -e "${BOLD}${YELLOW}Safe detach (does NOT stop the agent):${RESET}"
+      echo -e "  ${YELLOW}1)${RESET} Press Ctrl+C once to clear input/cancel local prompt"
+      echo -e "  ${YELLOW}2)${RESET} Press Ctrl+C again to exit this client"
+      echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
+      echo ""
+      pause_before_attach
+      exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; pi --session '$pi_target'"
+    }
+
+    choose_tmux_target() {
+      local requested="${1:-}"
+      local first
+
+      if [ -n "$requested" ]; then
+        if sudo -u "$AGENT_USER" tmux has-session -t "$requested" 2>/dev/null; then
+          echo "$requested"
+          return 0
+        fi
+        return 1
       fi
+
+      first=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
+      [ -n "$first" ] || return 1
+      echo "$first"
+      return 0
+    }
+
+    choose_pi_target() {
+      local requested="${1:-}"
+      local resolved
+
+      if ! resolved=$(resolve_pi_session_id "$AGENT_USER" "$requested"); then
+        return 1
+      fi
+
+      [ -n "$resolved" ] || return 1
+      echo "$resolved"
+      return 0
+    }
+
+    if [ "$ATTACH_MODE" = "tmux" ]; then
+      if tmux_target=$(choose_tmux_target "$TARGET"); then
+        attach_tmux_session "$tmux_target"
+      fi
+      echo "❌ tmux session not found. See: sudo baudbot sessions"
+      exit 1
     fi
-    echo "Attaching to tmux session: $TARGET"
-    echo "Detach with: Ctrl+b, d"
-    echo ""
-    exec sudo -u "$AGENT_USER" tmux attach-session -t "$TARGET"
+
+    if [ "$ATTACH_MODE" = "pi" ]; then
+      if pi_target=$(choose_pi_target "$TARGET"); then
+        attach_pi_session "$pi_target"
+      fi
+      echo "❌ pi session not found. See: sudo baudbot sessions"
+      exit 1
+    fi
+
+    # Auto mode: prefer tmux if available/targeted, otherwise fall back to pi.
+    if tmux_target=$(choose_tmux_target "$TARGET"); then
+      attach_tmux_session "$tmux_target"
+    fi
+
+    if pi_target=$(choose_pi_target "$TARGET"); then
+      attach_pi_session "$pi_target"
+    fi
+
+    echo "❌ No matching tmux/pi session found. See: sudo baudbot sessions"
+    exit 1
     ;;
 
   setup)
