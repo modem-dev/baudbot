@@ -130,6 +130,19 @@ sudo -u baudbot_agent ~/runtime/start.sh
 tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 ```
 
+## Slack broker pull-mode notes
+
+- Broker delivery is now pull-based. Registration is callback-free:
+  - `sudo baudbot broker register --broker-url ... --workspace-id T... --auth-code ...`
+- After a successful broker registration, always restart to load new keys:
+  - `sudo baudbot restart`
+- The runtime starts `broker-bridge.mjs` automatically when `SLACK_BROKER_*` vars are present.
+- Quick troubleshooting when Slack replies stop:
+  - `sudo -u baudbot_agent tmux ls` (check `slack-bridge` session exists)
+  - `sudo baudbot attach --tmux slack-bridge` (bridge logs)
+  - `sudo journalctl -u baudbot.service -n 200 --no-pager` (startup/runtime errors)
+- For local/semi-integration tests that spawn `slack-bridge/broker-bridge.mjs`, keep `libsodium-wrappers-sumo` available from root install (`npm install` at repo root).
+
 ## Running Tests
 
 ```bash
