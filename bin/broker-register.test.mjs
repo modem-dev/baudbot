@@ -44,6 +44,14 @@ test("parseArgs parses long-form options", () => {
   });
 });
 
+test("parseArgs sets verbose=true for -v and --verbose", () => {
+  const short = parseArgs(["-v"]);
+  assert.equal(short.verbose, true);
+
+  const long = parseArgs(["--verbose"]);
+  assert.equal(long.verbose, true);
+});
+
 test("parseArgs rejects unknown arguments", () => {
   assert.throws(() => parseArgs(["--wat"]), /unknown argument/);
 });
