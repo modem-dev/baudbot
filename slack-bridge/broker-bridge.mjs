@@ -579,6 +579,8 @@ async function startPollLoop() {
         if (dedupe.has(message.message_id)) {
           if (!verifyBrokerEnvelope(message)) {
             console.error(`❌ dedupe hit but invalid signature (${message.message_id})`);
+            // Treat as poison-pill and ack so it cannot block the queue.
+            ackIds.push(message.message_id);
             continue;
           }
           ackIds.push(message.message_id);
