@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { webcrypto } from "node:crypto";
+import sodium from "libsodium-wrappers-sumo";
 
 const { subtle } = webcrypto;
 
@@ -220,6 +221,33 @@ export function mapRegisterError(status, errorText) {
   return `registration failed (${status}) — ${text}`;
 }
 
+/**
+ * Decrypt a sealed box encrypted with the server's public key.
+ * @param {string} encryptedBase64 - Base64-encoded sealed box ciphertext
+ * @param {string} serverPrivateKeyBase64 - Base64-encoded server private key
+ * @param {string} serverPublicKeyBase64 - Base64-encoded server public key
+ * @returns {string} - Decrypted plaintext
+ */
+async function decryptSealedBox(encryptedBase64, serverPrivateKeyBase64, serverPublicKeyBase64) {
+  await sodium.ready;
+  
+  const ciphertext = Buffer.from(encryptedBase64, "base64");
+  const serverPrivateKey = Buffer.from(serverPrivateKeyBase64, "base64");
+  const serverPublicKey = Buffer.from(serverPublicKeyBase64, "base64");
+  
+  const plaintext = sodium.crypto_box_seal_open(
+    ciphertext,
+    serverPublicKey,
+    serverPrivateKey
+  );
+  
+  if (!plaintext) {
+    throw new Error("Failed to decrypt sealed box - invalid keys or corrupted data");
+  }
+  
+  return new TextDecoder().decode(plaintext);
+}
+
 export async function registerWithBroker({
   brokerUrl,
   workspaceId,
@@ -280,9 +308,25 @@ export async function registerWithBroker({
     throw new Error("broker signing pubkey mismatch between /api/broker-pubkey and /api/register");
   }
 
+  let decryptedBotToken = null;
+  if (body?.encrypted_bot_token) {
+    logger("Decrypting bot token from broker response...");
+    try {
+      decryptedBotToken = await decryptSealedBox(
+        body.encrypted_bot_token,
+        serverKeys.server_private_key,
+        serverKeys.server_pubkey
+      );
+      logger("✅ Bot token decrypted successfully");
+    } catch (err) {
+      throw new Error(`Failed to decrypt bot token: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   return {
     broker_pubkey: registerBrokerPubkey || fetchedBrokerKeys.broker_pubkey,
     broker_signing_pubkey: registerBrokerSigningPubkey || fetchedBrokerKeys.broker_signing_pubkey,
+    decrypted_bot_token: decryptedBotToken,
     request_payload: payload,
   };
 }
@@ -490,17 +534,24 @@ export async function runRegistration({
     logger,
   });
 
+  const updates = {
+    SLACK_BROKER_URL: normalizedBrokerUrl,
+    SLACK_BROKER_WORKSPACE_ID: workspaceId,
+    SLACK_BROKER_SERVER_PRIVATE_KEY: serverKeys.server_private_key,
+    SLACK_BROKER_SERVER_PUBLIC_KEY: serverKeys.server_pubkey,
+    SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: serverKeys.server_signing_private_key,
+    SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY: serverKeys.server_signing_pubkey,
+    SLACK_BROKER_PUBLIC_KEY: registration.broker_pubkey,
+    SLACK_BROKER_SIGNING_PUBLIC_KEY: registration.broker_signing_pubkey,
+  };
+
+  // Add the decrypted bot token if available
+  if (registration.decrypted_bot_token) {
+    updates.SLACK_BOT_TOKEN = registration.decrypted_bot_token;
+  }
+
   return {
-    updates: {
-      SLACK_BROKER_URL: normalizedBrokerUrl,
-      SLACK_BROKER_WORKSPACE_ID: workspaceId,
-      SLACK_BROKER_SERVER_PRIVATE_KEY: serverKeys.server_private_key,
-      SLACK_BROKER_SERVER_PUBLIC_KEY: serverKeys.server_pubkey,
-      SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: serverKeys.server_signing_private_key,
-      SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY: serverKeys.server_signing_pubkey,
-      SLACK_BROKER_PUBLIC_KEY: registration.broker_pubkey,
-      SLACK_BROKER_SIGNING_PUBLIC_KEY: registration.broker_signing_pubkey,
-    },
+    updates,
   };
 }
 
@@ -542,6 +593,11 @@ export async function main(argv = process.argv.slice(2)) {
   for (const target of input.configTargets) {
     console.log(`  - ${target.path}`);
   }
+  
+  if (updates.SLACK_BOT_TOKEN) {
+    console.log("🎯 Bot token received and configured for direct API mode.");
+  }
+  
   console.log("Next step: sudo baudbot restart");
 
   return 0;
