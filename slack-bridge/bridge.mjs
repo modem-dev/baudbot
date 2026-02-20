@@ -31,7 +31,6 @@ import {
   parseAllowedUsers,
   isAllowed,
   cleanMessage,
-  formatForSlack,
   validateSendParams,
   validateReactParams,
   createRateLimiter,
@@ -142,10 +141,12 @@ function findSessionSocket(targetId) {
 // ── Pi RPC Client ───────────────────────────────────────────────────────────
 
 /**
- * Send a message to the pi agent and wait for its reply.
+ * Fire-and-forget: deliver a message to the pi agent via its control socket.
  *
- * Flow: connect → subscribe to turn_end → send message → wait for
- * turn_end event → get_message → return response → disconnect.
+ * Connects, sends the message with mode "steer", waits only for the send
+ * confirmation, then disconnects. The agent handles Slack replies itself
+ * via the bridge's /send API endpoint — we do NOT wait for or return its
+ * response.
  */
 function sendToAgent(socketPath, message) {
   return new Promise((resolve, reject) => {
@@ -159,8 +160,6 @@ function sendToAgent(socketPath, message) {
     };
 
     const client = net.createConnection(socketPath, () => {
-      // Subscribe to turn_end first, then send
-      client.write(JSON.stringify({ type: "subscribe", event: "turn_end" }) + "\n");
       client.write(JSON.stringify({ type: "send", message, mode: "steer" }) + "\n");
     });
 
@@ -176,24 +175,13 @@ function sendToAgent(socketPath, message) {
         try {
           const msg = JSON.parse(line);
 
-          // Ack responses for subscribe/send — skip
-          if (msg.type === "response" && (msg.command === "subscribe" || msg.command === "send")) {
-            if (msg.command === "send" && !msg.success) {
+          // send confirmation — resolve on success, reject on failure
+          if (msg.type === "response" && msg.command === "send") {
+            if (msg.success) {
+              settle(resolve, "delivered");
+            } else {
               settle(reject, new Error(msg.error || "Failed to send message to agent"));
             }
-            continue;
-          }
-
-          // turn_end event — agent finished, fetch its reply
-          if (msg.type === "event" && msg.event === "turn_end") {
-            client.write(JSON.stringify({ type: "get_message" }) + "\n");
-            continue;
-          }
-
-          // get_message response — done!
-          if (msg.type === "response" && msg.command === "get_message") {
-            const text = msg.data?.message?.content || "(no response)";
-            settle(resolve, text);
             return;
           }
         } catch {
@@ -207,7 +195,7 @@ function sendToAgent(socketPath, message) {
     });
 
     const timer = setTimeout(() => {
-      settle(reject, new Error(`Agent did not respond within ${AGENT_TIMEOUT_MS / 1000}s`));
+      settle(reject, new Error(`Agent send timed out after ${AGENT_TIMEOUT_MS / 1000}s`));
     }, AGENT_TIMEOUT_MS);
   });
 }
@@ -304,25 +292,8 @@ async function handleMessage(userMessage, event, say) {
     const threadId = getThreadId(event.channel, event.thread_ts || event.ts);
     const contextMessage = `${wrappedMessage}\n[Bridge-Thread-ID: ${threadId}]`;
 
-    const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
-    const formatted = formatForSlack(reply);
-    await say({ text: formatted, thread_ts: event.ts });
-
-    // Swap eyes → checkmark
-    try {
-      await app.client.reactions.remove({
-        token: process.env.SLACK_BOT_TOKEN,
-        channel: event.channel,
-        name: "eyes",
-        timestamp: event.ts,
-      });
-      await app.client.reactions.add({
-        token: process.env.SLACK_BOT_TOKEN,
-        channel: event.channel,
-        name: "white_check_mark",
-        timestamp: event.ts,
-      });
-    } catch {}
+    // Fire-and-forget: deliver to agent, which will reply to Slack itself via /send API.
+    await enqueue(() => sendToAgent(currentSocket, contextMessage));
   } catch (err) {
     console.error("Error:", err.message);
     refreshSocket();
