@@ -577,6 +577,10 @@ async function startPollLoop() {
       for (const message of messages) {
         if (!message?.message_id) continue;
         if (dedupe.has(message.message_id)) {
+          if (!verifyBrokerEnvelope(message)) {
+            console.error(`❌ dedupe hit but invalid signature (${message.message_id})`);
+            continue;
+          }
           ackIds.push(message.message_id);
           continue;
         }
