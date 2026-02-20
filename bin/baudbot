@@ -527,7 +527,7 @@ case "${1:-}" in
       echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
       echo ""
       pause_before_attach
-      exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; pi --session '$pi_target'"
+      exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$pi_target'"
     }
 
     choose_tmux_target() {
