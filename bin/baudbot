@@ -65,6 +65,7 @@ usage() {
   echo -e "${BOLD}Operations:${RESET}"
   echo "  doctor         Health check (perms, firewall, secrets, deps)"
   echo "  audit          Security posture audit"
+  echo "  version        Show baudbot CLI version"
   echo "  test           Run test suite"
   echo "  update         Build/test in temp checkout, publish git-free release, deploy"
   echo "  rollback       Re-deploy previous (or specified) git-free release snapshot"
@@ -80,6 +81,37 @@ require_root() {
     echo "❌ baudbot $1 requires root. Run: sudo baudbot $1"
     exit 1
   fi
+}
+
+resolve_node_bin() {
+  # 1) Standard PATH lookup
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return 0
+  fi
+
+  # 2) Common user-managed Node installs (sudo secure_path may hide these)
+  local user_home=""
+  if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    user_home="/home/${SUDO_USER}"
+  else
+    user_home="${HOME:-}"
+  fi
+
+  local candidate=""
+  for candidate in \
+    "$user_home/.local/share/mise/shims/node" \
+    "$user_home/.local/bin/node" \
+    "$user_home/opt/node-v22.14.0-linux-x64/bin/node" \
+    /home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin/node \
+    "$user_home"/opt/node-v*-linux-x64/bin/node; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 escalate_prefix() {
@@ -564,7 +596,13 @@ case "${1:-}" in
       shift
       require_root "broker register"
       echo "⚠️  'baudbot setup --slack-broker' is deprecated. Use: sudo baudbot broker register"
-      exec node "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
+      NODE_BIN="$(resolve_node_bin || true)"
+      if [ -z "$NODE_BIN" ]; then
+        echo "❌ Could not find node runtime for broker registration."
+        echo "   Install Node for root/sudo PATH or deploy with an embedded Node path."
+        exit 1
+      fi
+      exec "$NODE_BIN" "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
     fi
     require_root "setup"
     exec "$BAUDBOT_ROOT/setup.sh" "$@"
@@ -581,7 +619,13 @@ case "${1:-}" in
       register)
         shift
         require_root "broker register"
-        exec node "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
+        NODE_BIN="$(resolve_node_bin || true)"
+        if [ -z "$NODE_BIN" ]; then
+          echo "❌ Could not find node runtime for broker registration."
+          echo "   Install Node for root/sudo PATH or deploy with an embedded Node path."
+          exit 1
+        fi
+        exec "$NODE_BIN" "$BAUDBOT_ROOT/bin/broker-register.mjs" "$@"
         ;;
       --help|-h|"")
         echo "Usage: sudo baudbot broker register [--broker-url URL] [--workspace-id ID] [--auth-code CODE]"
@@ -631,6 +675,11 @@ case "${1:-}" in
   doctor)
     shift
     exec "$BAUDBOT_ROOT/bin/doctor.sh" "$@"
+    ;;
+
+  version)
+    shift
+    echo "baudbot $(version)"
     ;;
 
   --version|-v)
