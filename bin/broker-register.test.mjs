@@ -39,6 +39,7 @@ test("parseArgs parses long-form options", () => {
     brokerUrl: "https://broker.example.com/",
     workspaceId: "T123ABC",
     authCode: "secret-code",
+    verbose: false,
     help: false,
   });
 });

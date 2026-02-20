@@ -32,6 +32,12 @@ const ENV_KEYS = [
   "SLACK_BROKER_SIGNING_PUBLIC_KEY",
 ];
 
+function createLogger(enabled) {
+  return (message) => {
+    if (enabled) console.log(`ℹ️  ${message}`);
+  };
+}
+
 export function usageText() {
   return [
     "Usage:",
@@ -41,6 +47,7 @@ export function usageText() {
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
     "  --auth-code CODE       One-time auth code from broker OAuth callback",
+    "  -v, --verbose          Show detailed registration progress",
     "  -h, --help             Show this help",
     "",
     "If options are omitted, the command prompts interactively.",
@@ -52,6 +59,7 @@ export function parseArgs(argv) {
     brokerUrl: "",
     workspaceId: "",
     authCode: "",
+    verbose: false,
     help: false,
   };
 
@@ -60,6 +68,11 @@ export function parseArgs(argv) {
 
     if (arg === "-h" || arg === "--help") {
       out.help = true;
+      continue;
+    }
+
+    if (arg === "-v" || arg === "--verbose") {
+      out.verbose = true;
       continue;
     }
 
@@ -213,7 +226,9 @@ export async function registerWithBroker({
   authCode,
   serverKeys,
   fetchImpl = fetch,
+  logger = () => {},
 }) {
+  logger(`Fetching broker public keys from ${new URL('/api/broker-pubkey', brokerUrl)}`);
   const fetchedBrokerKeys = await fetchBrokerPubkeys(brokerUrl, fetchImpl);
 
   const endpoint = new URL("/api/register", brokerUrl);
@@ -223,6 +238,8 @@ export async function registerWithBroker({
     server_signing_pubkey: serverKeys.server_signing_pubkey,
     auth_code: authCode,
   };
+
+  logger(`Registering workspace ${workspaceId} at ${endpoint}`);
 
   let response;
   try {
@@ -454,6 +471,7 @@ export async function runRegistration({
   workspaceId,
   authCode,
   fetchImpl = fetch,
+  logger = () => {},
 }) {
   if (!validateWorkspaceId(workspaceId)) {
     throw new Error("workspace ID must match Slack team ID format (e.g. T0123ABCD)");
@@ -461,6 +479,7 @@ export async function runRegistration({
 
   const normalizedBrokerUrl = normalizeBrokerUrl(brokerUrl);
 
+  logger("Generating server key material...");
   const serverKeys = await generateServerKeyMaterial();
   const registration = await registerWithBroker({
     brokerUrl: normalizedBrokerUrl,
@@ -468,6 +487,7 @@ export async function runRegistration({
     authCode,
     serverKeys,
     fetchImpl,
+    logger,
   });
 
   return {
@@ -492,6 +512,9 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
+  const verbose = parsed.verbose || process.env.BAUDBOT_VERBOSE === "1";
+  const logger = createLogger(verbose);
+
   for (const key of ENV_KEYS) {
     if (!key.startsWith("SLACK_BROKER_")) {
       throw new Error(`unexpected env key: ${key}`);
@@ -502,10 +525,15 @@ export async function main(argv = process.argv.slice(2)) {
     throw new Error("broker registration requires root (run: sudo baudbot broker register)");
   }
 
+  logger("Collecting registration inputs...");
   const input = await collectInputs(parsed);
-  const { updates } = await runRegistration(input);
+  logger(`Using broker ${input.brokerUrl} for workspace ${input.workspaceId}`);
+  logger(`Config targets: ${input.configTargets.map((t) => t.path).join(", ")}`);
+
+  const { updates } = await runRegistration({ ...input, logger });
 
   for (const target of input.configTargets) {
+    logger(`Writing broker config to ${target.path}`);
     writeEnvFile(target, updates);
   }
 
