@@ -51,7 +51,8 @@ control-plane/
   server.mjs                admin-owned web dashboard + API (port 28800)
   server.test.mjs           control plane tests
 slack-bridge/
-  bridge.mjs                Slack ↔ agent bridge (direct mode — Socket Mode)
+  bridge.mjs                Slack ↔ agent bridge (legacy Socket Mode)
+  broker-bridge.mjs         Slack ↔ agent bridge (broker pull mode — preferred)
   security.mjs              🔒 content wrapping, rate limiting, auth
   security.test.mjs         🔒 tests for security module
 setup.sh                    one-time system setup (creates user, firewall, etc.)

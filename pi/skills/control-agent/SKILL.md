@@ -305,15 +305,7 @@ For posting results back to Slack, use whatever channel the original request cam
 
 ### Sending Messages
 
-**Primary method — Slack Web API (always available):**
-```bash
-source ~/.config/.env && curl -s -X POST https://slack.com/api/chat.postMessage \
-  -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"channel":"CHANNEL_ID","text":"your message","thread_ts":"optional"}'
-```
-
-**Alternative — Slack bridge** (when running at `http://127.0.0.1:7890`):
+**Primary method — bridge local API (works in both broker and Socket Mode):**
 ```bash
 curl -s -X POST http://127.0.0.1:7890/send \
   -H 'Content-Type: application/json' \
@@ -327,7 +319,15 @@ curl -s -X POST http://127.0.0.1:7890/react \
   -d '{"channel":"CHANNEL_ID","timestamp":"msg_ts","emoji":"white_check_mark"}'
 ```
 
-Prefer the direct Slack Web API — it doesn't depend on the bridge process being running.
+**Fallback — direct Slack Web API** (only if the bridge is down and `SLACK_BOT_TOKEN` is available):
+```bash
+source ~/.config/.env && curl -s -X POST https://slack.com/api/chat.postMessage \
+  -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"channel":"CHANNEL_ID","text":"your message","thread_ts":"optional"}'
+```
+
+Prefer the bridge local API — it works in both broker and Socket Mode. Fall back to direct Slack Web API only if the bridge is down and `SLACK_BOT_TOKEN` is available. In broker mode, the bot token lives on the broker (Cloudflare Worker), not on the agent server, so direct API calls won't work.
 
 ### Slack Message Context
 
@@ -431,16 +431,16 @@ The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry ale
 
 ### Starting the Slack Bridge
 
-The Slack bridge (Socket Mode) receives real-time Slack events and forwards them to this session via port 7890.
+The Slack bridge receives real-time Slack events and forwards them to this session via port 7890. **Broker pull mode** (`broker-bridge.mjs`) is preferred — it polls a Cloudflare Worker inbox instead of using Slack's Socket Mode WebSocket. Legacy Socket Mode (`bridge.mjs`) is used as a fallback when broker env vars are not configured.
 
-**The `startup-cleanup.sh` script handles bridge (re)start automatically** — it reads the control-agent UUID from the `.alias` symlink and launches the bridge in a `slack-bridge` tmux session.
+**The `startup-cleanup.sh` script handles bridge (re)start automatically** — it detects which bridge to use (broker vs Socket Mode), reads the control-agent UUID from the `.alias` symlink, and launches the bridge in a `slack-bridge` tmux session.
 
 If you need to restart the bridge manually:
 ```bash
 MY_UUID=$(readlink ~/.pi/session-control/control-agent.alias | sed 's/.sock$//')
 tmux kill-session -t slack-bridge 2>/dev/null || true
 tmux new-session -d -s slack-bridge \
-  "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node bridge.mjs"
+  "unset PKG_EXECPATH; export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd ~/runtime/slack-bridge && exec varlock run --path ~/.config/ -- node broker-bridge.mjs"
 ```
 
 Verify: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}'` → should return `400`.
