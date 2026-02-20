@@ -71,6 +71,7 @@ if (ALLOWED_USERS.length === 0) {
 
 const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });
 const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
+const directSlackRateLimiter = createRateLimiter({ maxRequests: 1, windowMs: 1_000 }); // 1 req/sec
 
 const workspaceId = process.env.SLACK_BROKER_WORKSPACE_ID;
 const brokerBaseUrl = String(process.env.SLACK_BROKER_URL || "").replace(/\/$/, "");
@@ -335,26 +336,58 @@ async function sendViaBroker({ action, routing, body }) {
 }
 
 /**
+ * Sanitize error messages to prevent token leakage.
+ * Replaces any SLACK_BOT_TOKEN occurrences with [REDACTED].
+ */
+function sanitizeError(error) {
+  if (typeof error !== "string") {
+    error = String(error);
+  }
+  const botToken = process.env.SLACK_BOT_TOKEN;
+  if (botToken && botToken.length > 10) {
+    // Replace the token with [REDACTED], being careful about partial matches
+    error = error.replace(new RegExp(escapeRegex(botToken), 'g'), '[REDACTED]');
+  }
+  return error;
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Send message to Slack using direct API call with bot token.
  * Used when SLACK_BOT_TOKEN is available.
  */
 async function sendDirectToSlack(apiMethod, params) {
-  const response = await fetch(`https://slack.com/api/${apiMethod}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
-  });
-
-  const data = await response.json();
-  
-  if (!response.ok || !data.ok) {
-    throw new Error(`Slack API ${apiMethod} failed: ${data.error || response.statusText}`);
+  // Rate limiting for direct API calls
+  if (!directSlackRateLimiter.check('global')) {
+    throw new Error('Rate limit exceeded for direct Slack API calls. Try again in a moment.');
   }
-  
-  return data;
+
+  try {
+    const response = await fetch(`https://slack.com/api/${apiMethod}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok || !data.ok) {
+      const error = data.error || response.statusText;
+      throw new Error(`Slack API ${apiMethod} failed: ${sanitizeError(error)}`);
+    }
+    
+    return data;
+  } catch (err) {
+    // Sanitize any error messages to prevent token leakage
+    const sanitizedMessage = sanitizeError(err.message || String(err));
+    throw new Error(sanitizedMessage);
+  }
 }
 
 async function say(channel, text, threadTs) {
@@ -378,11 +411,11 @@ async function say(channel, text, threadTs) {
   }
 }
 
-async function react(channel, timestamp, emoji) {
+async function react(channel, threadTs, emoji) {
   if (outboundMode === "direct") {
     const params = {
       channel,
-      timestamp,
+      timestamp: threadTs,
       name: emoji,
     };
     return await sendDirectToSlack("reactions.add", params);
@@ -390,7 +423,7 @@ async function react(channel, timestamp, emoji) {
     // Fallback to broker mode
     await sendViaBroker({
       action: "reactions.add",
-      routing: { channel, timestamp, emoji },
+      routing: { channel, timestamp: threadTs, emoji },
       body: { emoji },
     });
   }
@@ -659,7 +692,7 @@ function startApiServer() {
         } else {
           await sendViaBroker({
             action: "reactions.add",
-            routing: { channel, timestamp, emoji },
+            routing: { channel, timestamp: threadTs, emoji },
             body: { emoji },
           });
         }
