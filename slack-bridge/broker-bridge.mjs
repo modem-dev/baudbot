@@ -65,8 +65,7 @@ for (const key of [
 
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 if (ALLOWED_USERS.length === 0) {
-  logError("❌ SLACK_ALLOWED_USERS is empty — refusing to start with open access.");
-  process.exit(1);
+  logWarn("⚠️  SLACK_ALLOWED_USERS not set — all workspace members can interact");
 }
 
 const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });

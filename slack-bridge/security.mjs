@@ -176,8 +176,12 @@ export function parseAllowedUsers(envValue) {
 
 /**
  * Check if a user is in the allowed list.
+ * If allowedUsers is empty/null/undefined, allow all users.
  */
 export function isAllowed(userId, allowedUsers) {
+  if (!allowedUsers || allowedUsers.length === 0) {
+    return true;
+  }
   return allowedUsers.includes(userId);
 }
 

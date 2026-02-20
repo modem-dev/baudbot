@@ -251,8 +251,16 @@ describe("isAllowed", () => {
     assert.equal(isAllowed("U3", ["U1", "U2"]), false);
   });
 
-  it("returns false for empty allowlist", () => {
-    assert.equal(isAllowed("U1", []), false);
+  it("returns true for empty allowlist (allows all)", () => {
+    assert.equal(isAllowed("U1", []), true);
+  });
+
+  it("returns true for null allowlist (allows all)", () => {
+    assert.equal(isAllowed("U1", null), true);
+  });
+
+  it("returns true for undefined allowlist (allows all)", () => {
+    assert.equal(isAllowed("U1", undefined), true);
   });
 });
 

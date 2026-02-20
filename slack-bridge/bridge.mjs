@@ -56,12 +56,10 @@ for (const key of ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]) {
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 
 if (ALLOWED_USERS.length === 0) {
-  console.error("❌ SLACK_ALLOWED_USERS is empty — refusing to start with open access.");
-  console.error("   Set at least one Slack user ID (comma-separated).");
-  process.exit(1);
+  console.warn("⚠️  SLACK_ALLOWED_USERS not set — all workspace members can interact");
 }
 
-console.log(`🔒 Access control: ${ALLOWED_USERS.length} allowed user(s)`);
+console.log(`🔒 Access control: ${ALLOWED_USERS.length || 'all'} allowed user(s)`);
 
 // ── Rate Limiting ───────────────────────────────────────────────────────────
 
