@@ -213,8 +213,14 @@ function getThreadId(channel, threadTs) {
     evictOldThreads();
     threadCounter++;
     id = `thread-${threadCounter}`;
-    threadRegistry.set(id, { channel, thread_ts: threadTs, createdAt: Date.now() });
+    threadRegistry.set(id, { channel, thread_ts: threadTs, createdAt: Date.now(), lastAccessAt: Date.now() });
     threadLookup.set(key, id);
+  } else {
+    const existing = threadRegistry.get(id);
+    if (existing) {
+      threadRegistry.delete(id);
+      threadRegistry.set(id, { ...existing, lastAccessAt: Date.now() });
+    }
   }
   return id;
 }
@@ -391,9 +397,14 @@ function decryptEnvelope(message) {
     cryptoState.serverBoxSecretKey,
   );
   if (!plaintext) {
-    throw new Error("failed to decrypt broker envelope");
+    throw new Error(`failed to decrypt broker envelope (message_id: ${message.message_id || "unknown"})`);
   }
   return JSON.parse(utf8String(plaintext));
+}
+
+function isPoisonMessageError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("invalid broker envelope signature") || message.includes("failed to decrypt broker envelope");
 }
 
 async function processPulledMessage(message) {
@@ -578,6 +589,11 @@ async function startPollLoop() {
           }
         } catch (err) {
           console.error(`❌ message processing failed (${message.message_id}):`, err instanceof Error ? err.message : "unknown error");
+          if (isPoisonMessageError(err)) {
+            // Ack poison-pill messages (bad signature/decrypt failures) so they
+            // don't block the queue indefinitely.
+            ackIds.push(message.message_id);
+          }
         }
       }
 
