@@ -2,18 +2,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-function b64(bytes = 32) {
-  return randomBytes(bytes).toString("base64");
+function b64(bytes = 32, fill = 1) {
+  return Buffer.alloc(bytes, fill).toString("base64");
 }
 
-function waitFor(condition, timeoutMs = 10_000, intervalMs = 50) {
+function waitFor(condition, timeoutMs = 10_000, intervalMs = 50, onTimeoutMessage = "timeout waiting for condition") {
   const start = Date.now();
   return new Promise((resolve, reject) => {
     const tick = () => {
       if (condition()) return resolve();
-      if (Date.now() - start > timeoutMs) return reject(new Error("timeout waiting for condition"));
+      if (Date.now() - start > timeoutMs) return reject(new Error(onTimeoutMessage));
       setTimeout(tick, intervalMs);
     };
     tick();
@@ -82,20 +82,31 @@ describe("broker pull bridge semi-integration", () => {
     servers.push(broker);
 
     const address = broker.address();
+    if (!address || typeof address === "string") {
+      throw new Error("failed to get broker test server address");
+    }
     const brokerUrl = `http://127.0.0.1:${address.port}`;
 
-    const bridgePath = path.join(process.cwd(), "slack-bridge", "broker-bridge.mjs");
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    let bridgeStdout = "";
+    let bridgeStderr = "";
+    let bridgeExit = null;
+
     const bridge = spawn("node", [bridgePath], {
-      cwd: path.join(process.cwd(), "slack-bridge"),
+      cwd: bridgeCwd,
       env: {
         ...process.env,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
-        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32),
-        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32),
-        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32),
-        SLACK_BROKER_PUBLIC_KEY: b64(32),
-        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32),
+        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
+        SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         BRIDGE_API_PORT: "0",
@@ -103,9 +114,24 @@ describe("broker pull bridge semi-integration", () => {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    bridge.stdout.on("data", (chunk) => {
+      bridgeStdout += chunk.toString();
+    });
+    bridge.stderr.on("data", (chunk) => {
+      bridgeStderr += chunk.toString();
+    });
+    bridge.on("exit", (code, signal) => {
+      bridgeExit = { code, signal };
+    });
+
     children.push(bridge);
 
-    await waitFor(() => ackPayload !== null, 10_000, 50);
+    await waitFor(
+      () => ackPayload !== null,
+      10_000,
+      50,
+      `timeout waiting for ack; pullCount=${pullCount}; exit=${JSON.stringify(bridgeExit)}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`,
+    );
 
     expect(ackPayload.workspace_id).toBe("T123BROKER");
     expect(ackPayload.message_ids).toContain("m-poison-1");
