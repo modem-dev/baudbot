@@ -41,14 +41,15 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 | `SLACK_APP_TOKEN` | Slack app-level token (Socket Mode) | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
 | `SLACK_ALLOWED_USERS` | Comma-separated Slack user IDs | **Required** — the bridge refuses to start without at least one user ID. Find your Slack user ID: click your profile → "..." → "Copy member ID". Example: `U01ABCDEF,U02GHIJKL` |
 
+If you're using Slack broker mode (`SLACK_BROKER_*` vars), the runtime uses broker pull delivery and does not require Socket Mode callbacks.
+
 If you're using the Slack broker OAuth flow, register this server after install:
 
 ```bash
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
   --workspace-id T0123ABCD \
-  --auth-code <auth-code-from-oauth-callback> \
-  --callback-url https://your-server.example.com/slack/broker/callback
+  --auth-code <auth-code-from-oauth-callback>
 ```
 
 `baudbot setup` is host provisioning only; do not use `baudbot setup --slack-broker`.
@@ -94,13 +95,15 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 |----------|-------------|
 | `SLACK_BROKER_URL` | Broker base URL |
 | `SLACK_BROKER_WORKSPACE_ID` | Slack workspace/team ID (`T...`) |
-| `SLACK_BROKER_CALLBACK_URL` | Public HTTPS callback URL advertised during registration |
 | `SLACK_BROKER_SERVER_PRIVATE_KEY` | Server X25519 private key (base64) |
 | `SLACK_BROKER_SERVER_PUBLIC_KEY` | Server X25519 public key (base64) |
 | `SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY` | Server Ed25519 private signing key (base64) |
 | `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Server Ed25519 public signing key (base64) |
 | `SLACK_BROKER_PUBLIC_KEY` | Broker X25519 public key (base64) |
 | `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
+| `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
+| `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
+| `SLACK_BROKER_DEDUPE_TTL_MS` | Dedupe cache TTL in milliseconds (default: `1200000`) |
 
 ### Kernel (Cloud Browsers)
 
@@ -184,7 +187,9 @@ SENTRY_CHANNEL_ID=C0987654321
 # Slack broker registration (optional, set by: sudo baudbot broker register)
 SLACK_BROKER_URL=https://broker.example.com
 SLACK_BROKER_WORKSPACE_ID=T0123ABCD
-SLACK_BROKER_CALLBACK_URL=https://server.example.com/slack/broker/callback
+SLACK_BROKER_POLL_INTERVAL_MS=3000
+SLACK_BROKER_MAX_MESSAGES=10
+SLACK_BROKER_DEDUPE_TTL_MS=1200000
 
 # Email
 AGENTMAIL_API_KEY=...

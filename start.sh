@@ -62,17 +62,29 @@ if [ -d "$SOCKET_DIR" ]; then
 fi
 
 # Start Slack bridge in the background (before pi, so it's ready for messages).
-# The bridge resolves the pi session socket lazily — it will wait for the
-# control-agent to come up and create its socket before forwarding messages.
-if [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
-  # Kill any existing bridge
+# Broker pull mode has priority when SLACK_BROKER_* keys are configured.
+# Otherwise fallback to direct Slack Socket Mode.
+BRIDGE_SCRIPT=""
+if [ -n "${SLACK_BROKER_URL:-}" ] \
+  && [ -n "${SLACK_BROKER_WORKSPACE_ID:-}" ] \
+  && [ -n "${SLACK_BROKER_SERVER_PRIVATE_KEY:-}" ] \
+  && [ -n "${SLACK_BROKER_SERVER_PUBLIC_KEY:-}" ] \
+  && [ -n "${SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY:-}" ] \
+  && [ -n "${SLACK_BROKER_PUBLIC_KEY:-}" ] \
+  && [ -n "${SLACK_BROKER_SIGNING_PUBLIC_KEY:-}" ]; then
+  BRIDGE_SCRIPT="broker-bridge.mjs"
+elif [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
+  BRIDGE_SCRIPT="bridge.mjs"
+fi
+
+if [ -n "$BRIDGE_SCRIPT" ]; then
   tmux kill-session -t slack-bridge 2>/dev/null || true
-  echo "Starting Slack bridge..."
+  echo "Starting Slack bridge ($BRIDGE_SCRIPT)..."
   tmux new-session -d -s slack-bridge \
     "export PATH=$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
      cd ~/runtime/slack-bridge && \
      while true; do \
-       varlock run --path ~/.config/ -- node bridge.mjs; \
+       varlock run --path ~/.config/ -- node $BRIDGE_SCRIPT; \
        echo '⚠️  Bridge exited (\$?), restarting in 5s...'; \
        sleep 5; \
      done"

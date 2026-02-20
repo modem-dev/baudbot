@@ -121,7 +121,7 @@ sudo baudbot update
 sudo baudbot rollback previous
 
 # Register a server with Slack broker (after OAuth callback)
-sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --auth-code <code> --callback-url https://server.example.com/slack/broker/callback
+sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --auth-code <code>
 
 # Launch agent directly (debug/dev)
 sudo -u baudbot_agent ~/runtime/start.sh
