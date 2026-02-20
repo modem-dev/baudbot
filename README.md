@@ -115,11 +115,11 @@ Baudbot uses source/runtime separation: admin-managed source and immutable relea
 
 ## Slack Broker Architecture
 
-Baudbot supports both direct Socket Mode and a broker-based pull architecture for Slack integration. The broker approach eliminates the need for inbound ports on your agent host while providing end-to-end encryption of all messages.
+Baudbot supports both direct Socket Mode and a broker-based pull architecture for Slack integration. The broker approach eliminates the need for inbound ports while providing encrypted message delivery.
 
 ### Architecture Overview
 
-The broker is a Cloudflare Worker that sits between Slack and your self-hosted agent:
+The broker is a Cloudflare Worker that handles all Slack communication on behalf of your agent:
 
 ```text
 Slack Events API
@@ -130,75 +130,17 @@ Durable Object Inbox
       ↑ (poll/ack)
 Agent Host Bridge
       ↓
-pi control-agent
+control-agent
 ```
 
 **Key characteristics:**
 - **Pull-based**: Your agent polls the broker for messages rather than receiving inbound connections
-- **End-to-end encrypted**: The broker cannot read message content — only your agent can decrypt
-- **Stateless/ephemeral**: The broker uses Cloudflare Durable Objects for reliable message queuing
+- **Inbound messages encrypted**: True end-to-end encryption — broker cannot read inbound content
+- **Outbound via broker**: Agent sends encrypted messages to broker, which posts to Slack using stored bot token
+- **No bot token on agent**: Bot token stored encrypted on broker; agent only has broker communication keys
 - **No inbound ports**: Your firewall only needs to allow outbound HTTPS to the broker
 
-### Cryptographic Design
-
-The broker uses a dual-encryption scheme for different message flows:
-
-**Inbound (Slack → Agent):**
-- Messages encrypted with **libsodium sealed boxes** (crypto_box_seal)
-- Uses X25519 elliptic curve Diffie-Hellman + XSalsa20-Poly1305
-- Ephemeral keypair per message + BLAKE2B nonce derivation
-- Only the agent's private key can decrypt — **broker cannot read content**
-
-**Outbound (Agent → Slack):**
-- Messages encrypted with **NaCl crypto_box** (authenticated encryption)
-- Uses X25519 + XSalsa20-Poly1305 with shared secret
-- Broker decrypts transiently to post to Slack, then zeros plaintext
-- Provides sender authentication via shared secret
-
-**Authentication:**
-- All requests signed with **Ed25519** detached signatures
-- Broker signs message envelopes; agents verify broker authenticity
-- Agents sign API requests; broker verifies sender identity
-- 5-minute timestamp replay protection on all signed requests
-
-### Message Flow
-
-1. **Slack sends event** → Broker receives webhook
-2. **Broker encrypts** event with agent's public key (sealed box)
-3. **Broker enqueues** encrypted envelope in Durable Object inbox
-4. **Agent polls** `/api/inbox/pull` with signed request
-5. **Broker returns** encrypted messages (max 10 per poll)
-6. **Agent decrypts** locally and processes events
-7. **Agent acknowledges** processed messages via `/api/inbox/ack`
-8. **Agent sends replies** via `/api/send` (crypto_box encrypted)
-9. **Broker decrypts** and posts to Slack, zeros plaintext
-
-### Polling and Reliability
-
-- **Default polling**: Every 3 seconds when active
-- **Exponential backoff**: Up to 30 seconds on errors
-- **Message leasing**: 30-second exclusive leases with automatic requeue
-- **Retry handling**: Up to 10 attempts before dead letter queue
-- **Deduplication**: 20-minute client-side cache prevents double-processing
-- **Poison message handling**: Invalid signatures/decrypt failures are auto-acked
-
-### Why This Design
-
-**Security benefits:**
-- End-to-end encryption protects sensitive team conversations
-- Zero-trust: broker cannot read content even if compromised
-- Agent controls its own key material and decryption
-
-**Operational benefits:**
-- No inbound ports or reverse proxy setup required
-- Works behind firewalls, NAT, or restrictive networks
-- Cloudflare's global edge provides reliability and performance
-- Automatic retry and queue semantics for reliable delivery
-
-**Scalability:**
-- Broker is stateless — scales automatically with Cloudflare
-- Durable Objects provide strong consistency for message ordering
-- Multiple agents can register to the same broker instance
+For detailed technical information including cryptographic design, message flow, and configuration options, see [docs/slack-broker.md](docs/slack-broker.md).
 
 ## Security as an enabling layer
 
