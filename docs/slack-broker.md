@@ -134,11 +134,14 @@ Agent only needs broker communication keys:
 SLACK_BROKER_URL=https://your-broker.example.com
 SLACK_BROKER_WORKSPACE_ID=T0123ABCD
 
-# Cryptographic keys (base64-encoded)
+# Server cryptographic keys (base64-encoded, generated during registration)
 SLACK_BROKER_SERVER_PRIVATE_KEY=<server_private_key>
-SLACK_BROKER_SERVER_SIGNING_KEY=<server_signing_key>
-SLACK_BROKER_PUBKEY=<broker_public_key>
-SLACK_BROKER_SIGNING_PUBKEY=<broker_signing_pubkey>
+SLACK_BROKER_SERVER_PUBLIC_KEY=<server_public_key>
+SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY=<server_signing_private_key>
+
+# Broker public keys (received during registration)
+SLACK_BROKER_PUBLIC_KEY=<broker_public_key>
+SLACK_BROKER_SIGNING_PUBLIC_KEY=<broker_signing_pubkey>
 
 # NO SLACK_BOT_TOKEN — stored on broker only
 ```
