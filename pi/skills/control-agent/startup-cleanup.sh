@@ -77,7 +77,14 @@ fi
 # otherwise fall back to direct Socket Mode.
 BRIDGE_SCRIPT="bridge.mjs"
 if [ -f "$HOME/runtime/slack-bridge/broker-bridge.mjs" ]; then
-  if varlock run --path "$HOME/.config/" -- sh -c 'test -n "$SLACK_BROKER_URL" && test -n "$SLACK_BROKER_WORKSPACE_ID" && test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY"' 2>/dev/null; then
+  if varlock run --path "$HOME/.config/" -- sh -c '
+    test -n "$SLACK_BROKER_URL" &&
+    test -n "$SLACK_BROKER_WORKSPACE_ID" &&
+    test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
+    test -n "$SLACK_BROKER_SERVER_PUBLIC_KEY" &&
+    test -n "$SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY" &&
+    test -n "$SLACK_BROKER_PUBLIC_KEY" &&
+    test -n "$SLACK_BROKER_SIGNING_PUBLIC_KEY"' 2>/dev/null; then
     BRIDGE_SCRIPT="broker-bridge.mjs"
   fi
 fi
