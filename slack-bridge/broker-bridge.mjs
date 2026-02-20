@@ -1,0 +1,616 @@
+#!/usr/bin/env node
+/**
+ * Slack broker pull bridge.
+ *
+ * Polls broker inbox, decrypts inbound Slack events, forwards them to the pi
+ * agent, then sends replies back through broker /api/send.
+ */
+
+import * as net from "node:net";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { homedir } from "node:os";
+import { createServer } from "node:http";
+import sodium from "libsodium-wrappers-sumo";
+import {
+  detectSuspiciousPatterns,
+  wrapExternalContent,
+  parseAllowedUsers,
+  isAllowed,
+  cleanMessage,
+  formatForSlack,
+  validateSendParams,
+  validateReactParams,
+  createRateLimiter,
+} from "./security.mjs";
+
+const SOCKET_DIR = path.join(homedir(), ".pi", "session-control");
+const AGENT_TIMEOUT_MS = 120_000;
+const API_PORT = parseInt(process.env.BRIDGE_API_PORT || "7890", 10);
+const POLL_INTERVAL_MS = parseInt(process.env.SLACK_BROKER_POLL_INTERVAL_MS || "3000", 10);
+const MAX_MESSAGES = parseInt(process.env.SLACK_BROKER_MAX_MESSAGES || "10", 10);
+const DEDUPE_TTL_MS = parseInt(process.env.SLACK_BROKER_DEDUPE_TTL_MS || String(20 * 60 * 1000), 10);
+const MAX_BACKOFF_MS = 30_000;
+
+for (const key of [
+  "SLACK_BROKER_URL",
+  "SLACK_BROKER_WORKSPACE_ID",
+  "SLACK_BROKER_SERVER_PRIVATE_KEY",
+  "SLACK_BROKER_SERVER_PUBLIC_KEY",
+  "SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY",
+  "SLACK_BROKER_PUBLIC_KEY",
+  "SLACK_BROKER_SIGNING_PUBLIC_KEY",
+]) {
+  if (!process.env[key]) {
+    console.error(`❌ Missing required env var for broker mode: ${key}`);
+    process.exit(1);
+  }
+}
+
+const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
+if (ALLOWED_USERS.length === 0) {
+  console.error("❌ SLACK_ALLOWED_USERS is empty — refusing to start with open access.");
+  process.exit(1);
+}
+
+const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });
+const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
+
+const workspaceId = process.env.SLACK_BROKER_WORKSPACE_ID;
+const brokerBaseUrl = String(process.env.SLACK_BROKER_URL || "").replace(/\/$/, "");
+
+const threadRegistry = new Map();
+const threadLookup = new Map();
+let threadCounter = 0;
+const MAX_THREADS = 10_000;
+
+let socketPath = null;
+
+let cryptoState = null;
+
+const dedupe = new Map();
+
+function toBase64(bytes) {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function fromBase64(value) {
+  return new Uint8Array(Buffer.from(value, "base64"));
+}
+
+function utf8Bytes(text) {
+  return new TextEncoder().encode(text);
+}
+
+function utf8String(bytes) {
+  return new TextDecoder().decode(bytes);
+}
+
+function canonicalizeEnvelope(workspace, timestamp, encrypted) {
+  return utf8Bytes(`${workspace}|${timestamp}|${encrypted}`);
+}
+
+function canonicalizeOutbound(workspace, action, timestamp, encryptedBody) {
+  return utf8Bytes(`${workspace}|${action}|${timestamp}|${encryptedBody}`);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function findSessionSocket(targetId) {
+  if (targetId) {
+    const sock = path.join(SOCKET_DIR, `${targetId}.sock`);
+    if (fs.existsSync(sock)) return sock;
+
+    const aliasDir = path.join(SOCKET_DIR, "by-name");
+    if (fs.existsSync(aliasDir)) {
+      const aliasSock = path.join(aliasDir, `${targetId}.sock`);
+      if (fs.existsSync(aliasSock)) return fs.realpathSync(aliasSock);
+    }
+
+    throw new Error(`Socket not found for session "${targetId}".`);
+  }
+
+  const socks = fs.readdirSync(SOCKET_DIR).filter((f) => f.endsWith(".sock"));
+  if (socks.length === 0) throw new Error("No pi sessions with control sockets found");
+  if (socks.length === 1) return path.join(SOCKET_DIR, socks[0]);
+  throw new Error("Ambiguous — multiple sessions found");
+}
+
+function refreshSocket() {
+  try {
+    socketPath = findSessionSocket(process.env.PI_SESSION_ID);
+  } catch {
+    socketPath = null;
+  }
+}
+
+function sendToAgent(currentSocketPath, message) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      client.destroy();
+      fn(value);
+    };
+
+    const client = net.createConnection(currentSocketPath, () => {
+      client.write(JSON.stringify({ type: "subscribe", event: "turn_end" }) + "\n");
+      client.write(JSON.stringify({ type: "send", message, mode: "steer" }) + "\n");
+    });
+
+    let buffer = "";
+
+    client.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+
+          if (msg.type === "response" && (msg.command === "subscribe" || msg.command === "send")) {
+            if (msg.command === "send" && !msg.success) {
+              settle(reject, new Error(msg.error || "Failed to send message to agent"));
+            }
+            continue;
+          }
+
+          if (msg.type === "event" && msg.event === "turn_end") {
+            client.write(JSON.stringify({ type: "get_message" }) + "\n");
+            continue;
+          }
+
+          if (msg.type === "response" && msg.command === "get_message") {
+            const text = msg.data?.message?.content || "(no response)";
+            settle(resolve, text);
+            return;
+          }
+        } catch {
+          // wait for more data
+        }
+      }
+    });
+
+    client.on("error", (err) => {
+      settle(reject, new Error(`Socket error: ${err.message}`));
+    });
+
+    const timer = setTimeout(() => {
+      settle(reject, new Error(`Agent did not respond within ${AGENT_TIMEOUT_MS / 1000}s`));
+    }, AGENT_TIMEOUT_MS);
+  });
+}
+
+let queue = Promise.resolve();
+function enqueue(fn) {
+  const p = queue.then(fn, fn);
+  queue = p.then(() => {}, () => {});
+  return p;
+}
+
+function evictOldThreads() {
+  if (threadRegistry.size < MAX_THREADS) return;
+  const evictCount = Math.max(1, Math.floor(MAX_THREADS * 0.1));
+  let removed = 0;
+  for (const [id, entry] of threadRegistry) {
+    if (removed >= evictCount) break;
+    threadLookup.delete(`${entry.channel}:${entry.thread_ts}`);
+    threadRegistry.delete(id);
+    removed++;
+  }
+}
+
+function getThreadId(channel, threadTs) {
+  const key = `${channel}:${threadTs}`;
+  let id = threadLookup.get(key);
+  if (!id) {
+    evictOldThreads();
+    threadCounter++;
+    id = `thread-${threadCounter}`;
+    threadRegistry.set(id, { channel, thread_ts: threadTs, createdAt: Date.now() });
+    threadLookup.set(key, id);
+  }
+  return id;
+}
+
+function signRequest(action, timestamp, payloadField) {
+  const canonical = canonicalizeOutbound(workspaceId, action, timestamp, payloadField);
+  const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
+  return toBase64(sig);
+}
+
+async function brokerFetch(pathname, body) {
+  const response = await fetch(`${brokerBaseUrl}${pathname}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    // keep empty payload
+  }
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(`broker request failed (${response.status}): ${payload?.error || "unknown error"}`);
+  }
+
+  return payload;
+}
+
+async function pullInbox() {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = signRequest("inbox.pull", timestamp, String(MAX_MESSAGES));
+
+  const payload = await brokerFetch("/api/inbox/pull", {
+    workspace_id: workspaceId,
+    max_messages: MAX_MESSAGES,
+    timestamp,
+    signature,
+  });
+
+  return Array.isArray(payload.messages) ? payload.messages : [];
+}
+
+async function ackInbox(messageIds) {
+  if (messageIds.length === 0) return;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const joined = messageIds.join(",");
+  const signature = signRequest("inbox.ack", timestamp, joined);
+
+  await brokerFetch("/api/inbox/ack", {
+    workspace_id: workspaceId,
+    message_ids: messageIds,
+    timestamp,
+    signature,
+  });
+}
+
+async function sendViaBroker({ action, routing, body }) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const plaintext = utf8Bytes(JSON.stringify(body));
+  const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
+  const ciphertext = sodium.crypto_box_easy(
+    plaintext,
+    nonce,
+    cryptoState.brokerPubkey,
+    cryptoState.serverBoxSecretKey,
+  );
+
+  const encryptedBody = toBase64(ciphertext);
+  const signature = signRequest(action, timestamp, encryptedBody);
+
+  return brokerFetch("/api/send", {
+    workspace_id: workspaceId,
+    action,
+    routing,
+    encrypted_body: encryptedBody,
+    nonce: toBase64(nonce),
+    timestamp,
+    signature,
+  });
+}
+
+async function say(channel, text, threadTs) {
+  await sendViaBroker({
+    action: "chat.postMessage",
+    routing: {
+      channel,
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+    },
+    body: { text },
+  });
+}
+
+async function react(channel, timestamp, emoji) {
+  await sendViaBroker({
+    action: "reactions.add",
+    routing: { channel, timestamp, emoji },
+    body: { emoji },
+  });
+}
+
+async function handleUserMessage(userMessage, event) {
+  if (!isAllowed(event.user, ALLOWED_USERS)) {
+    await say(event.channel, "Sorry, I'm not configured to respond to you.", event.ts);
+    return true;
+  }
+
+  if (!slackRateLimiter.check(event.user)) {
+    await say(event.channel, "Slow down — too many messages. Try again in a minute.", event.ts);
+    return true;
+  }
+
+  const suspicious = detectSuspiciousPatterns(userMessage);
+  if (suspicious.length > 0) {
+    console.log(`⚠️ Suspicious patterns from <@${event.user}>: ${suspicious.join(", ")}`);
+  }
+
+  try {
+    await react(event.channel, event.ts, "eyes");
+  } catch {}
+
+  refreshSocket();
+  const currentSocket = socketPath;
+  if (!currentSocket) {
+    await say(event.channel, "⏳ Agent is starting up — try again in a moment.", event.ts);
+    return true;
+  }
+
+  const wrappedMessage = wrapExternalContent({
+    text: userMessage,
+    source: "Slack (broker)",
+    user: event.user,
+    channel: event.channel,
+    threadTs: event.ts,
+  });
+
+  const threadId = getThreadId(event.channel, event.thread_ts || event.ts);
+  const contextMessage = `${wrappedMessage}\n[Bridge-Thread-ID: ${threadId}]`;
+
+  const reply = await enqueue(() => sendToAgent(currentSocket, contextMessage));
+  await say(event.channel, formatForSlack(reply), event.ts);
+
+  try {
+    await react(event.channel, event.ts, "white_check_mark");
+  } catch {}
+
+  return true;
+}
+
+function pruneDedupe() {
+  const now = Date.now();
+  for (const [id, expiresAt] of dedupe.entries()) {
+    if (expiresAt <= now) dedupe.delete(id);
+  }
+}
+
+function verifyBrokerEnvelope(message) {
+  const canonical = canonicalizeEnvelope(
+    message.workspace_id,
+    message.broker_timestamp,
+    message.encrypted,
+  );
+
+  const sigBytes = fromBase64(message.broker_signature);
+  return sodium.crypto_sign_verify_detached(sigBytes, canonical, cryptoState.brokerSigningPubkey);
+}
+
+function decryptEnvelope(message) {
+  const plaintext = sodium.crypto_box_seal_open(
+    fromBase64(message.encrypted),
+    cryptoState.serverBoxPublicKey,
+    cryptoState.serverBoxSecretKey,
+  );
+  if (!plaintext) {
+    throw new Error("failed to decrypt broker envelope");
+  }
+  return JSON.parse(utf8String(plaintext));
+}
+
+async function processPulledMessage(message) {
+  if (!verifyBrokerEnvelope(message)) {
+    throw new Error("invalid broker envelope signature");
+  }
+
+  const payload = decryptEnvelope(message);
+  if (payload?.type !== "event_callback") {
+    return true;
+  }
+
+  const event = payload?.event;
+  if (!event || typeof event !== "object") return true;
+
+  if (event.type === "app_mention") {
+    const userMessage = cleanMessage(String(event.text || ""));
+    if (!userMessage) {
+      await say(event.channel, "👋 I'm here! Send me a message.", event.ts);
+      return true;
+    }
+    return handleUserMessage(userMessage, event);
+  }
+
+  if (event.type === "message") {
+    if (event.bot_id || event.subtype) return true;
+    if (event.channel_type !== "im") return true;
+    const text = String(event.text || "").trim();
+    if (!text) return true;
+    return handleUserMessage(text, event);
+  }
+
+  return true;
+}
+
+function startApiServer() {
+  const server = createServer(async (req, res) => {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
+
+    const remoteAddr = req.socket.remoteAddress;
+    if (remoteAddr !== "127.0.0.1" && remoteAddr !== "::1" && remoteAddr !== "::ffff:127.0.0.1") {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Forbidden — local only" }));
+      return;
+    }
+
+    if (!apiRateLimiter.check("global")) {
+      res.writeHead(429, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Too many requests — try again later" }));
+      return;
+    }
+
+    let body = "";
+    for await (const chunk of req) body += chunk;
+
+    let params;
+    try {
+      params = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid JSON" }));
+      return;
+    }
+
+    try {
+      const url = new URL(req.url, `http://localhost:${API_PORT}`);
+      const pathname = url.pathname;
+
+      if (pathname === "/send") {
+        const validationError = validateSendParams(params);
+        if (validationError) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: validationError }));
+          return;
+        }
+
+        const { channel, text, thread_ts } = params;
+        const result = await sendViaBroker({
+          action: "chat.postMessage",
+          routing: { channel, ...(thread_ts ? { thread_ts } : {}) },
+          body: { text },
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: result.ts }));
+        return;
+      }
+
+      if (pathname === "/reply") {
+        const { thread_id, text } = params;
+        if (typeof thread_id !== "string" || !thread_id) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "thread_id must be a non-empty string" }));
+          return;
+        }
+        if (typeof text !== "string" || text.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "text must be a non-empty string" }));
+          return;
+        }
+
+        const thread = threadRegistry.get(thread_id);
+        if (!thread) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Unknown thread_id: ${thread_id}` }));
+          return;
+        }
+
+        const result = await sendViaBroker({
+          action: "chat.postMessage",
+          routing: { channel: thread.channel, thread_ts: thread.thread_ts },
+          body: { text },
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: result.ts }));
+        return;
+      }
+
+      if (pathname === "/react") {
+        const validationError = validateReactParams(params);
+        if (validationError) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: validationError }));
+          return;
+        }
+
+        await sendViaBroker({
+          action: "reactions.add",
+          routing: {
+            channel: params.channel,
+            timestamp: params.timestamp,
+            emoji: params.emoji,
+          },
+          body: { emoji: params.emoji },
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found. Endpoints: POST /send, POST /reply, POST /react" }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }));
+    }
+  });
+
+  server.listen(API_PORT, "127.0.0.1", () => {
+    console.log(`📡 Outbound API listening on http://127.0.0.1:${API_PORT}`);
+  });
+}
+
+async function startPollLoop() {
+  let backoffMs = POLL_INTERVAL_MS;
+
+  while (true) {
+    try {
+      pruneDedupe();
+
+      const messages = await pullInbox();
+      const ackIds = [];
+
+      for (const message of messages) {
+        if (!message?.message_id) continue;
+        if (dedupe.has(message.message_id)) {
+          ackIds.push(message.message_id);
+          continue;
+        }
+
+        try {
+          const ok = await processPulledMessage(message);
+          if (ok) {
+            dedupe.set(message.message_id, Date.now() + DEDUPE_TTL_MS);
+            ackIds.push(message.message_id);
+          }
+        } catch (err) {
+          console.error(`❌ message processing failed (${message.message_id}):`, err instanceof Error ? err.message : "unknown error");
+        }
+      }
+
+      if (ackIds.length > 0) {
+        await ackInbox(ackIds);
+      }
+
+      backoffMs = POLL_INTERVAL_MS;
+      await sleep(POLL_INTERVAL_MS);
+    } catch (err) {
+      console.error("❌ inbox poll failed:", err instanceof Error ? err.message : "unknown error");
+      await sleep(backoffMs);
+      backoffMs = Math.min(MAX_BACKOFF_MS, Math.max(POLL_INTERVAL_MS, backoffMs * 2));
+    }
+  }
+}
+
+(async () => {
+  await sodium.ready;
+
+  const serverSignSeed = fromBase64(process.env.SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY);
+  const signKeypair = sodium.crypto_sign_seed_keypair(serverSignSeed);
+
+  cryptoState = {
+    serverBoxSecretKey: fromBase64(process.env.SLACK_BROKER_SERVER_PRIVATE_KEY),
+    serverBoxPublicKey: fromBase64(process.env.SLACK_BROKER_SERVER_PUBLIC_KEY),
+    brokerPubkey: fromBase64(process.env.SLACK_BROKER_PUBLIC_KEY),
+    brokerSigningPubkey: fromBase64(process.env.SLACK_BROKER_SIGNING_PUBLIC_KEY),
+    serverSignSecretKey: signKeypair.privateKey,
+  };
+
+  refreshSocket();
+  startApiServer();
+  console.log("⚡ Slack broker pull bridge is running!");
+  await startPollLoop();
+})();

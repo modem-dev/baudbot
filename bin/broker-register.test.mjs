@@ -5,7 +5,6 @@ import {
   parseArgs,
   normalizeBrokerUrl,
   validateWorkspaceId,
-  validateCallbackUrl,
   mapRegisterError,
   registerWithBroker,
   upsertEnvContent,
@@ -34,15 +33,12 @@ test("parseArgs parses long-form options", () => {
     "T123ABC",
     "--auth-code",
     "secret-code",
-    "--callback-url",
-    "https://server.example.com/slack/callback",
   ]);
 
   assert.deepEqual(parsed, {
     brokerUrl: "https://broker.example.com/",
     workspaceId: "T123ABC",
     authCode: "secret-code",
-    callbackUrl: "https://server.example.com/slack/callback",
     help: false,
   });
 });
@@ -51,14 +47,12 @@ test("parseArgs rejects unknown arguments", () => {
   assert.throws(() => parseArgs(["--wat"]), /unknown argument/);
 });
 
-test("validation helpers normalize and enforce broker/workspace/callback formats", () => {
+test("validation helpers normalize and enforce broker/workspace formats", () => {
   assert.equal(normalizeBrokerUrl("https://broker.example.com/"), "https://broker.example.com");
   assert.equal(validateWorkspaceId("T0ABC123"), true);
   assert.equal(validateWorkspaceId("workspace-123"), false);
-  assert.equal(validateCallbackUrl("https://server.example.com/callback"), "https://server.example.com/callback");
 
   assert.throws(() => normalizeBrokerUrl("ftp://broker.example.com"), /http:\/\/ or https:\/\//);
-  assert.throws(() => validateCallbackUrl("http://server.example.com/callback"), /must use https:\/\//);
 });
 
 test("mapRegisterError returns actionable messages", () => {
@@ -83,10 +77,10 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
     if (String(url).endsWith("/api/register")) {
       const payload = JSON.parse(init.body);
       assert.equal(payload.workspace_id, "TTEST123");
-      assert.equal(payload.server_callback_url, "https://server.example.com/callback");
       assert.equal(payload.server_pubkey, FIXTURE_SERVER_KEYS.server_pubkey);
       assert.equal(payload.server_signing_pubkey, FIXTURE_SERVER_KEYS.server_signing_pubkey);
       assert.equal(payload.auth_code, "one-time-code");
+      assert.equal(payload.server_callback_url, undefined);
 
       return jsonResponse({
         ok: true,
@@ -102,7 +96,6 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
     brokerUrl: "https://broker.example.com",
     workspaceId: "TTEST123",
     authCode: "one-time-code",
-    callbackUrl: "https://server.example.com/callback",
     serverKeys: FIXTURE_SERVER_KEYS,
     fetchImpl,
   });
@@ -148,13 +141,12 @@ test("runRegistration integration path succeeds against live local HTTP server",
     const result = await runRegistration({
       brokerUrl,
       workspaceId: "TABC12345",
-      callbackUrl: "https://server.example.com/broker/inbound",
       authCode: "auth-code-from-oauth",
     });
 
     assert.ok(receivedRegisterPayload);
     assert.equal(receivedRegisterPayload.workspace_id, "TABC12345");
-    assert.equal(receivedRegisterPayload.server_callback_url, "https://server.example.com/broker/inbound");
+    assert.equal(receivedRegisterPayload.server_callback_url, undefined);
     assert.ok(result.updates.SLACK_BROKER_SERVER_PRIVATE_KEY);
     assert.ok(result.updates.SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY);
     assert.equal(result.updates.SLACK_BROKER_PUBLIC_KEY, brokerPubkey);

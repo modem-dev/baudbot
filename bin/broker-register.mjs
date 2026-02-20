@@ -24,7 +24,6 @@ const WORKSPACE_ID_RE = /^T[A-Z0-9]+$/;
 const ENV_KEYS = [
   "SLACK_BROKER_URL",
   "SLACK_BROKER_WORKSPACE_ID",
-  "SLACK_BROKER_CALLBACK_URL",
   "SLACK_BROKER_SERVER_PRIVATE_KEY",
   "SLACK_BROKER_SERVER_PUBLIC_KEY",
   "SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY",
@@ -42,7 +41,6 @@ export function usageText() {
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
     "  --auth-code CODE       One-time auth code from broker OAuth callback",
-    "  --callback-url URL     Public HTTPS callback URL for this server",
     "  -h, --help             Show this help",
     "",
     "If options are omitted, the command prompts interactively.",
@@ -54,7 +52,6 @@ export function parseArgs(argv) {
     brokerUrl: "",
     workspaceId: "",
     authCode: "",
-    callbackUrl: "",
     help: false,
   };
 
@@ -96,16 +93,6 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (arg.startsWith("--callback-url=")) {
-      out.callbackUrl = arg.slice("--callback-url=".length);
-      continue;
-    }
-    if (arg === "--callback-url") {
-      i++;
-      out.callbackUrl = argv[i] || "";
-      continue;
-    }
-
     throw new Error(`unknown argument: ${arg}`);
   }
 
@@ -137,26 +124,6 @@ export function normalizeBrokerUrl(raw) {
 
 export function validateWorkspaceId(workspaceId) {
   return WORKSPACE_ID_RE.test(String(workspaceId || ""));
-}
-
-export function validateCallbackUrl(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed) {
-    throw new Error("callback URL is required");
-  }
-
-  let parsed;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new Error(`invalid callback URL: ${trimmed}`);
-  }
-
-  if (parsed.protocol !== "https:") {
-    throw new Error("callback URL must use https://");
-  }
-
-  return parsed.toString();
 }
 
 function decodeBase64Url(value) {
@@ -244,7 +211,6 @@ export async function registerWithBroker({
   brokerUrl,
   workspaceId,
   authCode,
-  callbackUrl,
   serverKeys,
   fetchImpl = fetch,
 }) {
@@ -255,7 +221,6 @@ export async function registerWithBroker({
     workspace_id: workspaceId,
     server_pubkey: serverKeys.server_pubkey,
     server_signing_pubkey: serverKeys.server_signing_pubkey,
-    server_callback_url: callbackUrl,
     auth_code: authCode,
   };
 
@@ -470,10 +435,6 @@ async function collectInputs(parsedArgs) {
     || existing.SLACK_BROKER_WORKSPACE_ID
     || (await prompt("Workspace ID (starts with T): "));
 
-  const callbackUrl = parsedArgs.callbackUrl
-    || existing.SLACK_BROKER_CALLBACK_URL
-    || (await prompt("Server callback URL (https://...): "));
-
   const authCode = parsedArgs.authCode || (await prompt("Auth code: "));
 
   if (!authCode) {
@@ -483,7 +444,6 @@ async function collectInputs(parsedArgs) {
   return {
     brokerUrl: normalizeBrokerUrl(brokerUrl),
     workspaceId: workspaceId.trim(),
-    callbackUrl: validateCallbackUrl(callbackUrl),
     authCode,
     configTargets,
   };
@@ -492,7 +452,6 @@ async function collectInputs(parsedArgs) {
 export async function runRegistration({
   brokerUrl,
   workspaceId,
-  callbackUrl,
   authCode,
   fetchImpl = fetch,
 }) {
@@ -501,14 +460,12 @@ export async function runRegistration({
   }
 
   const normalizedBrokerUrl = normalizeBrokerUrl(brokerUrl);
-  const normalizedCallbackUrl = validateCallbackUrl(callbackUrl);
 
   const serverKeys = await generateServerKeyMaterial();
   const registration = await registerWithBroker({
     brokerUrl: normalizedBrokerUrl,
     workspaceId,
     authCode,
-    callbackUrl: normalizedCallbackUrl,
     serverKeys,
     fetchImpl,
   });
@@ -517,7 +474,6 @@ export async function runRegistration({
     updates: {
       SLACK_BROKER_URL: normalizedBrokerUrl,
       SLACK_BROKER_WORKSPACE_ID: workspaceId,
-      SLACK_BROKER_CALLBACK_URL: normalizedCallbackUrl,
       SLACK_BROKER_SERVER_PRIVATE_KEY: serverKeys.server_private_key,
       SLACK_BROKER_SERVER_PUBLIC_KEY: serverKeys.server_pubkey,
       SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: serverKeys.server_signing_private_key,

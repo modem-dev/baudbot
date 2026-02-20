@@ -1,7 +1,7 @@
 {
   "name": "slack-bridge",
   "version": "1.0.0",
-  "description": "Slack to pi control-agent bridge via Socket Mode",
+  "description": "Slack bridges (Socket Mode + broker pull mode)",
   "main": "bridge.mjs",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "test": "node --test security.test.mjs"
   },
   "dependencies": {
-    "@slack/bolt": "^4.6.0"
+    "@slack/bolt": "^4.6.0",
+    "libsodium-wrappers-sumo": "^0.8.2"
   }
 }

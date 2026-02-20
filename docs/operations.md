@@ -39,8 +39,7 @@ sudo baudbot rollback previous
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
   --workspace-id T0123ABCD \
-  --auth-code <auth-code-from-oauth-callback> \
-  --callback-url https://your-server.example.com/slack/broker/callback
+  --auth-code <auth-code-from-oauth-callback>
 ```
 
 Do not use `baudbot setup --slack-broker` — `setup` is host provisioning only.
