@@ -196,7 +196,7 @@ gh pr view <pr-number> --json comments \
 
 ### 6. Report Completion to Baudbot
 
-Send a final report to Baudbot via `send_to_session` including:
+**You MUST send this report as soon as you're done — do not wait to be asked.** Baudbot is waiting for your report to relay results to the user. Use `send_to_session` targeting `control-agent` with:
 
 - ✅ CI status (green)
 - 📝 Review comments addressed (if any)
