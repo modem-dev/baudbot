@@ -32,6 +32,22 @@ const MAX_MESSAGES = parseInt(process.env.SLACK_BROKER_MAX_MESSAGES || "10", 10)
 const DEDUPE_TTL_MS = parseInt(process.env.SLACK_BROKER_DEDUPE_TTL_MS || String(20 * 60 * 1000), 10);
 const MAX_BACKOFF_MS = 30_000;
 
+function ts() {
+  return new Date().toISOString();
+}
+
+function logInfo(...args) {
+  console.log(`[${ts()}]`, ...args);
+}
+
+function logError(...args) {
+  console.error(`[${ts()}]`, ...args);
+}
+
+function logWarn(...args) {
+  console.warn(`[${ts()}]`, ...args);
+}
+
 for (const key of [
   "SLACK_BROKER_URL",
   "SLACK_BROKER_WORKSPACE_ID",
@@ -42,14 +58,14 @@ for (const key of [
   "SLACK_BROKER_SIGNING_PUBLIC_KEY",
 ]) {
   if (!process.env[key]) {
-    console.error(`❌ Missing required env var for broker mode: ${key}`);
+    logError(`❌ Missing required env var for broker mode: ${key}`);
     process.exit(1);
   }
 }
 
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 if (ALLOWED_USERS.length === 0) {
-  console.error("❌ SLACK_ALLOWED_USERS is empty — refusing to start with open access.");
+  logError("❌ SLACK_ALLOWED_USERS is empty — refusing to start with open access.");
   process.exit(1);
 }
 
@@ -232,21 +248,30 @@ function signRequest(action, timestamp, payloadField) {
 }
 
 async function brokerFetch(pathname, body) {
-  const response = await fetch(`${brokerBaseUrl}${pathname}`, {
+  const url = `${brokerBaseUrl}${pathname}`;
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
+  let rawBody = "";
   let payload = {};
   try {
-    payload = await response.json();
+    rawBody = await response.text();
+    payload = JSON.parse(rawBody);
   } catch {
-    // keep empty payload
+    // keep empty payload, rawBody has the text
   }
 
   if (!response.ok || payload?.ok === false) {
-    throw new Error(`broker request failed (${response.status}): ${payload?.error || "unknown error"}`);
+    const detail = payload?.error || rawBody?.slice(0, 200) || "no response body";
+    const headers = Object.fromEntries(response.headers.entries());
+    const cfRay = headers["cf-ray"] || "n/a";
+    throw new Error(
+      `broker ${pathname} failed — HTTP ${response.status} | error: ${detail} | cf-ray: ${cfRay} | ` +
+      `content-type: ${headers["content-type"] || "n/a"}`
+    );
   }
 
   return payload;
@@ -325,7 +350,10 @@ async function react(channel, timestamp, emoji) {
 }
 
 async function handleUserMessage(userMessage, event) {
+  logInfo(`👤 message from <@${event.user}> in ${event.channel} (type: ${event.type}, ts: ${event.ts})`);
+
   if (!isAllowed(event.user, ALLOWED_USERS)) {
+    logWarn(`🚫 user <@${event.user}> not in allowed list — rejecting`);
     await say(event.channel, "Sorry, I'm not configured to respond to you.", event.ts);
     return true;
   }
@@ -337,7 +365,7 @@ async function handleUserMessage(userMessage, event) {
 
   const suspicious = detectSuspiciousPatterns(userMessage);
   if (suspicious.length > 0) {
-    console.log(`⚠️ Suspicious patterns from <@${event.user}>: ${suspicious.join(", ")}`);
+    logWarn(`⚠️ Suspicious patterns from <@${event.user}>: ${suspicious.join(", ")}`);
   }
 
   try {
@@ -347,9 +375,11 @@ async function handleUserMessage(userMessage, event) {
   refreshSocket();
   const currentSocket = socketPath;
   if (!currentSocket) {
+    logError("🔌 no pi socket found — agent may not be running");
     await say(event.channel, "⏳ Agent is starting up — try again in a moment.", event.ts);
     return true;
   }
+  logInfo(`🔌 forwarding to agent via ${currentSocket}`);
 
   const wrappedMessage = wrapExternalContent({
     text: userMessage,
@@ -413,16 +443,25 @@ async function processPulledMessage(message) {
   }
 
   const payload = decryptEnvelope(message);
+  logInfo(`📦 decrypted envelope — type: ${payload?.type || "unknown"}`);
+
   if (payload?.type !== "event_callback") {
+    logInfo(`   ↳ ignoring non-event_callback type: ${payload?.type}`);
     return true;
   }
 
   const event = payload?.event;
-  if (!event || typeof event !== "object") return true;
+  if (!event || typeof event !== "object") {
+    logWarn("   ↳ event_callback with no event object");
+    return true;
+  }
+
+  logInfo(`   ↳ event.type: ${event.type}, channel: ${event.channel || "n/a"}, user: ${event.user || "n/a"}`);
 
   if (event.type === "app_mention") {
     const userMessage = cleanMessage(String(event.text || ""));
     if (!userMessage) {
+      logInfo("   ↳ empty app_mention — sending wave");
       await say(event.channel, "👋 I'm here! Send me a message.", event.ts);
       return true;
     }
@@ -430,13 +469,20 @@ async function processPulledMessage(message) {
   }
 
   if (event.type === "message") {
-    if (event.bot_id || event.subtype) return true;
-    if (event.channel_type !== "im") return true;
+    if (event.bot_id || event.subtype) {
+      logInfo(`   ↳ skipping bot/subtype message (bot_id: ${event.bot_id || "n/a"}, subtype: ${event.subtype || "n/a"})`);
+      return true;
+    }
+    if (event.channel_type !== "im") {
+      logInfo(`   ↳ skipping non-DM message (channel_type: ${event.channel_type})`);
+      return true;
+    }
     const text = String(event.text || "").trim();
     if (!text) return true;
     return handleUserMessage(text, event);
   }
 
+  logInfo(`   ↳ unhandled event type: ${event.type}`);
   return true;
 }
 
@@ -560,25 +606,42 @@ function startApiServer() {
   });
 
   server.listen(API_PORT, "127.0.0.1", () => {
-    console.log(`📡 Outbound API listening on http://127.0.0.1:${API_PORT}`);
+    logInfo(`📡 Outbound API listening on http://127.0.0.1:${API_PORT}`);
   });
 }
 
 async function startPollLoop() {
   let backoffMs = POLL_INTERVAL_MS;
+  let pollCount = 0;
+  let lastStatusLog = Date.now();
+  const STATUS_LOG_INTERVAL_MS = 60_000; // log a status line every 60s even when idle
 
   while (true) {
     try {
       pruneDedupe();
 
       const messages = await pullInbox();
+      pollCount++;
       const ackIds = [];
 
+      if (messages.length > 0) {
+        logInfo(`📬 pulled ${messages.length} message(s) from broker`);
+      }
+
+      // Periodic idle status log so you know the bridge is alive
+      if (messages.length === 0 && Date.now() - lastStatusLog >= STATUS_LOG_INTERVAL_MS) {
+        logInfo(`💤 idle — ${pollCount} polls since start, dedupe cache: ${dedupe.size} entries`);
+        lastStatusLog = Date.now();
+      }
+
       for (const message of messages) {
-        if (!message?.message_id) continue;
+        if (!message?.message_id) {
+          logWarn("⚠️ skipping message with no message_id:", JSON.stringify(message).slice(0, 200));
+          continue;
+        }
         if (dedupe.has(message.message_id)) {
           if (!verifyBrokerEnvelope(message)) {
-            console.error(`❌ dedupe hit but invalid signature (${message.message_id})`);
+            logError(`❌ dedupe hit but invalid signature (${message.message_id})`);
             // Treat as poison-pill and ack so it cannot block the queue.
             ackIds.push(message.message_id);
             continue;
@@ -588,14 +651,22 @@ async function startPollLoop() {
         }
 
         try {
+          logInfo(`📩 processing message ${message.message_id}`);
           const ok = await processPulledMessage(message);
           if (ok) {
             dedupe.set(message.message_id, Date.now() + DEDUPE_TTL_MS);
             ackIds.push(message.message_id);
+            logInfo(`✅ processed & acked message ${message.message_id}`);
+          } else {
+            logWarn(`⚠️ message ${message.message_id} returned not-ok, will retry next poll`);
           }
         } catch (err) {
-          console.error(`❌ message processing failed (${message.message_id}):`, err instanceof Error ? err.message : "unknown error");
+          const errMsg = err instanceof Error ? err.message : "unknown error";
+          const errStack = err instanceof Error ? err.stack : "";
+          logError(`❌ message processing failed (${message.message_id}): ${errMsg}`);
+          if (errStack) logError(`   stack: ${errStack}`);
           if (isPoisonMessageError(err)) {
+            logError(`   ↳ poison message — acking to unblock queue`);
             // Ack poison-pill messages (bad signature/decrypt failures) so they
             // don't block the queue indefinitely.
             ackIds.push(message.message_id);
@@ -605,12 +676,17 @@ async function startPollLoop() {
 
       if (ackIds.length > 0) {
         await ackInbox(ackIds);
+        logInfo(`📤 acked ${ackIds.length} message(s)`);
       }
 
       backoffMs = POLL_INTERVAL_MS;
       await sleep(POLL_INTERVAL_MS);
     } catch (err) {
-      console.error("❌ inbox poll failed:", err instanceof Error ? err.message : "unknown error");
+      const errMsg = err instanceof Error ? err.message : "unknown error";
+      const errStack = err instanceof Error ? err.stack : "";
+      logError(`❌ inbox poll failed: ${errMsg}`);
+      if (errStack) logError(`   stack: ${errStack}`);
+      logError(`   ↳ backing off ${backoffMs}ms before next attempt`);
       await sleep(backoffMs);
       backoffMs = Math.min(MAX_BACKOFF_MS, Math.max(POLL_INTERVAL_MS, backoffMs * 2));
     }
@@ -633,6 +709,11 @@ async function startPollLoop() {
 
   refreshSocket();
   startApiServer();
-  console.log("⚡ Slack broker pull bridge is running!");
+  logInfo("⚡ Slack broker pull bridge is running!");
+  logInfo(`   broker: ${brokerBaseUrl}`);
+  logInfo(`   workspace: ${workspaceId}`);
+  logInfo(`   poll interval: ${POLL_INTERVAL_MS}ms, max messages: ${MAX_MESSAGES}`);
+  logInfo(`   allowed users: ${ALLOWED_USERS.length}`);
+  logInfo(`   pi socket: ${socketPath || "(not found — will retry on message)"}`);
   await startPollLoop();
 })();
