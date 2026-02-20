@@ -19,6 +19,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "agentmail": "^0.2.15",
     "express": "^5.2.1",
+    "libsodium-wrappers-sumo": "^0.8.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

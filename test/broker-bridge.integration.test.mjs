@@ -120,18 +120,28 @@ describe("broker pull bridge semi-integration", () => {
     bridge.stderr.on("data", (chunk) => {
       bridgeStderr += chunk.toString();
     });
-    bridge.on("exit", (code, signal) => {
-      bridgeExit = { code, signal };
+    const bridgeExited = new Promise((_, reject) => {
+      bridge.on("error", (err) => {
+        if (ackPayload !== null) return;
+        reject(new Error(`bridge spawn error: ${err.message}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`));
+      });
+      bridge.on("exit", (code, signal) => {
+        bridgeExit = { code, signal };
+        if (ackPayload !== null) return;
+        reject(new Error(`bridge exited early: code=${code} signal=${signal}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`));
+      });
     });
 
     children.push(bridge);
 
-    await waitFor(
+    const ackWait = waitFor(
       () => ackPayload !== null,
       10_000,
       50,
       `timeout waiting for ack; pullCount=${pullCount}; exit=${JSON.stringify(bridgeExit)}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`,
     );
+
+    await Promise.race([ackWait, bridgeExited]);
 
     expect(ackPayload.workspace_id).toBe("T123BROKER");
     expect(ackPayload.message_ids).toContain("m-poison-1");
