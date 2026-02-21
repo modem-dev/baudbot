@@ -122,10 +122,10 @@ header "Prerequisites"
 
 install_prereqs_ubuntu() {
   # Wait for unattended-upgrades (common on fresh VMs)
-  if pgrep -x 'apt|apt-get|dpkg|unattended-upgrade' >/dev/null 2>&1; then
+  if pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
     info "Waiting for background apt to finish..."
     for _ in $(seq 1 60); do
-      if ! pgrep -x 'apt|apt-get|dpkg|unattended-upgrade' >/dev/null 2>&1; then
+      if ! pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
         break
       fi
       sleep 2

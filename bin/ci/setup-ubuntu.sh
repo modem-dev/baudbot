@@ -7,19 +7,36 @@
 
 set -euo pipefail
 
+wait_for_apt_idle() {
+  # Fresh Ubuntu droplets may run unattended-upgrades on first boot.
+  # Wait until apt/dpkg background processes are gone.
+  for _ in $(seq 1 90); do
+    if ! pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 echo "=== [Ubuntu] Waiting for unattended-upgrades ==="
-# Fresh DO droplets run unattended-upgrades on first boot which holds apt locks.
-# Wait for all apt/dpkg processes to finish (up to 120s).
-for _ in $(seq 1 60); do
-  if ! pgrep -x 'apt|apt-get|dpkg|unattended-upgrade' >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
+wait_for_apt_idle || echo "  continuing after timeout; will retry apt commands if lock is still held"
 
 echo "=== [Ubuntu] Installing git (needed to init test repo) ==="
-apt-get update -qq
-apt-get install -y -qq git 2>&1 | tail -1
+for attempt in $(seq 1 8); do
+  if apt-get update -qq && apt-get install -y -qq git 2>&1 | tail -1; then
+    break
+  fi
+
+  if [ "$attempt" -eq 8 ]; then
+    echo "apt failed after $attempt attempts" >&2
+    exit 1
+  fi
+
+  echo "  apt busy (attempt $attempt/8), retrying in 5s..."
+  wait_for_apt_idle || true
+  sleep 5
+done
 
 echo "=== Preparing source ==="
 useradd -m -s /bin/bash baudbot_admin
