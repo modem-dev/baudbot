@@ -124,6 +124,13 @@ sudo baudbot rollback previous
 # Register a server with Slack broker (after OAuth callback)
 sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --auth-code <code>
 
+# Rotate an API key after setup (prompts hidden input)
+sudo baudbot env set ANTHROPIC_API_KEY --restart
+
+# Optional: use external secret source instead of ~/.baudbot/.env
+sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
+sudo baudbot env sync --restart
+
 # Launch agent directly (debug/dev)
 sudo -u baudbot_agent ~/runtime/start.sh
 

@@ -92,15 +92,24 @@ fi
 echo ""
 echo "Admin config:"
 
-# Check for admin config dir
+# Check for admin config/env source
 ADMIN_USER="${SUDO_USER:-$(whoami)}"
 ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$ADMIN_HOME/.baudbot/.env"
+BACKEND_CONF="$ADMIN_HOME/.baudbot/env-store.conf"
+RENDER_ENV_SCRIPT="${BAUDBOT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}/bin/render-env.sh"
 
-if [ -n "$ADMIN_HOME" ] && [ -f "$ADMIN_CONFIG" ]; then
+ADMIN_BACKEND="file"
+if [ -f "$BACKEND_CONF" ]; then
+  ADMIN_BACKEND=$(grep -E '^BAUDBOT_ENV_BACKEND=' "$BACKEND_CONF" | tail -n1 | cut -d= -f2- || echo "file")
+fi
+
+if [ -n "$ADMIN_HOME" ] && [ -x "$RENDER_ENV_SCRIPT" ] && BAUDBOT_ADMIN_HOME="$ADMIN_HOME" BAUDBOT_CONFIG_USER="$ADMIN_USER" "$RENDER_ENV_SCRIPT" --check >/dev/null 2>&1; then
+  pass "admin env source is configured (backend: $ADMIN_BACKEND)"
+elif [ -n "$ADMIN_HOME" ] && [ -f "$ADMIN_CONFIG" ]; then
   pass "admin config exists ($ADMIN_CONFIG)"
 else
-  warn "admin config not found at $ADMIN_CONFIG (run: baudbot config)"
+  warn "admin env source not found (run: baudbot config, or configure: baudbot env backend ...)"
 fi
 
 echo ""

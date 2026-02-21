@@ -38,6 +38,24 @@ Provision with a pinned pi version (optional):
 BAUDBOT_PI_VERSION=0.52.12 baudbot install
 ```
 
+## Updating API keys after install
+
+```bash
+# Prompt for value (hidden input)
+sudo baudbot env set ANTHROPIC_API_KEY
+
+# Or inline with immediate restart
+sudo baudbot env set OPENAI_API_KEY sk-... --restart
+
+# Inspect stored value source (prints value)
+baudbot env get ANTHROPIC_API_KEY --admin
+sudo baudbot env get ANTHROPIC_API_KEY --runtime
+
+# Optional: switch admin source to command backend
+sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
+sudo baudbot env sync --restart
+```
+
 ## Slack broker registration
 
 ```bash

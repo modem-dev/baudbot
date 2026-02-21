@@ -94,6 +94,20 @@ sudo baudbot broker register \
   --auth-code <auth-code-from-oauth-callback>
 ```
 
+Need to rotate/update a key later?
+
+```bash
+sudo baudbot env set ANTHROPIC_API_KEY
+# or: sudo baudbot env set OPENAI_API_KEY sk-... --restart
+```
+
+Want to move source-of-truth off `~/.baudbot/.env` later?
+
+```bash
+sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
+sudo baudbot env sync --restart
+```
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## Core agents

@@ -43,10 +43,24 @@ else
 fi
 DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
+RENDER_ENV_SCRIPT="$BAUDBOT_SRC/bin/render-env.sh"
+
+source_env_value() {
+  local key="$1"
+  if [ -x "$RENDER_ENV_SCRIPT" ]; then
+    BAUDBOT_ADMIN_HOME="$DEPLOY_HOME" BAUDBOT_CONFIG_USER="$DEPLOY_USER" "$RENDER_ENV_SCRIPT" --get "$key" 2>/dev/null || true
+    return 0
+  fi
+  if [ -f "$ADMIN_CONFIG" ]; then
+    grep -E "^${key}=" "$ADMIN_CONFIG" | tail -n 1 | cut -d= -f2- || true
+    return 0
+  fi
+  return 0
+}
 
 EXPERIMENTAL_MODE="${BAUDBOT_EXPERIMENTAL:-}"
-if [ -z "$EXPERIMENTAL_MODE" ] && [ -f "$ADMIN_CONFIG" ]; then
-  EXPERIMENTAL_MODE=$(grep '^BAUDBOT_EXPERIMENTAL=' "$ADMIN_CONFIG" | head -1 | cut -d= -f2- || true)
+if [ -z "$EXPERIMENTAL_MODE" ]; then
+  EXPERIMENTAL_MODE="$(source_env_value BAUDBOT_EXPERIMENTAL)"
 fi
 case "$EXPERIMENTAL_MODE" in
   1|true|TRUE|yes|YES|on|ON) EXPERIMENTAL_MODE=1 ;;
@@ -320,12 +334,22 @@ fi
 
 echo "Deploying config..."
 
-# Uses admin config resolved near script start (ADMIN_CONFIG).
+# Uses admin env source resolved near script start.
 
-if [ -f "$ADMIN_CONFIG" ]; then
+if [ -x "$RENDER_ENV_SCRIPT" ] && BAUDBOT_ADMIN_HOME="$DEPLOY_HOME" BAUDBOT_CONFIG_USER="$DEPLOY_USER" "$RENDER_ENV_SCRIPT" --check >/dev/null 2>&1; then
   if [ "$DRY_RUN" -eq 0 ]; then
     as_agent bash -c "mkdir -p '$BAUDBOT_HOME/.config'"
-    # Stream directly to agent-owned target to avoid staging secrets in /tmp.
+    # Stream rendered config directly to agent-owned target to avoid staging secrets in /tmp.
+    BAUDBOT_ADMIN_HOME="$DEPLOY_HOME" BAUDBOT_CONFIG_USER="$DEPLOY_USER" "$RENDER_ENV_SCRIPT" | as_agent bash -c "cat > '$BAUDBOT_HOME/.config/.env'"
+    as_agent chmod 600 "$BAUDBOT_HOME/.config/.env"
+    log "✓ env source → ~/.config/.env (600)"
+  else
+    log "would render env source → ~/.config/.env"
+  fi
+elif [ -f "$ADMIN_CONFIG" ]; then
+  # Backward-compatible fallback for older checkouts without render-env.sh.
+  if [ "$DRY_RUN" -eq 0 ]; then
+    as_agent bash -c "mkdir -p '$BAUDBOT_HOME/.config'"
     as_agent bash -c "cat > '$BAUDBOT_HOME/.config/.env'" < "$ADMIN_CONFIG"
     as_agent chmod 600 "$BAUDBOT_HOME/.config/.env"
     log "✓ .env → ~/.config/.env (600)"
@@ -335,9 +359,9 @@ if [ -f "$ADMIN_CONFIG" ]; then
 else
   # Fallback: check if agent already has a .env (written directly by old install.sh)
   if as_agent test -f "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
-    log "- .env: using existing agent config (no ~/.baudbot/.env found)"
+    log "- .env: using existing agent config (no env source found)"
   else
-    log "⚠ no config found — run: baudbot config"
+    log "⚠ no config source found — run: baudbot config or configure 'baudbot env backend'"
   fi
 fi
 
