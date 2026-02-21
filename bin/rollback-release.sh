@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 BAUDBOT_RELEASE_ROOT="${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}"
 BAUDBOT_RELEASES_DIR="${BAUDBOT_RELEASES_DIR:-$BAUDBOT_RELEASE_ROOT/releases}"
 BAUDBOT_CURRENT_LINK="${BAUDBOT_CURRENT_LINK:-$BAUDBOT_RELEASE_ROOT/current}"
@@ -37,36 +39,8 @@ Usage: $0 [previous|<sha>] [--release-root <path>] [--skip-restart]
 EOF
 }
 
-has_systemd() {
-  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
-}
-
-verify_git_free_release() {
-  local dir="$1"
-
-  [ -d "$dir" ] || return 1
-  [ ! -d "$dir/.git" ] || return 1
-
-  if find "$dir" -type d -name .git -print -quit | grep -q .; then
-    return 1
-  fi
-
-  return 0
-}
-
-atomic_symlink_swap() {
-  local target="$1"
-  local link_path="$2"
-  local parent
-  local tmp_link
-
-  parent="$(dirname "$link_path")"
-  mkdir -p "$parent"
-
-  tmp_link="$parent/.tmp.$(basename "$link_path").$$"
-  ln -s "$target" "$tmp_link"
-  mv -Tf "$tmp_link" "$link_path"
-}
+# shellcheck source=bin/lib/release-common.sh
+source "$SCRIPT_DIR/lib/release-common.sh"
 
 TARGET_SPEC="${1:-previous}"
 if [ "$#" -gt 0 ]; then
@@ -153,30 +127,13 @@ run_deploy() {
 }
 
 run_restart_and_health() {
-  local was_active=0
-
   if [ -n "$BAUDBOT_ROLLBACK_RESTART_CMD" ]; then
     log "running restart override"
     BAUDBOT_ROLLBACK_TARGET_RELEASE="$TARGET_RELEASE" bash -lc "$BAUDBOT_ROLLBACK_RESTART_CMD"
   elif [ "$BAUDBOT_ROLLBACK_SKIP_RESTART" = "1" ]; then
     log "skipping restart"
   else
-    if has_systemd && systemctl is-enabled baudbot >/dev/null 2>&1; then
-      if systemctl is-active baudbot >/dev/null 2>&1; then
-        was_active=1
-      fi
-
-      if [ "$was_active" -eq 1 ]; then
-        log "restarting baudbot service"
-        systemctl restart baudbot
-        sleep 3
-        systemctl is-active baudbot >/dev/null 2>&1 || die "service failed to restart"
-      else
-        log "service installed but not active; skipping restart"
-      fi
-    else
-      log "systemd unavailable; skipping restart"
-    fi
+    restart_baudbot_service_if_active
   fi
 
   if [ -n "$BAUDBOT_ROLLBACK_HEALTH_CMD" ]; then
