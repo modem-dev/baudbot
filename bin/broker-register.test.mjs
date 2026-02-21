@@ -38,6 +38,7 @@ test("parseArgs parses long-form options", () => {
   assert.deepEqual(parsed, {
     brokerUrl: "https://broker.example.com/",
     workspaceId: "T123ABC",
+    registrationToken: "",
     authCode: "secret-code",
     verbose: false,
     help: false,
@@ -50,6 +51,11 @@ test("parseArgs sets verbose=true for -v and --verbose", () => {
 
   const long = parseArgs(["--verbose"]);
   assert.equal(long.verbose, true);
+});
+
+test("parseArgs accepts registration token", () => {
+  const parsed = parseArgs(["--registration-token", "token-123"]);
+  assert.equal(parsed.registrationToken, "token-123");
 });
 
 test("parseArgs rejects unknown arguments", () => {
@@ -114,6 +120,39 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
   assert.match(calls[1].url, /\/api\/register$/);
   assert.equal(result.broker_pubkey, Buffer.alloc(32, 9).toString("base64"));
   assert.equal(result.broker_signing_pubkey, Buffer.alloc(32, 8).toString("base64"));
+});
+
+test("registerWithBroker sends registration_token when provided", async () => {
+  const fetchImpl = async (url, init = {}) => {
+    if (String(url).endsWith("/api/broker-pubkey")) {
+      return jsonResponse({
+        ok: true,
+        broker_pubkey: Buffer.alloc(32, 9).toString("base64"),
+        broker_signing_pubkey: Buffer.alloc(32, 8).toString("base64"),
+      });
+    }
+
+    if (String(url).endsWith("/api/register")) {
+      const payload = JSON.parse(init.body);
+      assert.equal(payload.registration_token, "token-abc");
+      assert.equal(payload.auth_code, undefined);
+      return jsonResponse({
+        ok: true,
+        broker_pubkey: Buffer.alloc(32, 9).toString("base64"),
+        broker_signing_pubkey: Buffer.alloc(32, 8).toString("base64"),
+      });
+    }
+
+    return jsonResponse({ ok: false, error: "unexpected endpoint" }, 404);
+  };
+
+  await registerWithBroker({
+    brokerUrl: "https://broker.example.com",
+    workspaceId: "TTEST123",
+    registrationToken: "token-abc",
+    serverKeys: FIXTURE_SERVER_KEYS,
+    fetchImpl,
+  });
 });
 
 test("runRegistration integration path succeeds against live local HTTP server", async () => {
