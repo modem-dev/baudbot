@@ -36,6 +36,7 @@ const POLL_INTERVAL_MS = parseInt(process.env.SLACK_BROKER_POLL_INTERVAL_MS || "
 const MAX_MESSAGES = parseInt(process.env.SLACK_BROKER_MAX_MESSAGES || "10", 10);
 const DEDUPE_TTL_MS = parseInt(process.env.SLACK_BROKER_DEDUPE_TTL_MS || String(20 * 60 * 1000), 10);
 const MAX_BACKOFF_MS = 30_000;
+const BROKER_HEALTH_PATH = path.join(homedir(), ".pi", "agent", "broker-health.json");
 
 function ts() {
   return new Date().toISOString();
@@ -94,6 +95,114 @@ let socketPath = null;
 let cryptoState = null;
 
 const dedupe = new Map();
+
+const brokerHealth = {
+  started_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  outbound_mode: outboundMode,
+  broker_url: brokerBaseUrl,
+  workspace_id: workspaceId,
+  poll: {
+    last_ok_at: null,
+    last_error_at: null,
+    consecutive_failures: 0,
+    last_error: null,
+  },
+  inbound: {
+    last_decrypt_ok_at: null,
+    last_decrypt_error_at: null,
+    last_process_ok_at: null,
+    last_process_error_at: null,
+    last_error: null,
+  },
+  ack: {
+    last_ok_at: null,
+    last_error_at: null,
+    last_error: null,
+  },
+  outbound: {
+    last_ok_at: null,
+    last_error_at: null,
+    last_error: null,
+  },
+};
+
+function trimError(err) {
+  const msg = err instanceof Error ? err.message : String(err || "unknown error");
+  return msg.slice(0, 400);
+}
+
+function persistBrokerHealth() {
+  brokerHealth.updated_at = new Date().toISOString();
+  const dir = path.dirname(BROKER_HEALTH_PATH);
+  const tmp = `${BROKER_HEALTH_PATH}.tmp`;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(tmp, `${JSON.stringify(brokerHealth, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmp, BROKER_HEALTH_PATH);
+}
+
+function markHealth(section, ok, err = null) {
+  const now = new Date().toISOString();
+
+  if (section === "poll") {
+    if (ok) {
+      brokerHealth.poll.last_ok_at = now;
+      brokerHealth.poll.consecutive_failures = 0;
+      brokerHealth.poll.last_error = null;
+    } else {
+      brokerHealth.poll.last_error_at = now;
+      brokerHealth.poll.consecutive_failures += 1;
+      brokerHealth.poll.last_error = trimError(err);
+    }
+    persistBrokerHealth();
+    return;
+  }
+
+  if (section === "inbound_decrypt") {
+    if (ok) {
+      brokerHealth.inbound.last_decrypt_ok_at = now;
+    } else {
+      brokerHealth.inbound.last_decrypt_error_at = now;
+      brokerHealth.inbound.last_error = trimError(err);
+    }
+    persistBrokerHealth();
+    return;
+  }
+
+  if (section === "inbound_process") {
+    if (ok) {
+      brokerHealth.inbound.last_process_ok_at = now;
+    } else {
+      brokerHealth.inbound.last_process_error_at = now;
+      brokerHealth.inbound.last_error = trimError(err);
+    }
+    persistBrokerHealth();
+    return;
+  }
+
+  if (section === "ack") {
+    if (ok) {
+      brokerHealth.ack.last_ok_at = now;
+      brokerHealth.ack.last_error = null;
+    } else {
+      brokerHealth.ack.last_error_at = now;
+      brokerHealth.ack.last_error = trimError(err);
+    }
+    persistBrokerHealth();
+    return;
+  }
+
+  if (section === "outbound") {
+    if (ok) {
+      brokerHealth.outbound.last_ok_at = now;
+      brokerHealth.outbound.last_error = null;
+    } else {
+      brokerHealth.outbound.last_error_at = now;
+      brokerHealth.outbound.last_error = trimError(err);
+    }
+    persistBrokerHealth();
+  }
+}
 
 function toBase64(bytes) {
   return Buffer.from(bytes).toString("base64");
@@ -329,15 +438,22 @@ async function sendViaBroker({ action, routing, body }) {
   const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
   const signature = toBase64(sig);
 
-  return brokerFetch("/api/send", {
-    workspace_id: workspaceId,
-    action,
-    routing,
-    encrypted_body: encryptedBody,
-    nonce: nonceB64,
-    timestamp,
-    signature,
-  });
+  try {
+    const result = await brokerFetch("/api/send", {
+      workspace_id: workspaceId,
+      action,
+      routing,
+      encrypted_body: encryptedBody,
+      nonce: nonceB64,
+      timestamp,
+      signature,
+    });
+    markHealth("outbound", true);
+    return result;
+  } catch (err) {
+    markHealth("outbound", false, err);
+    throw err;
+  }
 }
 
 /**
@@ -386,11 +502,13 @@ async function sendDirectToSlack(apiMethod, params) {
       const error = data.error || response.statusText;
       throw new Error(`Slack API ${apiMethod} failed: ${sanitizeError(error)}`);
     }
-    
+
+    markHealth("outbound", true);
     return data;
   } catch (err) {
     // Sanitize any error messages to prevent token leakage
     const sanitizedMessage = sanitizeError(err.message || String(err));
+    markHealth("outbound", false, sanitizedMessage);
     throw new Error(sanitizedMessage);
   }
 }
@@ -519,7 +637,15 @@ async function processPulledMessage(message) {
     throw new Error("invalid broker envelope signature");
   }
 
-  const payload = decryptEnvelope(message);
+  let payload;
+  try {
+    payload = decryptEnvelope(message);
+    markHealth("inbound_decrypt", true);
+  } catch (err) {
+    markHealth("inbound_decrypt", false, err);
+    throw err;
+  }
+
   logInfo(`📦 decrypted envelope — type: ${payload?.type || "unknown"}`);
 
   if (payload?.type !== "event_callback") {
@@ -719,10 +845,13 @@ async function startPollLoop() {
   const STATUS_LOG_INTERVAL_MS = 60_000; // log a status line every 60s even when idle
 
   while (true) {
+    let pollSucceeded = false;
     try {
       pruneDedupe();
 
       const messages = await pullInbox();
+      pollSucceeded = true;
+      markHealth("poll", true);
       pollCount++;
       const ackIds = [];
 
@@ -756,6 +885,7 @@ async function startPollLoop() {
           logInfo(`📩 processing message ${message.message_id}`);
           const ok = await processPulledMessage(message);
           if (ok) {
+            markHealth("inbound_process", true);
             dedupe.set(message.message_id, Date.now() + DEDUPE_TTL_MS);
             ackIds.push(message.message_id);
             logInfo(`✅ processed & acked message ${message.message_id}`);
@@ -763,6 +893,7 @@ async function startPollLoop() {
             logWarn(`⚠️ message ${message.message_id} returned not-ok, will retry next poll`);
           }
         } catch (err) {
+          markHealth("inbound_process", false, err);
           const errMsg = err instanceof Error ? err.message : "unknown error";
           const errStack = err instanceof Error ? err.stack : "";
           logError(`❌ message processing failed (${message.message_id}): ${errMsg}`);
@@ -777,17 +908,31 @@ async function startPollLoop() {
       }
 
       if (ackIds.length > 0) {
-        await ackInbox(ackIds);
-        logInfo(`📤 acked ${ackIds.length} message(s)`);
+        try {
+          await ackInbox(ackIds);
+          markHealth("ack", true);
+          logInfo(`📤 acked ${ackIds.length} message(s)`);
+        } catch (err) {
+          markHealth("ack", false, err);
+          throw err;
+        }
       }
 
       backoffMs = POLL_INTERVAL_MS;
       await sleep(POLL_INTERVAL_MS);
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "unknown error";
-      const errStack = err instanceof Error ? err.stack : "";
-      logError(`❌ inbox poll failed: ${errMsg}`);
-      if (errStack) logError(`   stack: ${errStack}`);
+      if (!pollSucceeded) {
+        markHealth("poll", false, err);
+        const errMsg = err instanceof Error ? err.message : "unknown error";
+        const errStack = err instanceof Error ? err.stack : "";
+        logError(`❌ inbox poll failed: ${errMsg}`);
+        if (errStack) logError(`   stack: ${errStack}`);
+      } else {
+        const errMsg = err instanceof Error ? err.message : "unknown error";
+        const errStack = err instanceof Error ? err.stack : "";
+        logError(`❌ broker cycle failed after successful poll: ${errMsg}`);
+        if (errStack) logError(`   stack: ${errStack}`);
+      }
       logError(`   ↳ backing off ${backoffMs}ms before next attempt`);
       await sleep(backoffMs);
       backoffMs = Math.min(MAX_BACKOFF_MS, Math.max(POLL_INTERVAL_MS, backoffMs * 2));
@@ -811,6 +956,7 @@ async function startPollLoop() {
 
   refreshSocket();
   startApiServer();
+  persistBrokerHealth();
   logInfo("⚡ Slack broker pull bridge is running!");
   logInfo(`   outbound mode: ${outboundMode} ${outboundMode === "direct" ? "(using SLACK_BOT_TOKEN)" : "(via broker)"}`);
   logInfo(`   broker: ${brokerBaseUrl}`);

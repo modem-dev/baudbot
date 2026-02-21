@@ -103,7 +103,7 @@ usage() {
   echo "  start          Start the agent (systemd, or --direct for foreground)"
   echo "  stop           Stop the agent"
   echo "  restart        Restart the agent"
-  echo "  status         Show agent status + deployed version"
+  echo "  status         Show agent status + deployed version + broker connection"
   echo "  logs           Tail agent logs"
   echo "  attach         Attach to control-agent by default; supports --pi/--tmux"
   echo "  sessions       List agent tmux and pi sessions (name → id)"
@@ -326,6 +326,134 @@ print_deployed_version() {
   echo -e "${BOLD}deployed version:${RESET} $line"
 }
 
+broker_mode_configured() {
+  local env_file="/home/${1:-baudbot_agent}/.config/.env"
+  [ -r "$env_file" ] || return 1
+  grep -Eq '^SLACK_BROKER_URL=[^[:space:]].*$' "$env_file" || return 1
+  grep -Eq '^SLACK_BROKER_WORKSPACE_ID=[^[:space:]].*$' "$env_file" || return 1
+}
+
+print_broker_connection_status() {
+  local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+  local health_file="/home/$agent_user/.pi/agent/broker-health.json"
+  local health_summary=""
+  local connection_state=""
+  local components_line=""
+
+  if ! broker_mode_configured "$agent_user"; then
+    echo -e "${BOLD}broker connection:${RESET} not configured"
+    return 0
+  fi
+
+  if [ "$(id -u)" -eq 0 ]; then
+    sudo -u "$agent_user" tmux has-session -t slack-bridge 2>/dev/null || {
+      echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
+      return 0
+    }
+  elif [ "$(id -un)" = "$agent_user" ]; then
+    tmux has-session -t slack-bridge 2>/dev/null || {
+      echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
+      return 0
+    }
+  else
+    echo -e "${BOLD}broker connection:${RESET} configured (run with sudo for runtime status)"
+    return 0
+  fi
+
+  if [ ! -r "$health_file" ]; then
+    echo -e "${BOLD}broker connection:${RESET} starting"
+    echo -e "${BOLD}broker health:${RESET} unavailable (waiting for bridge health file)"
+    return 0
+  fi
+
+  health_summary="$(python3 - "$health_file" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    h = json.load(f)
+
+def parse_iso(s):
+    if not s:
+        return None
+    try:
+        if s.endswith('Z'):
+            s = s[:-1] + '+00:00'
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+def age_seconds(ts):
+    dt = parse_iso(ts)
+    if not dt:
+        return None
+    return (datetime.now(timezone.utc) - dt).total_seconds()
+
+def status(ok_ts, err_ts):
+    ok_dt = parse_iso(ok_ts)
+    err_dt = parse_iso(err_ts)
+    if err_dt and (not ok_dt or err_dt >= ok_dt):
+        return 'error'
+    if ok_dt:
+        return 'ok'
+    return 'unknown'
+
+poll = h.get('poll', {})
+inbound = h.get('inbound', {})
+ack = h.get('ack', {})
+outbound = h.get('outbound', {})
+
+poll_age = age_seconds(poll.get('last_ok_at'))
+poll_failures = int(poll.get('consecutive_failures') or 0)
+poll_state = status(poll.get('last_ok_at'), poll.get('last_error_at'))
+
+if poll_state == 'error' and poll_failures > 0:
+    connection = 'reconnecting'
+elif poll_age is not None and poll_age <= 120:
+    connection = 'connected'
+elif poll_age is not None:
+    connection = 'stale'
+else:
+    connection = 'starting'
+
+inbound_state = status(inbound.get('last_process_ok_at'), inbound.get('last_process_error_at'))
+ack_state = status(ack.get('last_ok_at'), ack.get('last_error_at'))
+outbound_state = status(outbound.get('last_ok_at'), outbound.get('last_error_at'))
+
+print(connection)
+print(f'poll={poll_state} inbound={inbound_state} ack={ack_state} outbound={outbound_state}')
+PY
+  )"
+
+  connection_state="$(printf '%s\n' "$health_summary" | sed -n '1p')"
+  components_line="$(printf '%s\n' "$health_summary" | sed -n '2p')"
+
+  case "$connection_state" in
+    connected)
+      echo -e "${BOLD}broker connection:${RESET} connected"
+      ;;
+    reconnecting)
+      echo -e "${BOLD}broker connection:${RESET} reconnecting"
+      ;;
+    stale)
+      echo -e "${BOLD}broker connection:${RESET} stale (no recent successful poll)"
+      ;;
+    starting)
+      echo -e "${BOLD}broker connection:${RESET} starting"
+      ;;
+    *)
+      echo -e "${BOLD}broker connection:${RESET} unknown"
+      ;;
+  esac
+
+  [ -n "$components_line" ] && echo -e "${BOLD}broker health:${RESET} $components_line"
+}
+
 pi_control_dir() {
   local agent_user="${1:-baudbot_agent}"
   echo "/home/$agent_user/.pi/session-control"
@@ -473,6 +601,7 @@ case "${1:-}" in
       systemctl status baudbot "$@" || status_rc=$?
       echo ""
       print_deployed_version
+      print_broker_connection_status
       exit "$status_rc"
     else
       # Fallback: check if baudbot_agent has pi running
@@ -484,6 +613,7 @@ case "${1:-}" in
       fi
       echo ""
       print_deployed_version
+      print_broker_connection_status
     fi
     ;;
 
