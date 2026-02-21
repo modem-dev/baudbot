@@ -208,7 +208,16 @@ bootstrap_install() {
   fi
 
   echo "Escalating with $escalator for system setup..."
-  "$escalator" bash "$install_script" "$@"
+  if [ "$escalator" = "sudo" ]; then
+    sudo --preserve-env=BAUDBOT_PI_VERSION bash "$install_script" "$@"
+  else
+    # doas has no portable preserve-env flag; pass explicitly when set.
+    if [ -n "${BAUDBOT_PI_VERSION:-}" ]; then
+      doas env BAUDBOT_PI_VERSION="$BAUDBOT_PI_VERSION" bash "$install_script" "$@"
+    else
+      doas bash "$install_script" "$@"
+    fi
+  fi
 }
 
 # Detect systemd

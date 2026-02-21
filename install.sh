@@ -187,7 +187,7 @@ header "Setup"
 info "Running setup.sh (user, Node.js, firewall, permissions)..."
 info "This takes 1–2 minutes."
 echo ""
-bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
+BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
 echo ""
 info "Core setup complete"
 
