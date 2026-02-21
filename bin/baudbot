@@ -369,6 +369,7 @@ print_broker_connection_status() {
   local health_summary=""
   local connection_state=""
   local components_line=""
+  local bridge_running=0
 
   if ! broker_mode_configured "$agent_user"; then
     echo -e "${BOLD}broker connection:${RESET} not configured"
@@ -376,17 +377,20 @@ print_broker_connection_status() {
   fi
 
   if [ "$(id -u)" -eq 0 ]; then
-    sudo -u "$agent_user" tmux has-session -t slack-bridge 2>/dev/null || {
-      echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
-      return 0
-    }
+    if pgrep -u "$agent_user" -f "node broker-bridge.mjs" >/dev/null 2>&1; then
+      bridge_running=1
+    fi
   elif [ "$(id -un)" = "$agent_user" ]; then
-    tmux has-session -t slack-bridge 2>/dev/null || {
-      echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
-      return 0
-    }
+    if pgrep -u "$agent_user" -f "node broker-bridge.mjs" >/dev/null 2>&1; then
+      bridge_running=1
+    fi
   else
     echo -e "${BOLD}broker connection:${RESET} configured (run with sudo for runtime status)"
+    return 0
+  fi
+
+  if [ "$bridge_running" -ne 1 ]; then
+    echo -e "${BOLD}broker connection:${RESET} disconnected (broker bridge process not running)"
     return 0
   fi
 
