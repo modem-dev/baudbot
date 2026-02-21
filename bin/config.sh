@@ -33,14 +33,93 @@ is_interactive_tty() {
   [ -t 0 ] && [ -t 1 ]
 }
 
+download_file() {
+  local url="$1" dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$dest"
+    return 0
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$dest"
+    return 0
+  fi
+  return 1
+}
+
+sha256_file() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+    return 0
+  fi
+  return 1
+}
+
+try_install_gum() {
+  [ "$BAUDBOT_TRY_INSTALL_GUM" = "1" ] || return 1
+  is_interactive_tty || return 1
+  command -v gum >/dev/null 2>&1 && return 0
+
+  local ver="${BAUDBOT_GUM_VERSION:-0.14.5}"
+  ver="${ver#v}"
+  local os arch
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) arch="x86_64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+
+  local asset="gum_${ver}_${os}_${arch}.tar.gz"
+  local base_url="https://github.com/charmbracelet/gum/releases/download/v${ver}"
+  local tmpdir checksum_expected checksum_actual
+  tmpdir="$(mktemp -d)"
+
+  if ! download_file "$base_url/$asset" "$tmpdir/gum.tgz"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  if ! download_file "$base_url/checksums.txt" "$tmpdir/checksums.txt"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  checksum_expected="$(grep "  ${asset}$" "$tmpdir/checksums.txt" | awk '{print $1}' | head -n1)"
+  checksum_actual="$(sha256_file "$tmpdir/gum.tgz" || true)"
+  if [ -z "$checksum_expected" ] || [ -z "$checksum_actual" ] || [ "$checksum_expected" != "$checksum_actual" ]; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  tar -xzf "$tmpdir/gum.tgz" -C "$tmpdir" || { rm -rf "$tmpdir"; return 1; }
+
+  local install_dir
+  if [ -w /usr/local/bin ]; then
+    install_dir="/usr/local/bin"
+  else
+    install_dir="$HOME/.local/bin"
+    mkdir -p "$install_dir"
+    export PATH="$install_dir:$PATH"
+  fi
+
+  install -m 0755 "$tmpdir/gum" "$install_dir/gum" || { rm -rf "$tmpdir"; return 1; }
+  rm -rf "$tmpdir"
+
+  command -v gum >/dev/null 2>&1
+}
+
 init_ui() {
   if ! is_interactive_tty; then
     return
   fi
 
-  # Optional dependency: if gum is already installed, use it.
-  # Never auto-install here; keep config flow distro-agnostic.
-  if [ "$BAUDBOT_TRY_INSTALL_GUM" = "1" ] && command -v gum >/dev/null 2>&1; then
+  if command -v gum >/dev/null 2>&1 || try_install_gum; then
     USE_GUM=1
   fi
 }
