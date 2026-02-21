@@ -35,4 +35,8 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/json-common.test.sh")).not.toThrow();
   });
 
+  it("baudbot cli", () => {
+    expect(() => runScript("bin/baudbot.test.sh")).not.toThrow();
+  });
+
 });

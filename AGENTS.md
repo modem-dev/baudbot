@@ -30,6 +30,10 @@ bin/                        security & operations scripts
     droplet.sh              ephemeral DigitalOcean droplet lifecycle (create/destroy/ssh)
     setup-ubuntu.sh         Ubuntu droplet: prereqs + setup + tests
     setup-arch.sh           Arch Linux droplet: prereqs + setup + tests
+  lib/                      shared shell helpers sourced by CLI/release scripts
+    baudbot-runtime.sh      runtime/status/session/attach helper module for bin/baudbot
+    release-common.sh       shared update/rollback helpers
+    json-common.sh          shared JSON field extraction helper (jq)
 hooks/
   pre-commit                blocks agent from modifying security files in git
 pi/
