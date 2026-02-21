@@ -15,8 +15,12 @@ trap cleanup EXIT
 run_config() {
   local home="$1"
   local input="$2"
+  local config_user
+  config_user="$(id -un)"
   mkdir -p "$home"
-  printf "%b" "$input" | HOME="$home" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
+  printf "%b" "$input" \
+    | HOME="$home" BAUDBOT_CONFIG_USER="$config_user" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" \
+      >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
 }
 
 write_existing_env() {
@@ -52,8 +56,12 @@ expect_file_not_contains() {
 
 expect_exit_nonzero() {
   local desc="$1" home="$2" input="$3"
+  local config_user
+  config_user="$(id -un)"
   set +e
-  printf "%b" "$input" | HOME="$home" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
+  printf "%b" "$input" \
+    | HOME="$home" BAUDBOT_CONFIG_USER="$config_user" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" \
+      >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
   local rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
