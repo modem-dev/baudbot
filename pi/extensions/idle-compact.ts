@@ -14,7 +14,7 @@
  *
  * Configuration (env vars):
  *   IDLE_COMPACT_DELAY_MS         — idle time before checking (default: 300000 = 5 min)
- *   IDLE_COMPACT_THRESHOLD_PCT    — context % to trigger (default: 40)
+ *   IDLE_COMPACT_THRESHOLD_PCT    — context % to trigger (default: 25)
  *   IDLE_COMPACT_ENABLED          — set to "0" or "false" to disable
  */
 
@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import * as net from "node:net";
 
 const DEFAULT_IDLE_DELAY_MS = 5 * 60 * 1000; // 5 minutes
-const DEFAULT_THRESHOLD_PCT = 40;
+const DEFAULT_THRESHOLD_PCT = 25;
 const MIN_IDLE_DELAY_MS = 60 * 1000; // 1 minute minimum
 
 const CONTROL_DIR = join(homedir(), ".pi", "session-control");
@@ -194,10 +194,10 @@ export default function idleCompactExtension(pi: ExtensionAPI): void {
     compacting = true;
     lastCtx.compact({
       customInstructions:
-        "This is an idle-period compaction. Preserve all operational context: " +
-        "active session names, repo paths, Slack thread references (channel + thread_ts), " +
-        "any pending user requests, and memory file locations. Be thorough — the full " +
-        "conversation history won't be available after this.",
+        "Prioritize recency: the most recent conversations, task results, and decisions " +
+        "are more important than older history. Preserve active Slack thread references " +
+        "(channel + thread_ts), in-progress work context, recent user requests, and " +
+        "current operational state. Older completed tasks can be summarized briefly.",
       onComplete: () => {
         compacting = false;
       },

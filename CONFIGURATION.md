@@ -169,7 +169,7 @@ Set during `setup.sh` / `baudbot install` via env vars:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `IDLE_COMPACT_DELAY_MS` | Idle time before checking for compaction (milliseconds, min 60000) | `300000` (5 min) |
-| `IDLE_COMPACT_THRESHOLD_PCT` | Context usage % to trigger compaction (10–90) | `40` |
+| `IDLE_COMPACT_THRESHOLD_PCT` | Context usage % to trigger compaction (10–90) | `25` |
 | `IDLE_COMPACT_ENABLED` | Set to `0`, `false`, or `no` to disable idle compaction | enabled |
 
 ### Bridge
