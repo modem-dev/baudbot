@@ -121,28 +121,102 @@ if [ -f "$ENV_FILE" ]; then
     fail ".env owned by $OWNER (should be baudbot_agent)"
   fi
 
-  # Check for at least one LLM key
-  HAS_LLM=false
-  for key in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
-    if grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
-      HAS_LLM=true
+  env_value() {
+    local key="$1"
+    local line
+    line=$(grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)
+    if [ -z "$line" ]; then
+      echo ""
+      return 0
+    fi
+    echo "${line#*=}"
+  }
+
+  # LLM key validation: require at least one valid key, and flag malformed configured keys.
+  VALID_LLM_COUNT=0
+
+  ANTHROPIC_VALUE="$(env_value ANTHROPIC_API_KEY)"
+  if [ -n "$ANTHROPIC_VALUE" ]; then
+    if [[ "$ANTHROPIC_VALUE" == sk-ant-* ]]; then
+      VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
+    else
+      fail "ANTHROPIC_API_KEY is set but malformed (must start with sk-ant-)"
+    fi
+  fi
+
+  OPENAI_VALUE="$(env_value OPENAI_API_KEY)"
+  if [ -n "$OPENAI_VALUE" ]; then
+    if [[ "$OPENAI_VALUE" == sk-* ]]; then
+      VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
+    else
+      fail "OPENAI_API_KEY is set but malformed (must start with sk-)"
+    fi
+  fi
+
+  GEMINI_VALUE="$(env_value GEMINI_API_KEY)"
+  if [ -n "$GEMINI_VALUE" ]; then
+    VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
+  fi
+
+  OPENCODE_VALUE="$(env_value OPENCODE_ZEN_API_KEY)"
+  if [ -n "$OPENCODE_VALUE" ]; then
+    VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
+  fi
+
+  if [ "$VALID_LLM_COUNT" -gt 0 ]; then
+    pass "at least one valid LLM API key is set"
+  else
+    fail "no valid LLM API key set (need ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)"
+  fi
+
+  BROKER_REQUIRED_KEYS=(
+    SLACK_BROKER_URL
+    SLACK_BROKER_WORKSPACE_ID
+    SLACK_BROKER_SERVER_PRIVATE_KEY
+    SLACK_BROKER_SERVER_PUBLIC_KEY
+    SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY
+    SLACK_BROKER_PUBLIC_KEY
+    SLACK_BROKER_SIGNING_PUBLIC_KEY
+  )
+
+  BROKER_MODE_READY=true
+  for key in "${BROKER_REQUIRED_KEYS[@]}"; do
+    if [ -z "$(env_value "$key")" ]; then
+      BROKER_MODE_READY=false
       break
     fi
   done
-  if [ "$HAS_LLM" = true ]; then
-    pass "at least one LLM API key is set"
-  else
-    fail "no LLM API key set (need ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)"
-  fi
 
-  # Check required keys
+  SOCKET_MODE_READY=true
   for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-    if grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
-      pass "$key is set"
-    else
-      warn "$key is not set"
+    if [ -z "$(env_value "$key")" ]; then
+      SOCKET_MODE_READY=false
+      break
     fi
   done
+
+  if [ "$BROKER_MODE_READY" = true ]; then
+    pass "broker mode configured (SLACK_BROKER_*)"
+    for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
+      if [ -n "$(env_value "$key")" ]; then
+        pass "$key is set"
+      else
+        pass "$key not required in broker mode"
+      fi
+    done
+  else
+    for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
+      if [ -n "$(env_value "$key")" ]; then
+        pass "$key is set"
+      else
+        warn "$key is not set"
+      fi
+    done
+
+    if [ "$SOCKET_MODE_READY" = false ]; then
+      warn "no Slack transport configured (set SLACK_BROKER_* for broker mode or SLACK_BOT_TOKEN+SLACK_APP_TOKEN for socket mode)"
+    fi
+  fi
 
   if grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
     pass "SLACK_ALLOWED_USERS is set"
