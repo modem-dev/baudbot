@@ -211,7 +211,7 @@ info "This takes 1–2 minutes."
 echo ""
 
 if [ "$EXPERIMENTAL" -eq 1 ]; then
-  BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash --experimental "$ADMIN_USER"
+  BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash "$REPO_DIR/setup.sh" --experimental "$ADMIN_USER"
 else
   BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
 fi
