@@ -23,6 +23,12 @@ import {
   validateReactParams,
   createRateLimiter,
 } from "./security.mjs";
+import {
+  stableStringify,
+  canonicalizeEnvelope,
+  canonicalizeOutbound,
+  canonicalizeSendRequest,
+} from "./crypto.mjs";
 
 const SOCKET_DIR = path.join(homedir(), ".pi", "session-control");
 const AGENT_TIMEOUT_MS = 120_000;
@@ -107,57 +113,8 @@ function utf8String(bytes) {
   return new TextDecoder().decode(bytes);
 }
 
-function canonicalizeEnvelope(workspace, timestamp, encrypted) {
-  return utf8Bytes(`${workspace}|${timestamp}|${encrypted}`);
-}
-
-function canonicalizeOutbound(workspace, action, timestamp, encryptedBody) {
-  return utf8Bytes(`${workspace}|${action}|${timestamp}|${encryptedBody}`);
-}
-
-/**
- * Deterministic JSON serialization with sorted keys (recursive).
- * Compatible with npm `json-stable-stringify` for flat/nested objects.
- */
-function stableStringify(obj) {
-  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
-  if (Array.isArray(obj)) return "[" + obj.map((v) => stableStringify(v) ?? "null").join(",") + "]";
-  const keys = Object.keys(obj).sort();
-  const pairs = [];
-  for (const k of keys) {
-    const v = stableStringify(obj[k]);
-    if (v !== undefined) pairs.push(JSON.stringify(k) + ":" + v);
-  }
-  return "{" + pairs.join(",") + "}";
-}
-
-/**
- * Construct canonical bytes for /api/send request signing.
- *
- * Matches broker's `canonicalizeSendRequest()` — includes routing metadata
- * and nonce to prevent tampering of delivery targets or ciphertext replay
- * with modified metadata.
- *
- * Uses deterministic JSON serialization (sorted keys) so both sides produce
- * identical canonical bytes regardless of object key insertion order.
- */
-function canonicalizeSendRequest(ws, action, timestamp, encryptedBody, nonce, routing) {
-  return utf8Bytes(
-    stableStringify({
-      workspace_id: ws,
-      action,
-      timestamp,
-      encrypted_body: encryptedBody,
-      nonce,
-      routing: {
-        channel: routing.channel,
-        thread_ts: routing.thread_ts ?? "",
-        timestamp: routing.timestamp ?? "",
-        emoji: routing.emoji ?? "",
-      },
-    }),
-  );
-}
+// canonicalizeEnvelope, canonicalizeOutbound, canonicalizeSendRequest,
+// and stableStringify are imported from ./crypto.mjs
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
