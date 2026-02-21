@@ -68,7 +68,7 @@ sudo baudbot deploy
 # start the service
 sudo baudbot start
 
-# check health
+# check health (includes deployed version + broker connection status)
 sudo baudbot status
 sudo baudbot doctor
 ```
