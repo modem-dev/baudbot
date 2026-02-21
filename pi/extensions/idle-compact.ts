@@ -57,19 +57,21 @@ function isSocketAlive(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.createConnection(socketPath);
     const timeout = setTimeout(() => {
+      socket.removeAllListeners();
       socket.destroy();
       resolve(false);
     }, 300);
 
-    socket.once("connect", () => {
+    const cleanup = (alive: boolean) => {
       clearTimeout(timeout);
-      socket.end();
-      resolve(true);
-    });
-    socket.once("error", () => {
-      clearTimeout(timeout);
-      resolve(false);
-    });
+      socket.removeAllListeners();
+      if (alive) socket.end();
+      else socket.destroy();
+      resolve(alive);
+    };
+
+    socket.once("connect", () => cleanup(true));
+    socket.once("error", () => cleanup(false));
   });
 }
 
