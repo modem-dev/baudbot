@@ -90,10 +90,9 @@ else
 fi
 
 echo "=== Installing pi $PI_VERSION ==="
-sudo -u baudbot_agent bash -c "
-  export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
-  npm install -g @mariozechner/pi-coding-agent@$PI_VERSION
-"
+NODE_BIN="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
+sudo -u baudbot_agent env PATH="$NODE_BIN:$PATH" \
+  npm install -g "@mariozechner/pi-coding-agent@$PI_VERSION"
 
 echo "=== Configuring git identity ==="
 GIT_USER_NAME="${GIT_USER_NAME:-baudbot-agent}"
