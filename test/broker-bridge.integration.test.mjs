@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import sodium from "libsodium-wrappers-sumo";
+import { canonicalizeEnvelope } from "../slack-bridge/crypto.mjs";
 
 function b64(bytes = 32, fill = 1) {
   return Buffer.alloc(bytes, fill).toString("base64");
+}
+
+function toBase64(bytes) {
+  return Buffer.from(bytes).toString("base64");
 }
 
 function waitFor(condition, timeoutMs = 10_000, intervalMs = 50, onTimeoutMessage = "timeout waiting for condition") {
@@ -23,6 +32,7 @@ function waitFor(condition, timeoutMs = 10_000, intervalMs = 50, onTimeoutMessag
 describe("broker pull bridge semi-integration", () => {
   const children = [];
   const servers = [];
+  const tempDirs = [];
 
   afterEach(async () => {
     for (const child of children) {
@@ -31,8 +41,12 @@ describe("broker pull bridge semi-integration", () => {
     for (const server of servers) {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
     children.length = 0;
     servers.length = 0;
+    tempDirs.length = 0;
   });
 
   it("acks poison messages from broker to avoid infinite retry loops", async () => {
@@ -145,5 +159,192 @@ describe("broker pull bridge semi-integration", () => {
 
     expect(ackPayload.workspace_id).toBe("T123BROKER");
     expect(ackPayload.message_ids).toContain("m-poison-1");
+  });
+
+  it("forwards user messages to agent in fire-and-forget mode without get_message/turn_end RPCs", async () => {
+    await sodium.ready;
+
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    const tempHome = mkdtempSync(path.join(tmpdir(), "baudbot-broker-test-"));
+    tempDirs.push(tempHome);
+
+    const sessionDir = path.join(tempHome, ".pi", "session-control");
+    mkdirSync(sessionDir, { recursive: true });
+    const sessionId = "11111111-1111-1111-1111-111111111111";
+    const socketFile = path.join(sessionDir, `${sessionId}.sock`);
+
+    const receivedCommands = [];
+    const agentSocket = net.createServer((conn) => {
+      let buffer = "";
+      conn.on("data", (chunk) => {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const msg = JSON.parse(line);
+          receivedCommands.push(msg);
+          if (msg.type === "send") {
+            conn.write(`${JSON.stringify({ type: "response", command: "send", success: true })}\n`);
+          }
+        }
+      });
+    });
+    await new Promise((resolve) => agentSocket.listen(socketFile, resolve));
+    servers.push(agentSocket);
+
+    const serverBox = sodium.crypto_box_keypair();
+    const brokerBox = sodium.crypto_box_keypair();
+    const brokerSign = sodium.crypto_sign_keypair();
+    const serverSignSeed = sodium.randombytes_buf(sodium.crypto_sign_SEEDBYTES);
+
+    const workspaceId = "T123BROKER";
+    const eventPayload = {
+      type: "event_callback",
+      event: {
+        type: "app_mention",
+        user: "U_ALLOWED",
+        channel: "C123",
+        ts: "1730000000.000100",
+        text: "<@U_BOT> hello from test",
+      },
+    };
+
+    const encrypted = sodium.crypto_box_seal(
+      Buffer.from(JSON.stringify(eventPayload)),
+      serverBox.publicKey,
+    );
+    const brokerTimestamp = Math.floor(Date.now() / 1000);
+    const encryptedB64 = toBase64(encrypted);
+    const brokerSignature = toBase64(
+      sodium.crypto_sign_detached(
+        canonicalizeEnvelope(workspaceId, brokerTimestamp, encryptedB64),
+        brokerSign.privateKey,
+      ),
+    );
+
+    let pullCount = 0;
+    let ackPayload = null;
+    const sendPayloads = [];
+
+    const broker = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/inbox/pull") {
+        pullCount += 1;
+        const messages = pullCount === 1
+          ? [{
+              message_id: "m-valid-1",
+              workspace_id: workspaceId,
+              encrypted: encryptedB64,
+              broker_timestamp: brokerTimestamp,
+              broker_signature: brokerSignature,
+            }]
+          : [];
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, messages }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/inbox/ack") {
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        ackPayload = JSON.parse(raw);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, acked: ackPayload.message_ids?.length ?? 0 }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/send") {
+        let raw = "";
+        for await (const chunk of req) raw += chunk;
+        sendPayloads.push(JSON.parse(raw));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: "1234.5678" }));
+        return;
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "not found" }));
+    });
+
+    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    servers.push(broker);
+
+    const address = broker.address();
+    if (!address || typeof address === "string") {
+      throw new Error("failed to get broker test server address");
+    }
+    const brokerUrl = `http://127.0.0.1:${address.port}`;
+
+    let bridgeStdout = "";
+    let bridgeStderr = "";
+    let bridgeExit = null;
+
+    const bridge = spawn("node", [bridgePath], {
+      cwd: bridgeCwd,
+      env: {
+        ...process.env,
+        HOME: tempHome,
+        PI_SESSION_ID: sessionId,
+        SLACK_BROKER_URL: brokerUrl,
+        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBox.privateKey),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBox.publicKey),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),
+        SLACK_BROKER_PUBLIC_KEY: toBase64(brokerBox.publicKey),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: toBase64(brokerSign.publicKey),
+        SLACK_ALLOWED_USERS: "U_ALLOWED",
+        SLACK_BROKER_POLL_INTERVAL_MS: "50",
+        BRIDGE_API_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    bridge.stdout.on("data", (chunk) => {
+      bridgeStdout += chunk.toString();
+    });
+    bridge.stderr.on("data", (chunk) => {
+      bridgeStderr += chunk.toString();
+    });
+
+    const bridgeExited = new Promise((_, reject) => {
+      bridge.on("error", (err) => {
+        if (ackPayload !== null) return;
+        reject(new Error(`bridge spawn error: ${err.message}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`));
+      });
+      bridge.on("exit", (code, signal) => {
+        bridgeExit = { code, signal };
+        if (ackPayload !== null) return;
+        reject(new Error(`bridge exited early: code=${code} signal=${signal}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`));
+      });
+    });
+
+    children.push(bridge);
+
+    const completeWait = waitFor(
+      () => ackPayload !== null && receivedCommands.length > 0,
+      12_000,
+      50,
+      `timeout waiting for forward+ack; pullCount=${pullCount}; commands=${JSON.stringify(receivedCommands)}; sendPayloads=${JSON.stringify(sendPayloads)}; exit=${JSON.stringify(bridgeExit)}; stdout=${bridgeStdout}; stderr=${bridgeStderr}`,
+    );
+
+    await Promise.race([completeWait, bridgeExited]);
+
+    expect(ackPayload.workspace_id).toBe(workspaceId);
+    expect(ackPayload.message_ids).toContain("m-valid-1");
+
+    expect(receivedCommands.length).toBe(1);
+    expect(receivedCommands[0].type).toBe("send");
+    expect(receivedCommands[0].mode).toBe("steer");
+    expect(receivedCommands[0]).not.toHaveProperty("wait_until");
+    expect(receivedCommands.some((cmd) => cmd.type === "subscribe")).toBe(false);
+    expect(receivedCommands.some((cmd) => cmd.type === "get_message")).toBe(false);
+
+    expect(sendPayloads.some((payload) => payload.action === "chat.postMessage")).toBe(false);
+    expect(sendPayloads.some((payload) => payload.action === "reactions.add")).toBe(true);
   });
 });
