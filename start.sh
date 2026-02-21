@@ -16,39 +16,9 @@ cd ~
 # Set PATH
 export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
 
-sanitize_varlock_config() {
-  local cfg="$HOME/.varlock/config.json"
-  local tmp=""
-
-  [ -f "$cfg" ] || return 0
-  grep -q '"anonymousId"' "$cfg" || return 0
-
-  tmp="$(mktemp "$HOME/.varlock/config.XXXXXX")"
-  if python3 - "$cfg" "$tmp" <<'PY'
-import json
-import sys
-
-src, dst = sys.argv[1], sys.argv[2]
-with open(src, "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-if isinstance(data, dict) and "anonymousId" in data:
-    data.pop("anonymousId", None)
-
-with open(dst, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-PY
-  then
-    mv "$tmp" "$cfg"
-    chmod 600 "$cfg" 2>/dev/null || true
-    echo "Removed unsupported anonymousId from ~/.varlock/config.json"
-  else
-    rm -f "$tmp"
-  fi
-}
-
-sanitize_varlock_config
+# Work around varlock telemetry config crash by opting out at runtime.
+# This avoids loading anonymousId from user config and keeps startup deterministic.
+export VARLOCK_TELEMETRY_DISABLED=1
 
 # Validate and load secrets via varlock
 varlock load --path ~/.config/ || {
