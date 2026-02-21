@@ -18,6 +18,10 @@ BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
 BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
 AGENT_USER="baudbot_agent"
 DRY_RUN=0
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# shellcheck source=bin/lib/json-common.sh
+source "$SCRIPT_DIR/lib/json-common.sh"
 
 # Helper: run a command as baudbot_agent
 as_agent() {
@@ -385,9 +389,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
     GIT_SHA_SHORT=$(cd "$BAUDBOT_SRC" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     GIT_BRANCH=$(cd "$BAUDBOT_SRC" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
   elif [ -f "$RELEASE_META_FILE" ]; then
-    GIT_SHA=$(grep '"sha"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
-    GIT_SHA_SHORT=$(grep '"short"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
-    GIT_BRANCH=$(grep '"branch"' "$RELEASE_META_FILE" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    GIT_SHA="$(json_get_string_or_empty "$RELEASE_META_FILE" "sha")"
+    GIT_SHA_SHORT="$(json_get_string_or_empty "$RELEASE_META_FILE" "short")"
+    GIT_BRANCH="$(json_get_string_or_empty "$RELEASE_META_FILE" "branch")"
   fi
 
   [ -n "$GIT_SHA" ] || GIT_SHA="unknown"

@@ -14,6 +14,11 @@ set -euo pipefail
 BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
 # Source repo — auto-detect from this script's location, or use env override
 BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# shellcheck source=bin/lib/json-common.sh
+source "$SCRIPT_DIR/lib/json-common.sh"
+
 DEEP=0
 FIX=0
 for arg in "$@"; do
@@ -224,8 +229,10 @@ VERSION_FILE="$BAUDBOT_HOME/.pi/agent/baudbot-version.json"
 MANIFEST_FILE="$BAUDBOT_HOME/.pi/agent/baudbot-manifest.json"
 
 if [ -f "$VERSION_FILE" ]; then
-  deploy_sha=$(grep '"short"' "$VERSION_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "?")
-  deploy_ts=$(grep '"deployed_at"' "$VERSION_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "?")
+  deploy_sha="$(json_get_string_or_empty "$VERSION_FILE" "short")"
+  deploy_ts="$(json_get_string_or_empty "$VERSION_FILE" "deployed_at")"
+  [ -n "$deploy_sha" ] || deploy_sha="?"
+  [ -n "$deploy_ts" ] || deploy_ts="?"
   ok "Deployed version: $deploy_sha ($deploy_ts)"
 else
   finding "WARN" "No version stamp found — run deploy.sh" ""

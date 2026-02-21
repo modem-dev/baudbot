@@ -18,8 +18,30 @@ if [ -z "${BAUDBOT_ROOT:-}" ]; then
     # Handle relative symlinks
     [[ "$SCRIPT" != /* ]] && SCRIPT="$DIR/$SCRIPT"
   done
-  BAUDBOT_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+
+  CANDIDATE_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+  if [ -f "$CANDIDATE_ROOT/bin/baudbot" ] && [ -f "$CANDIDATE_ROOT/package.json" ]; then
+    BAUDBOT_ROOT="$CANDIDATE_ROOT"
+  elif [ -d /opt/baudbot/current/bin ]; then
+    BAUDBOT_ROOT="$(readlink -f /opt/baudbot/current 2>/dev/null || echo /opt/baudbot/current)"
+  else
+    BAUDBOT_ROOT="$CANDIDATE_ROOT"
+  fi
 fi
+
+json_get_string_or_empty() {
+  local file="$1"
+  local key="$2"
+  [ -r "$file" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -er --arg k "$key" 'if (type == "object") and has($k) and (.[$k] | type == "string") then .[$k] else empty end' "$file" 2>/dev/null || true
+}
+
+json_get_string_stdin_or_empty() {
+  local key="$1"
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -er --arg k "$key" 'if (type == "object") and has($k) and (.[$k] | type == "string") then .[$k] else empty end' 2>/dev/null || true
+}
 
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
@@ -34,11 +56,15 @@ else
 fi
 
 version() {
-  if [ -f "$BAUDBOT_ROOT/package.json" ]; then
-    grep '"version"' "$BAUDBOT_ROOT/package.json" | head -1 | sed 's/.*: *"\(.*\)".*/\1/'
-  else
-    echo "unknown"
+  local package_json="$BAUDBOT_ROOT/package.json"
+  local pkg_version=""
+
+  if [ -f "$package_json" ]; then
+    pkg_version="$(json_get_string_or_empty "$package_json" "version")"
+    [ -n "$pkg_version" ] && echo "$pkg_version" && return 0
   fi
+
+  echo "unknown"
 }
 
 version_sha() {
@@ -73,7 +99,7 @@ version_sha() {
   # Runtime metadata fallback
   version_file="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}/.pi/agent/baudbot-version.json"
   if [ -r "$version_file" ]; then
-    sha="$(grep -E '"sha"[[:space:]]*:' "$version_file" | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+    sha="$(json_get_string_or_empty "$version_file" "sha")"
     [ -n "$sha" ] && echo "${sha:0:7}" && return 0
   fi
 
@@ -282,7 +308,6 @@ has_systemd() {
 print_deployed_version() {
   local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
   local version_file="/home/$agent_user/.pi/agent/baudbot-version.json"
-  local version_json=""
   local short=""
   local sha=""
   local branch=""
@@ -290,12 +315,22 @@ print_deployed_version() {
   local line=""
 
   if [ -r "$version_file" ]; then
-    version_json="$(cat "$version_file" 2>/dev/null || true)"
+    short="$(json_get_string_or_empty "$version_file" "short")"
+    sha="$(json_get_string_or_empty "$version_file" "sha")"
+    branch="$(json_get_string_or_empty "$version_file" "branch")"
+    deployed_at="$(json_get_string_or_empty "$version_file" "deployed_at")"
   elif [ "$(id -u)" -eq 0 ] && id "$agent_user" >/dev/null 2>&1; then
-    version_json="$(sudo -u "$agent_user" cat "$version_file" 2>/dev/null || true)"
+    local version_json=""
+    version_json="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" || true)"
+    if [ -n "$version_json" ]; then
+      short="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "short" 2>/dev/null || true)"
+      sha="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "sha" 2>/dev/null || true)"
+      branch="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "branch" 2>/dev/null || true)"
+      deployed_at="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "deployed_at" 2>/dev/null || true)"
+    fi
   fi
 
-  if [ -z "$version_json" ]; then
+  if [ -z "$short" ] && [ -z "$sha" ] && [ -z "$branch" ] && [ -z "$deployed_at" ]; then
     local release_target=""
     local release_sha=""
 
@@ -308,11 +343,6 @@ print_deployed_version() {
     fi
     return 0
   fi
-
-  short="$(printf '%s\n' "$version_json" | grep -E '"short"[[:space:]]*:' | head -1 | sed 's/.*"short"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-  sha="$(printf '%s\n' "$version_json" | grep -E '"sha"[[:space:]]*:' | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-  branch="$(printf '%s\n' "$version_json" | grep -E '"branch"[[:space:]]*:' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-  deployed_at="$(printf '%s\n' "$version_json" | grep -E '"deployed_at"[[:space:]]*:' | head -1 | sed 's/.*"deployed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
 
   if [ -z "$short" ] && [ -n "$sha" ]; then
     short="${sha:0:7}"
