@@ -10,7 +10,7 @@ sudo baudbot start
 sudo baudbot stop
 sudo baudbot restart
 
-# Status and logs (status includes deployed version + broker connection state)
+# Status and logs (status includes deployed version + broker connection/health state)
 sudo baudbot status
 sudo baudbot logs
 

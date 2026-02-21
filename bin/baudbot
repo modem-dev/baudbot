@@ -335,8 +335,10 @@ broker_mode_configured() {
 
 print_broker_connection_status() {
   local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-  local pane=""
-  local latest_signal=""
+  local health_file="/home/$agent_user/.pi/agent/broker-health.json"
+  local health_summary=""
+  local connection_state=""
+  local components_line=""
 
   if ! broker_mode_configured "$agent_user"; then
     echo -e "${BOLD}broker connection:${RESET} not configured"
@@ -348,33 +350,108 @@ print_broker_connection_status() {
       echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
       return 0
     }
-    pane="$(sudo -u "$agent_user" tmux capture-pane -p -t slack-bridge -S -200 2>/dev/null || true)"
   elif [ "$(id -un)" = "$agent_user" ]; then
     tmux has-session -t slack-bridge 2>/dev/null || {
       echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
       return 0
     }
-    pane="$(tmux capture-pane -p -t slack-bridge -S -200 2>/dev/null || true)"
   else
     echo -e "${BOLD}broker connection:${RESET} configured (run with sudo for runtime status)"
     return 0
   fi
 
-  latest_signal="$(printf '%s\n' "$pane" | grep -E 'inbox poll failed|backing off|idle|pulled [0-9]+ message\(s\)|Slack broker pull bridge is running' | tail -1 || true)"
-  case "$latest_signal" in
-    *"inbox poll failed"*|*"backing off"*)
-      echo -e "${BOLD}broker connection:${RESET} reconnecting (recent inbox poll failure)"
-      ;;
-    *"idle"*|*"pulled "*)
+  if [ ! -r "$health_file" ]; then
+    echo -e "${BOLD}broker connection:${RESET} starting"
+    echo -e "${BOLD}broker health:${RESET} unavailable (waiting for bridge health file)"
+    return 0
+  fi
+
+  health_summary="$(python3 - "$health_file" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    h = json.load(f)
+
+def parse_iso(s):
+    if not s:
+        return None
+    try:
+        if s.endswith('Z'):
+            s = s[:-1] + '+00:00'
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+def age_seconds(ts):
+    dt = parse_iso(ts)
+    if not dt:
+        return None
+    return (datetime.now(timezone.utc) - dt).total_seconds()
+
+def status(ok_ts, err_ts):
+    ok_dt = parse_iso(ok_ts)
+    err_dt = parse_iso(err_ts)
+    if err_dt and (not ok_dt or err_dt >= ok_dt):
+        return 'error'
+    if ok_dt:
+        return 'ok'
+    return 'unknown'
+
+poll = h.get('poll', {})
+inbound = h.get('inbound', {})
+ack = h.get('ack', {})
+outbound = h.get('outbound', {})
+
+poll_age = age_seconds(poll.get('last_ok_at'))
+poll_failures = int(poll.get('consecutive_failures') or 0)
+poll_state = status(poll.get('last_ok_at'), poll.get('last_error_at'))
+
+if poll_state == 'error' and poll_failures > 0:
+    connection = 'reconnecting'
+elif poll_age is not None and poll_age <= 120:
+    connection = 'connected'
+elif poll_age is not None:
+    connection = 'stale'
+else:
+    connection = 'starting'
+
+inbound_state = status(inbound.get('last_process_ok_at'), inbound.get('last_process_error_at'))
+ack_state = status(ack.get('last_ok_at'), ack.get('last_error_at'))
+outbound_state = status(outbound.get('last_ok_at'), outbound.get('last_error_at'))
+
+print(connection)
+print(f'poll={poll_state} inbound={inbound_state} ack={ack_state} outbound={outbound_state}')
+PY
+  )"
+
+  connection_state="$(printf '%s\n' "$health_summary" | sed -n '1p')"
+  components_line="$(printf '%s\n' "$health_summary" | sed -n '2p')"
+
+  case "$connection_state" in
+    connected)
       echo -e "${BOLD}broker connection:${RESET} connected"
       ;;
-    *"Slack broker pull bridge is running"*)
+    reconnecting)
+      echo -e "${BOLD}broker connection:${RESET} reconnecting"
+      ;;
+    stale)
+      echo -e "${BOLD}broker connection:${RESET} stale (no recent successful poll)"
+      ;;
+    starting)
       echo -e "${BOLD}broker connection:${RESET} starting"
       ;;
     *)
-      echo -e "${BOLD}broker connection:${RESET} unknown (bridge running, no recent poll telemetry)"
+      echo -e "${BOLD}broker connection:${RESET} unknown"
       ;;
   esac
+
+  [ -n "$components_line" ] && echo -e "${BOLD}broker health:${RESET} $components_line"
 }
 
 pi_control_dir() {
