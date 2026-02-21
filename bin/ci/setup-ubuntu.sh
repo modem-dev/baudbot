@@ -52,10 +52,12 @@ echo "=== Running bootstrap + baudbot install ==="
 BAUDBOT_CLI_URL="file:///home/baudbot_admin/baudbot/bin/baudbot" \
 BAUDBOT_BOOTSTRAP_TARGET="/usr/local/bin/baudbot" \
   bash /home/baudbot_admin/baudbot/bootstrap.sh
-# Simulate interactive input: admin user, required secrets, skip optionals, decline launch
-# Prompts: admin user, Anthropic, OpenAI(skip), Gemini(skip), OpenCode(skip),
-#   Slack bot, Slack app, Slack users, AgentMail(skip), email(skip), Sentry(skip), Kernel(skip), launch(n)
-printf 'baudbot_admin\nsk-ant-testkey\n\n\n\nxoxb-test\nxapp-test\nU01TEST\n\n\n\n\nn\n' \
+# Simulate interactive input: admin user, provider + Slack mode selections,
+# required secrets, skip optional integrations, decline launch.
+# Prompts: admin user, LLM choice(1=Anthropic), Anthropic key,
+# Slack mode(2=advanced), Slack bot, Slack app, Slack users,
+# Browser?(n), Sentry?(n), Email?(n), launch(n)
+printf 'baudbot_admin\n1\nsk-ant-testkey\n2\nxoxb-test\nxapp-test\nU01TEST\nn\nn\nn\nn\n' \
   | BAUDBOT_INSTALL_SCRIPT_URL="file:///home/baudbot_admin/baudbot/install.sh" baudbot install
 
 echo "=== Verifying install ==="

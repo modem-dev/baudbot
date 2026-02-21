@@ -57,6 +57,8 @@ curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh
 baudbot install
 ```
 
+`baudbot install` includes a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry/Email). If [`gum`](https://github.com/charmbracelet/gum) is installed, prompts use richer TUI widgets; otherwise installer falls back to standard bash prompts.
+
 After install:
 
 ```bash
