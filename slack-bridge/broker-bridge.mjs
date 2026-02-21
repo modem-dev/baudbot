@@ -845,10 +845,12 @@ async function startPollLoop() {
   const STATUS_LOG_INTERVAL_MS = 60_000; // log a status line every 60s even when idle
 
   while (true) {
+    let pollSucceeded = false;
     try {
       pruneDedupe();
 
       const messages = await pullInbox();
+      pollSucceeded = true;
       markHealth("poll", true);
       pollCount++;
       const ackIds = [];
@@ -919,11 +921,18 @@ async function startPollLoop() {
       backoffMs = POLL_INTERVAL_MS;
       await sleep(POLL_INTERVAL_MS);
     } catch (err) {
-      markHealth("poll", false, err);
-      const errMsg = err instanceof Error ? err.message : "unknown error";
-      const errStack = err instanceof Error ? err.stack : "";
-      logError(`❌ inbox poll failed: ${errMsg}`);
-      if (errStack) logError(`   stack: ${errStack}`);
+      if (!pollSucceeded) {
+        markHealth("poll", false, err);
+        const errMsg = err instanceof Error ? err.message : "unknown error";
+        const errStack = err instanceof Error ? err.stack : "";
+        logError(`❌ inbox poll failed: ${errMsg}`);
+        if (errStack) logError(`   stack: ${errStack}`);
+      } else {
+        const errMsg = err instanceof Error ? err.message : "unknown error";
+        const errStack = err instanceof Error ? err.stack : "";
+        logError(`❌ broker cycle failed after successful poll: ${errMsg}`);
+        if (errStack) logError(`   stack: ${errStack}`);
+      }
       logError(`   ↳ backing off ${backoffMs}ms before next attempt`);
       await sleep(backoffMs);
       backoffMs = Math.min(MAX_BACKOFF_MS, Math.max(POLL_INTERVAL_MS, backoffMs * 2));
