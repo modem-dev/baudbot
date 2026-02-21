@@ -159,8 +159,11 @@ npm run test:shell
 # JS/TS coverage
 npm run test:coverage
 
-# Lint + typecheck
+# Lint (Biome + ShellCheck) + typecheck
 npm run lint && npm run typecheck
+
+# ShellCheck only
+npm run lint:shell
 ```
 
 ## License

@@ -158,6 +158,9 @@ npm run test:shell
 
 # JS/TS coverage
 npm run test:coverage
+
+# Lint (Biome + ShellCheck)
+npm run lint
 ```
 
 Add new test files to `vitest.config.mjs` (and shell wrappers under `test/` as needed) — don't scatter test invocations across CI or docs.

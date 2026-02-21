@@ -7,7 +7,9 @@
     "test:js": "vitest run --config vitest.config.mjs pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs test/broker-bridge.integration.test.mjs",
     "test:shell": "vitest run --config vitest.config.mjs test/shell-scripts.test.mjs test/security-audit.test.mjs",
     "test:coverage": "vitest run --config vitest.config.mjs --coverage pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs",
-    "lint": "biome lint",
+    "lint": "npm run lint:js && npm run lint:shell",
+    "lint:js": "biome lint",
+    "lint:shell": "bash bin/lint-shell.sh",
     "lint:fix": "biome lint --write --unsafe",
     "typecheck": "tsc --noEmit"
   },
