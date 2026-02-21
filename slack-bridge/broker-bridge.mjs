@@ -744,7 +744,7 @@ function startApiServer() {
         } else {
           await sendViaBroker({
             action: "reactions.add",
-            routing: { channel, timestamp: threadTs, emoji },
+            routing: { channel, timestamp, emoji },
             body: { emoji },
           });
         }
