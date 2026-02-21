@@ -62,6 +62,7 @@ BAUDBOT_HOME="/home/baudbot_agent"
 # Source repo auto-detected from this script's location (can live anywhere)
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 NODE_VERSION="22.14.0"
+PI_VERSION="${BAUDBOT_PI_VERSION:-0.52.12}"
 
 # Work from a neutral directory — sudo -u baudbot_agent inherits CWD, and
 # git/find fail if CWD is a directory the agent can't access (e.g. /root).
@@ -120,11 +121,10 @@ else
   echo "Node.js already installed, skipping"
 fi
 
-echo "=== Installing pi ==="
-sudo -u baudbot_agent bash -c "
-  export PATH=~/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH
-  npm install -g @mariozechner/pi-coding-agent
-"
+echo "=== Installing pi $PI_VERSION ==="
+NODE_BIN="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
+sudo -u baudbot_agent env PATH="$NODE_BIN:$PATH" \
+  npm install -g "@mariozechner/pi-coding-agent@$PI_VERSION"
 
 echo "=== Configuring git identity ==="
 GIT_USER_NAME="${GIT_USER_NAME:-baudbot-agent}"

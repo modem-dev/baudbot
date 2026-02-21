@@ -209,11 +209,13 @@ header "Setup"
 info "Running setup.sh (user, Node.js, firewall, permissions)..."
 info "This takes 1–2 minutes."
 echo ""
+
 if [ "$EXPERIMENTAL" -eq 1 ]; then
-  bash "$REPO_DIR/setup.sh" --experimental "$ADMIN_USER"
+  BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash --experimental "$ADMIN_USER"
 else
-  bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
+  BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
 fi
+
 echo ""
 info "Core setup complete"
 

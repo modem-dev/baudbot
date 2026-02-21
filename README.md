@@ -79,6 +79,12 @@ Upgrade later:
 sudo baudbot update
 ```
 
+Install with a specific pi version (optional):
+
+```bash
+BAUDBOT_PI_VERSION=0.52.12 baudbot install
+```
+
 Slack broker registration (after OAuth callback). When `SLACK_BROKER_*` variables are present, the runtime starts broker pull mode (no inbound callback port required):
 
 ```bash

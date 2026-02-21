@@ -32,6 +32,12 @@ sudo baudbot update
 sudo baudbot rollback previous
 ```
 
+Provision with a pinned pi version (optional):
+
+```bash
+BAUDBOT_PI_VERSION=0.52.12 baudbot install
+```
+
 ## Slack broker registration
 
 ```bash
