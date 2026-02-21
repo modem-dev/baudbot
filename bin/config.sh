@@ -33,61 +33,15 @@ is_interactive_tty() {
   [ -t 0 ] && [ -t 1 ]
 }
 
-detect_distro() {
-  local distro="unknown"
-  if [ -f /etc/os-release ]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    case "${ID:-}" in
-      ubuntu|debian) distro="ubuntu" ;;
-      arch|archarm) distro="arch" ;;
-      *)
-        if [ -n "${ID_LIKE:-}" ]; then
-          case "$ID_LIKE" in
-            *debian*|*ubuntu*) distro="ubuntu" ;;
-            *arch*) distro="arch" ;;
-          esac
-        fi
-        ;;
-    esac
-  fi
-  echo "$distro"
-}
-
-try_install_gum() {
-  [ "$BAUDBOT_TRY_INSTALL_GUM" = "1" ] || return 1
-  is_interactive_tty || return 1
-
-  if command -v gum >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local distro
-  distro="$(detect_distro)"
-
-  if [ "$distro" = "arch" ] && command -v pacman >/dev/null 2>&1; then
-    pacman -Syu --noconfirm --needed gum >/dev/null 2>&1 || true
-  elif [ "$distro" = "ubuntu" ] && command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq >/dev/null 2>&1 || true
-    apt-get install -y -qq gum >/dev/null 2>&1 || true
-  fi
-
-  command -v gum >/dev/null 2>&1
-}
-
 init_ui() {
   if ! is_interactive_tty; then
     return
   fi
 
-  if command -v gum >/dev/null 2>&1; then
+  # Optional dependency: if gum is already installed, use it.
+  # Never auto-install here; keep config flow distro-agnostic.
+  if [ "$BAUDBOT_TRY_INSTALL_GUM" = "1" ] && command -v gum >/dev/null 2>&1; then
     USE_GUM=1
-    return
-  fi
-
-  if try_install_gum; then
-    USE_GUM=1
-    info "Using gum for interactive prompts"
   fi
 }
 
@@ -324,9 +278,6 @@ LLM_CHOICE="$(ui_choose "Choose your primary LLM provider:" \
   "Gemini" \
   "OpenCode Zen")"
 
-# Clear other provider keys so choice is explicit and deterministic.
-clear_keys ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY
-
 case "$LLM_CHOICE" in
   "Anthropic")
     prompt_secret "ANTHROPIC_API_KEY" \
@@ -369,6 +320,13 @@ if [ -z "${ENV_VARS[$SELECTED_LLM_KEY]:-}" ]; then
   exit 1
 fi
 
+# Keep only selected provider key for deterministic config.
+for key in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
+  if [ "$key" != "$SELECTED_LLM_KEY" ]; then
+    unset "ENV_VARS[$key]"
+  fi
+done
+
 echo ""
 
 # Slack integration mode picker
@@ -387,6 +345,19 @@ if [ "$SLACK_CHOICE" = "Use baudbot.ai Slack integration (easy)" ]; then
     "U" \
     "false"
 else
+  clear_keys \
+    SLACK_BROKER_URL \
+    SLACK_BROKER_WORKSPACE_ID \
+    SLACK_BROKER_SERVER_PRIVATE_KEY \
+    SLACK_BROKER_SERVER_PUBLIC_KEY \
+    SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY \
+    SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY \
+    SLACK_BROKER_PUBLIC_KEY \
+    SLACK_BROKER_SIGNING_PUBLIC_KEY \
+    SLACK_BROKER_POLL_INTERVAL_MS \
+    SLACK_BROKER_MAX_MESSAGES \
+    SLACK_BROKER_DEDUPE_TTL_MS
+
   prompt_secret "SLACK_BOT_TOKEN" \
     "Slack bot token" \
     "https://api.slack.com/apps → OAuth & Permissions" \
@@ -498,24 +469,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || echo "")"
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/setup.sh" ]; then
   ENV_VARS[BAUDBOT_SOURCE_DIR]="$SCRIPT_DIR"
-elif [ -n "${ENV_VARS[BAUDBOT_SOURCE_DIR]:-}" ]; then
-  ENV_VARS[BAUDBOT_SOURCE_DIR]="${ENV_VARS[BAUDBOT_SOURCE_DIR]}"
 fi
 
 # ── Validation ───────────────────────────────────────────────────────────────
-
-if [ "$LLM_CHOICE" = "Anthropic" ] && [ -z "${ENV_VARS[ANTHROPIC_API_KEY]:-}" ]; then
-  warn "Anthropic selected but ANTHROPIC_API_KEY is empty"
-fi
-if [ "$LLM_CHOICE" = "OpenAI" ] && [ -z "${ENV_VARS[OPENAI_API_KEY]:-}" ]; then
-  warn "OpenAI selected but OPENAI_API_KEY is empty"
-fi
-if [ "$LLM_CHOICE" = "Gemini" ] && [ -z "${ENV_VARS[GEMINI_API_KEY]:-}" ]; then
-  warn "Gemini selected but GEMINI_API_KEY is empty"
-fi
-if [ "$LLM_CHOICE" = "OpenCode Zen" ] && [ -z "${ENV_VARS[OPENCODE_ZEN_API_KEY]:-}" ]; then
-  warn "OpenCode Zen selected but OPENCODE_ZEN_API_KEY is empty"
-fi
 
 if [ -z "${ENV_VARS[SLACK_ALLOWED_USERS]:-}" ]; then
   warn "SLACK_ALLOWED_USERS not set — all workspace members will be allowed"

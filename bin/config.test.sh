@@ -19,6 +19,13 @@ run_config() {
   printf "%b" "$input" | HOME="$home" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
 }
 
+write_existing_env() {
+  local home="$1"
+  local content="$2"
+  mkdir -p "$home/.baudbot"
+  printf "%b" "$content" > "$home/.baudbot/.env"
+}
+
 expect_file_contains() {
   local desc="$1" file="$2" pattern="$3"
   if grep -qF "$pattern" "$file"; then
@@ -91,6 +98,22 @@ expect_file_not_contains "email skipped omits AgentMail" "$ENV3" "AGENTMAIL_API_
 # Test 4: Selected LLM key is required
 HOME4="$TMPDIR/missing-llm"
 expect_exit_nonzero "fails when selected provider key is missing" "$HOME4" '1\n\n'
+
+# Test 5: Re-run preserves existing selected LLM key when input is blank
+HOME5="$TMPDIR/rerun-keep-llm"
+write_existing_env "$HOME5" 'ANTHROPIC_API_KEY=sk-ant-existing\n'
+run_config "$HOME5" '1\n\n1\n\nn\nn\nn\n'
+ENV5="$HOME5/.baudbot/.env"
+expect_file_contains "rerun keeps existing Anthropic key" "$ENV5" "ANTHROPIC_API_KEY=sk-ant-existing"
+
+# Test 6: Advanced Slack mode clears stale broker registration keys
+HOME6="$TMPDIR/clear-broker"
+write_existing_env "$HOME6" 'OPENAI_API_KEY=sk-old\nSLACK_BROKER_URL=https://broker.example.com\nSLACK_BROKER_WORKSPACE_ID=T0123\nSLACK_BROKER_PUBLIC_KEY=abc\n'
+run_config "$HOME6" '2\nsk-openai-new\n2\nxoxb-new\nxapp-new\n\nn\nn\nn\n'
+ENV6="$HOME6/.baudbot/.env"
+expect_file_not_contains "advanced clears broker URL" "$ENV6" "SLACK_BROKER_URL="
+expect_file_not_contains "advanced clears broker workspace" "$ENV6" "SLACK_BROKER_WORKSPACE_ID="
+expect_file_contains "advanced retains socket bot token" "$ENV6" "SLACK_BOT_TOKEN=xoxb-new"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
