@@ -56,9 +56,8 @@ die() {
   exit 1
 }
 
-has_systemd() {
-  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
-}
+# shellcheck source=bin/lib/release-common.sh
+source "$SCRIPT_DIR/lib/release-common.sh"
 
 cleanup() {
   if [ -n "$CHECKOUT_DIR" ] && [ -d "$CHECKOUT_DIR" ]; then
@@ -170,34 +169,6 @@ resolve_branch() {
   echo "main"
 }
 
-verify_git_free_release() {
-  local dir="$1"
-
-  if [ -d "$dir/.git" ]; then
-    return 1
-  fi
-
-  if find "$dir" -type d -name .git -print -quit | grep -q .; then
-    return 1
-  fi
-
-  return 0
-}
-
-atomic_symlink_swap() {
-  local target="$1"
-  local link_path="$2"
-  local parent
-  local tmp_link
-
-  parent="$(dirname "$link_path")"
-  mkdir -p "$parent"
-
-  tmp_link="$parent/.tmp.$(basename "$link_path").$$"
-  ln -s "$target" "$tmp_link"
-  mv -Tf "$tmp_link" "$link_path"
-}
-
 save_source_metadata() {
   local repo_url="$1"
   local branch="$2"
@@ -303,30 +274,13 @@ run_deploy() {
 }
 
 run_restart_and_health() {
-  local was_active=0
-
   if [ -n "$BAUDBOT_UPDATE_RESTART_CMD" ]; then
     log "running restart override"
     BAUDBOT_UPDATE_RELEASE_DIR="$RELEASE_DIR" BAUDBOT_UPDATE_CHECKOUT_DIR="$CHECKOUT_DIR" bash -lc "$BAUDBOT_UPDATE_RESTART_CMD"
   elif [ "$BAUDBOT_UPDATE_SKIP_RESTART" = "1" ]; then
     log "skipping restart"
   else
-    if has_systemd && systemctl is-enabled baudbot >/dev/null 2>&1; then
-      if systemctl is-active baudbot >/dev/null 2>&1; then
-        was_active=1
-      fi
-
-      if [ "$was_active" -eq 1 ]; then
-        log "restarting baudbot service"
-        systemctl restart baudbot
-        sleep 3
-        systemctl is-active baudbot >/dev/null 2>&1 || die "service failed to restart"
-      else
-        log "service installed but not active; skipping restart"
-      fi
-    else
-      log "systemd unavailable; skipping restart"
-    fi
+    restart_baudbot_service_if_active
   fi
 
   if [ -n "$BAUDBOT_UPDATE_HEALTH_CMD" ]; then
