@@ -17,7 +17,6 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { webcrypto } from "node:crypto";
-import sodium from "libsodium-wrappers-sumo";
 
 const { subtle } = webcrypto;
 
@@ -47,7 +46,8 @@ export function usageText() {
     "Options:",
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
-    "  --auth-code CODE       One-time auth code from broker OAuth callback",
+    "  --registration-token TOKEN  10-minute registration token from dashboard callback",
+    "  --auth-code CODE            Legacy one-time auth code (fallback)",
     "  -v, --verbose          Show detailed registration progress",
     "  -h, --help             Show this help",
     "",
@@ -59,6 +59,7 @@ export function parseArgs(argv) {
   const out = {
     brokerUrl: "",
     workspaceId: "",
+    registrationToken: "",
     authCode: "",
     verbose: false,
     help: false,
@@ -94,6 +95,16 @@ export function parseArgs(argv) {
     if (arg === "--workspace-id") {
       i++;
       out.workspaceId = argv[i] || "";
+      continue;
+    }
+
+    if (arg.startsWith("--registration-token=")) {
+      out.registrationToken = arg.slice("--registration-token=".length);
+      continue;
+    }
+    if (arg === "--registration-token") {
+      i++;
+      out.registrationToken = argv[i] || "";
       continue;
     }
 
@@ -203,6 +214,12 @@ export async function fetchBrokerPubkeys(brokerUrl, fetchImpl = fetch) {
 
 export function mapRegisterError(status, errorText) {
   const text = String(errorText || "request failed");
+  if (status === 403 && /invalid registration token/i.test(text)) {
+    return "invalid registration token — re-run OAuth install and use a fresh token";
+  }
+  if (status === 403 && /registration token already used/i.test(text)) {
+    return "registration token already used — re-run OAuth install and use a fresh token";
+  }
   if (status === 403 && /invalid auth code/i.test(text)) {
     return "invalid auth code — re-run OAuth install and use the new auth code";
   }
@@ -221,36 +238,52 @@ export function mapRegisterError(status, errorText) {
   return `registration failed (${status}) — ${text}`;
 }
 
+let cachedSodium = null;
+
+async function getSodium() {
+  if (cachedSodium) return cachedSodium;
+
+  try {
+    const mod = await import("libsodium-wrappers-sumo");
+    cachedSodium = mod.default ?? mod;
+    await cachedSodium.ready;
+    return cachedSodium;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Decrypt a sealed box encrypted with the server's public key.
- * @param {string} encryptedBase64 - Base64-encoded sealed box ciphertext
- * @param {string} serverPrivateKeyBase64 - Base64-encoded server private key
- * @param {string} serverPublicKeyBase64 - Base64-encoded server public key
- * @returns {string} - Decrypted plaintext
+ * Returns null if libsodium is unavailable.
  */
 async function decryptSealedBox(encryptedBase64, serverPrivateKeyBase64, serverPublicKeyBase64) {
-  await sodium.ready;
-  
+  const sodium = await getSodium();
+  if (!sodium) {
+    return null;
+  }
+
   const ciphertext = Buffer.from(encryptedBase64, "base64");
   const serverPrivateKey = Buffer.from(serverPrivateKeyBase64, "base64");
   const serverPublicKey = Buffer.from(serverPublicKeyBase64, "base64");
-  
+
   const plaintext = sodium.crypto_box_seal_open(
     ciphertext,
     serverPublicKey,
-    serverPrivateKey
+    serverPrivateKey,
   );
-  
+
   if (!plaintext) {
     throw new Error("Failed to decrypt sealed box - invalid keys or corrupted data");
   }
-  
+
   return new TextDecoder().decode(plaintext);
 }
 
 export async function registerWithBroker({
   brokerUrl,
   workspaceId,
+  registrationToken,
   authCode,
   serverKeys,
   fetchImpl = fetch,
@@ -264,7 +297,8 @@ export async function registerWithBroker({
     workspace_id: workspaceId,
     server_pubkey: serverKeys.server_pubkey,
     server_signing_pubkey: serverKeys.server_signing_pubkey,
-    auth_code: authCode,
+    ...(registrationToken ? { registration_token: registrationToken } : {}),
+    ...(authCode ? { auth_code: authCode } : {}),
   };
 
   logger(`Registering workspace ${workspaceId} at ${endpoint}`);
@@ -315,11 +349,16 @@ export async function registerWithBroker({
       decryptedBotToken = await decryptSealedBox(
         body.encrypted_bot_token,
         serverKeys.server_private_key,
-        serverKeys.server_pubkey
+        serverKeys.server_pubkey,
       );
-      logger("✅ Bot token decrypted successfully");
+
+      if (decryptedBotToken) {
+        logger("✅ Bot token decrypted successfully");
+      } else {
+        logger("⚠️ libsodium-wrappers-sumo unavailable; skipping bot token decryption");
+      }
     } catch (err) {
-      throw new Error(`Failed to decrypt bot token: ${err instanceof Error ? err.message : String(err)}`);
+      logger(`⚠️ Failed to decrypt bot token, continuing with broker mode only: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -496,15 +535,17 @@ async function collectInputs(parsedArgs) {
     || existing.SLACK_BROKER_WORKSPACE_ID
     || (await prompt("Workspace ID (starts with T): "));
 
-  const authCode = parsedArgs.authCode || (await prompt("Auth code: "));
+  const registrationToken = parsedArgs.registrationToken || (await prompt("Registration token (leave blank to use auth code): "));
+  const authCode = parsedArgs.authCode || (!registrationToken ? (await prompt("Auth code (legacy): ")) : "");
 
-  if (!authCode) {
-    throw new Error("auth code is required");
+  if (!registrationToken && !authCode) {
+    throw new Error("registration token or auth code is required");
   }
 
   return {
     brokerUrl: normalizeBrokerUrl(brokerUrl),
     workspaceId: workspaceId.trim(),
+    registrationToken,
     authCode,
     configTargets,
   };
@@ -513,12 +554,17 @@ async function collectInputs(parsedArgs) {
 export async function runRegistration({
   brokerUrl,
   workspaceId,
+  registrationToken,
   authCode,
   fetchImpl = fetch,
   logger = () => {},
 }) {
   if (!validateWorkspaceId(workspaceId)) {
     throw new Error("workspace ID must match Slack team ID format (e.g. T0123ABCD)");
+  }
+
+  if (!registrationToken && !authCode) {
+    throw new Error("registration token or auth code is required");
   }
 
   const normalizedBrokerUrl = normalizeBrokerUrl(brokerUrl);
@@ -528,6 +574,7 @@ export async function runRegistration({
   const registration = await registerWithBroker({
     brokerUrl: normalizedBrokerUrl,
     workspaceId,
+    registrationToken,
     authCode,
     serverKeys,
     fetchImpl,
