@@ -27,4 +27,8 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/redact-logs.test.sh")).not.toThrow();
   });
 
+  it("env helper", () => {
+    expect(() => runScript("bin/env.test.sh")).not.toThrow();
+  });
+
 });

@@ -218,7 +218,34 @@ BAUDBOT_SOURCE_DIR=/home/your_username/baudbot
 
 ## Applying Configuration
 
-After editing `~/.config/.env`:
+Quick key updates after setup (recommended):
+
+```bash
+# Update a key in file backend (and mirror runtime when run with sudo)
+sudo baudbot env set ANTHROPIC_API_KEY
+
+# Optional: pass value inline + restart automatically
+sudo baudbot env set OPENAI_API_KEY sk-... --restart
+```
+
+### Optional: move source-of-truth away from `~/.baudbot/.env`
+
+`baudbot env` supports a pluggable source backend:
+
+```bash
+# Show active backend
+baudbot env backend show
+
+# Use command backend (command must output KEY=VALUE lines)
+sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
+
+# Sync rendered source env into runtime .env and restart
+sudo baudbot env sync --restart
+```
+
+This keeps runtime compatibility (`~/.config/.env` is still rendered for varlock/startup) while moving authoritative storage to an external source.
+
+Manual edits also work. After editing `~/.config/.env` directly:
 
 ```bash
 # Re-deploy config and restart cleanly
