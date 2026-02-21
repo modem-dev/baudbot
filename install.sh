@@ -22,6 +22,25 @@
 
 set -euo pipefail
 
+EXPERIMENTAL=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --experimental)
+      EXPERIMENTAL=1
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--experimental]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--experimental]"
+      exit 1
+      ;;
+  esac
+done
+
 # ── Formatting ───────────────────────────────────────────────────────────────
 
 BOLD='\033[1m'
@@ -53,6 +72,9 @@ fi
 
 echo ""
 echo -e "${BOLD}🤖 Baudbot Installer${RESET}"
+if [ "$EXPERIMENTAL" -eq 1 ]; then
+  echo -e "${YELLOW}Experimental mode enabled: optional risky integrations may be installed.${RESET}"
+fi
 echo ""
 
 # ── Detect distro ────────────────────────────────────────────────────────────
@@ -187,7 +209,11 @@ header "Setup"
 info "Running setup.sh (user, Node.js, firewall, permissions)..."
 info "This takes 1–2 minutes."
 echo ""
-bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
+if [ "$EXPERIMENTAL" -eq 1 ]; then
+  bash "$REPO_DIR/setup.sh" --experimental "$ADMIN_USER"
+else
+  bash "$REPO_DIR/setup.sh" "$ADMIN_USER"
+fi
 echo ""
 info "Core setup complete"
 
@@ -200,13 +226,13 @@ ENV_FILE="$BAUDBOT_HOME/.config/.env"
 
 # Run baudbot config to collect secrets into ~/.baudbot/.env on the admin user.
 # config.sh handles prompting, validation, and writing to the admin config dir.
-BAUDBOT_CONFIG_USER="$ADMIN_USER" bash "$REPO_DIR/bin/config.sh"
+BAUDBOT_CONFIG_USER="$ADMIN_USER" BAUDBOT_EXPERIMENTAL="$EXPERIMENTAL" bash "$REPO_DIR/bin/config.sh"
 
 # Publish and deploy the initial git-free release from the local checkout.
 # This also copies ~/.baudbot/.env → agent's ~/.config/.env with correct perms.
 header "Deploy"
 BOOTSTRAP_BRANCH=$(sudo -u "$ADMIN_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" \
+BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" BAUDBOT_EXPERIMENTAL="$EXPERIMENTAL" \
   bash "$REPO_DIR/bin/update-release.sh" --repo "$REPO_DIR" --branch "$BOOTSTRAP_BRANCH" --skip-preflight --skip-restart
 
 # ── Launch ───────────────────────────────────────────────────────────────────

@@ -54,10 +54,13 @@ sudo baudbot broker register \
 
 `baudbot setup` is host provisioning only; do not use `baudbot setup --slack-broker`.
 
-### Email Monitor
+### Email Monitor (experimental-only)
+
+Email tooling is disabled by default. To enable it, run setup/install in experimental mode (`baudbot setup --experimental` or `install.sh --experimental`) so `BAUDBOT_EXPERIMENTAL=1` is set.
 
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
+| `BAUDBOT_EXPERIMENTAL` | Feature flag for risky integrations | Set to `1` to unlock experimental integrations (including email) |
 | `AGENTMAIL_API_KEY` | AgentMail API key | [app.agentmail.to](https://app.agentmail.to) — sign up and create an API key |
 | `BAUDBOT_EMAIL` | Agent's email address | The email address the control agent monitors (e.g. `your-agent@agentmail.to`). Create the inbox via the AgentMail dashboard or let the agent create it on startup. |
 | `BAUDBOT_SECRET` | Shared secret for email authentication | Generate a random string: `openssl rand -hex 32`. Senders must include this in their email for it to be processed. |
@@ -191,11 +194,12 @@ SLACK_BROKER_POLL_INTERVAL_MS=3000
 SLACK_BROKER_MAX_MESSAGES=10
 SLACK_BROKER_DEDUPE_TTL_MS=1200000
 
-# Email
-AGENTMAIL_API_KEY=...
-BAUDBOT_EMAIL=my-agent@agentmail.to
-BAUDBOT_SECRET=<openssl rand -hex 32>
-BAUDBOT_ALLOWED_EMAILS=you@example.com
+# Experimental features (required for email)
+# BAUDBOT_EXPERIMENTAL=1
+# AGENTMAIL_API_KEY=...
+# BAUDBOT_EMAIL=my-agent@agentmail.to
+# BAUDBOT_SECRET=<openssl rand -hex 32>
+# BAUDBOT_ALLOWED_EMAILS=you@example.com
 
 # Sentry (optional)
 SENTRY_AUTH_TOKEN=sntrys_...

@@ -28,8 +28,8 @@ BAUDBOT_BOOTSTRAP_TARGET="/usr/local/bin/baudbot" \
 # required secrets, skip optional integrations, decline launch.
 # Prompts: admin user, LLM choice(1=Anthropic), Anthropic key,
 # Slack mode(2=advanced), Slack bot, Slack app, Slack users,
-# Browser?(n), Sentry?(n), Email?(n), launch(n)
-printf 'baudbot_admin\n1\nsk-ant-testkey\n2\nxoxb-test\nxapp-test\nU01TEST\nn\nn\nn\nn\n' \
+# Browser?(n), Sentry?(n), launch(n)
+printf 'baudbot_admin\n1\nsk-ant-testkey\n2\nxoxb-test\nxapp-test\nU01TEST\nn\nn\nn\n' \
   | BAUDBOT_INSTALL_SCRIPT_URL="file:///home/baudbot_admin/baudbot/install.sh" baudbot install
 
 echo "=== Verifying install ==="

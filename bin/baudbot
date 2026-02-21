@@ -57,7 +57,7 @@ usage() {
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
-  echo "  setup          One-time system setup (user, deps, firewall, systemd)"
+  echo "  setup          One-time system setup (user, deps, firewall, systemd; --experimental enables risky integrations)"
   echo "  config         Interactive secrets and config setup"
   echo "  deploy         Deploy source + config to agent runtime"
   echo "  broker         Slack broker commands (register workspace linkage)"

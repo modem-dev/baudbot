@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh
 baudbot install
 ```
 
-`baudbot install` includes a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry/Email). If [`gum`](https://github.com/charmbracelet/gum) is installed, prompts use richer TUI widgets; otherwise installer falls back to standard bash prompts.
+`baudbot install` includes a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry). Email capabilities are disabled by default and only available in experimental mode (`baudbot setup --experimental` / `install.sh --experimental`). If [`gum`](https://github.com/charmbracelet/gum) is installed, prompts use richer TUI widgets; otherwise installer falls back to standard bash prompts.
 
 After install:
 
@@ -94,14 +94,14 @@ See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and 
 
 | Role | Purpose |
 |------|---------|
-| **control-agent** | Owns intake, triage, delegation, Slack/email comms, and lifecycle supervision |
+| **control-agent** | Owns intake, triage, delegation, Slack comms, and lifecycle supervision |
 | **dev-agent** | Ephemeral coding worker that executes branch → code → PR → CI loops |
 | **sentry-agent** | On-demand incident investigator for Sentry alerts and triage support |
 
 ## Architecture at a glance
 
 ```text
-Slack/Email
+Slack
    ↓
 control-agent (always-on)
    ├─ todo + routing

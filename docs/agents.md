@@ -16,7 +16,7 @@ The control-agent is the team-facing coordinator.
 
 Responsibilities:
 
-- monitor inbound requests (Slack/email)
+- monitor inbound requests (Slack; email only when experimental mode is enabled)
 - create and manage todos
 - select target repo(s)
 - spawn and supervise dev-agent sessions

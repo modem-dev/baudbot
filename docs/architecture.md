@@ -47,7 +47,7 @@ Inter-session communication is handled over pi session-control sockets.
 ## Data path summary
 
 ```text
-Slack/Email → bridge + wrapping → control-agent
+Slack (email optional via experimental mode) → bridge + wrapping → control-agent
             → todo + delegation → dev-agent worktree execution
             → PR/CI outcomes → control-agent response in source thread
 ```
