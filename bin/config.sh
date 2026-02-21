@@ -269,6 +269,12 @@ done
 
 init_ui
 
+EXPERIMENTAL_MODE="${BAUDBOT_EXPERIMENTAL:-${EXISTING[BAUDBOT_EXPERIMENTAL]:-0}}"
+case "$EXPERIMENTAL_MODE" in
+  1|true|TRUE|yes|YES|on|ON) EXPERIMENTAL_MODE=1 ;;
+  *) EXPERIMENTAL_MODE=0 ;;
+esac
+
 # ── Prompting ────────────────────────────────────────────────────────────────
 
 clear_keys() {
@@ -344,6 +350,13 @@ else
 fi
 echo -e "  ${DIM}$CONFIG_FILE${RESET}"
 echo ""
+
+if [ "$EXPERIMENTAL_MODE" -eq 1 ]; then
+  ENV_VARS[BAUDBOT_EXPERIMENTAL]=1
+  warn "Experimental mode enabled: showing additional risky integrations."
+else
+  clear_keys BAUDBOT_EXPERIMENTAL
+fi
 
 # -- Required --
 echo -e "${BOLD}Required${RESET} ${DIM}(agent won't start without these)${RESET}"
@@ -500,37 +513,43 @@ fi
 
 echo ""
 
-# Email / AgentMail
+# Email / AgentMail (disabled by default; experimental only)
 HAS_EMAIL=false
-if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ] || [ -n "${ENV_VARS[BAUDBOT_EMAIL]:-}" ]; then HAS_EMAIL=true; fi
-if ui_confirm "Set up Email Integration (via AgentMail)?" "$HAS_EMAIL"; then
-  prompt_secret "AGENTMAIL_API_KEY" \
-    "AgentMail API key" \
-    "https://app.agentmail.to"
+if [ "$EXPERIMENTAL_MODE" -eq 1 ]; then
+  if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ] || [ -n "${ENV_VARS[BAUDBOT_EMAIL]:-}" ]; then HAS_EMAIL=true; fi
+  if ui_confirm "Set up Email Integration (via AgentMail)?" "$HAS_EMAIL"; then
+    prompt_secret "AGENTMAIL_API_KEY" \
+      "AgentMail API key" \
+      "https://app.agentmail.to"
 
-  prompt_secret "BAUDBOT_EMAIL" \
-    "Agent email address (e.g. agent@agentmail.to)" \
-    "" "" "" "false"
-
-  if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ]; then
-    prompt_secret "BAUDBOT_SECRET" \
-      "Email auth secret (or press Enter to auto-generate)"
-    if [ -z "${ENV_VARS[BAUDBOT_SECRET]:-}" ]; then
-      ENV_VARS[BAUDBOT_SECRET]="$(openssl rand -hex 32)"
-      dim "  Auto-generated BAUDBOT_SECRET"
-    fi
-
-    prompt_secret "BAUDBOT_ALLOWED_EMAILS" \
-      "Allowed sender emails (comma-separated)" \
+    prompt_secret "BAUDBOT_EMAIL" \
+      "Agent email address (e.g. agent@agentmail.to)" \
       "" "" "" "false"
-    HAS_EMAIL=true
+
+    if [ -n "${ENV_VARS[AGENTMAIL_API_KEY]:-}" ]; then
+      prompt_secret "BAUDBOT_SECRET" \
+        "Email auth secret (or press Enter to auto-generate)"
+      if [ -z "${ENV_VARS[BAUDBOT_SECRET]:-}" ]; then
+        ENV_VARS[BAUDBOT_SECRET]="$(openssl rand -hex 32)"
+        dim "  Auto-generated BAUDBOT_SECRET"
+      fi
+
+      prompt_secret "BAUDBOT_ALLOWED_EMAILS" \
+        "Allowed sender emails (comma-separated)" \
+        "" "" "" "false"
+      HAS_EMAIL=true
+    else
+      clear_keys BAUDBOT_SECRET BAUDBOT_ALLOWED_EMAILS
+      HAS_EMAIL=false
+    fi
   else
-    clear_keys BAUDBOT_SECRET BAUDBOT_ALLOWED_EMAILS
+    clear_keys AGENTMAIL_API_KEY BAUDBOT_EMAIL BAUDBOT_SECRET BAUDBOT_ALLOWED_EMAILS
     HAS_EMAIL=false
   fi
 else
   clear_keys AGENTMAIL_API_KEY BAUDBOT_EMAIL BAUDBOT_SECRET BAUDBOT_ALLOWED_EMAILS
-  HAS_EMAIL=false
+  dim "  Email integration is disabled by default (too risky)."
+  dim "  Re-run with BAUDBOT_EXPERIMENTAL=1 to unlock experimental integrations."
 fi
 
 # ── Auto-set values ──────────────────────────────────────────────────────────
@@ -597,6 +616,7 @@ ordered_keys=(
   BAUDBOT_SOURCE_DIR
   BRIDGE_API_PORT
   PI_SESSION_ID
+  BAUDBOT_EXPERIMENTAL
 )
 
 declare -A WRITTEN
@@ -633,9 +653,14 @@ echo -e "  Slack mode:   ${BOLD}${SLACK_CHOICE}${RESET}"
 if [ "$SLACK_CHOICE" = "Use baudbot.ai Slack integration (easy)" ]; then
   echo -e "  ${DIM}Next: run 'sudo baudbot broker register' after install${RESET}"
 fi
+echo -e "  Experimental:     $( [ "$EXPERIMENTAL_MODE" -eq 1 ] && echo "enabled" || echo "disabled" )"
 echo -e "  Browser (Kernel): $( [ "$HAS_KERNEL" = true ] && echo "enabled" || echo "disabled" )"
 echo -e "  Sentry:           $( [ "$HAS_SENTRY" = true ] && echo "enabled" || echo "disabled" )"
-echo -e "  Email:            $( [ "$HAS_EMAIL" = true ] && echo "enabled" || echo "disabled" )"
+if [ "$EXPERIMENTAL_MODE" -eq 1 ]; then
+  echo -e "  Email:            $( [ "$HAS_EMAIL" = true ] && echo "enabled" || echo "disabled" )"
+else
+  echo -e "  Email:            disabled (experimental only)"
+fi
 echo ""
 echo -e "Next: ${BOLD}sudo baudbot deploy${RESET} to push config to the agent"
 echo ""

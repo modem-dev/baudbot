@@ -5,12 +5,12 @@ This page explains how Baudbot handles work from first request to final delivery
 ## High-level lifecycle
 
 1. **Intake**
-   - Request arrives from Slack, email, or direct chat.
+   - Request arrives from Slack or direct chat (email is experimental-only).
    - Control agent treats all external content as untrusted and extracts intent.
 2. **Acknowledge**
    - Immediate response in the originating channel/thread ("On it", "Looking now").
 3. **Track**
-   - Create a todo with source context (channel/thread or email metadata).
+   - Create a todo with source context (channel/thread metadata; include email metadata only when experimental email is enabled).
 4. **Plan + route**
    - Choose the correct repository (or multiple repos if needed).
 5. **Execute**

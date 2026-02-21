@@ -29,7 +29,35 @@
 
 set -euo pipefail
 
-ADMIN_USER="${1:?Usage: $0 <admin_user>}"
+EXPERIMENTAL=0
+ADMIN_USER=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --experimental)
+      EXPERIMENTAL=1
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--experimental] <admin_user>"
+      exit 0
+      ;;
+    *)
+      if [ -n "$ADMIN_USER" ]; then
+        echo "Usage: $0 [--experimental] <admin_user>"
+        exit 1
+      fi
+      ADMIN_USER="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$ADMIN_USER" ]; then
+  echo "Usage: $0 [--experimental] <admin_user>"
+  exit 1
+fi
+
 BAUDBOT_HOME="/home/baudbot_agent"
 # Source repo auto-detected from this script's location (can live anywhere)
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,6 +67,10 @@ PI_VERSION="${BAUDBOT_PI_VERSION:-0.52.12}"
 # Work from a neutral directory — sudo -u baudbot_agent inherits CWD, and
 # git/find fail if CWD is a directory the agent can't access (e.g. /root).
 cd /tmp
+
+if [ "$EXPERIMENTAL" -eq 1 ]; then
+  echo "=== Experimental mode enabled (includes risky/unstable integrations) ==="
+fi
 
 echo "=== Creating baudbot_agent user ==="
 if id baudbot_agent &>/dev/null; then
@@ -167,6 +199,23 @@ baudbot_agent ALL=(root) NOPASSWD: /usr/local/bin/baudbot-docker
 EOF
 chmod 440 /etc/sudoers.d/baudbot-agent
 
+if [ "$EXPERIMENTAL" -eq 1 ]; then
+  echo "=== Persisting experimental feature flag ==="
+  ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6)
+  ADMIN_CONFIG_DIR="$ADMIN_HOME/.baudbot"
+  ADMIN_CONFIG_FILE="$ADMIN_CONFIG_DIR/.env"
+  mkdir -p "$ADMIN_CONFIG_DIR"
+  touch "$ADMIN_CONFIG_FILE"
+  if grep -q '^BAUDBOT_EXPERIMENTAL=' "$ADMIN_CONFIG_FILE"; then
+    sed -i 's/^BAUDBOT_EXPERIMENTAL=.*/BAUDBOT_EXPERIMENTAL=1/' "$ADMIN_CONFIG_FILE"
+  else
+    echo "BAUDBOT_EXPERIMENTAL=1" >> "$ADMIN_CONFIG_FILE"
+  fi
+  chmod 700 "$ADMIN_CONFIG_DIR"
+  chmod 600 "$ADMIN_CONFIG_FILE"
+  chown -R "$ADMIN_USER:$ADMIN_USER" "$ADMIN_CONFIG_DIR"
+fi
+
 echo "=== Setting up runtime directories ==="
 # The agent runs from deployed copies, not from the source repo directly.
 # Source: ~/baudbot/ (read-only to agent)
@@ -183,6 +232,11 @@ echo "=== Installing extension dependencies ==="
 NODE_BIN="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
 export PATH="$NODE_BIN:$PATH"
 while IFS= read -r dir; do
+  ext_name="$(basename "$dir")"
+  if [ "$EXPERIMENTAL" -ne 1 ] && { [ "$ext_name" = "agentmail" ] || [ "$ext_name" = "email-monitor" ]; }; then
+    echo "  Skipping deps in $dir (experimental-only)"
+    continue
+  fi
   echo "  Installing deps in $dir"
   (cd "$dir" && npm install)
 done < <(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_modules/*' -exec dirname {} \;)
@@ -205,7 +259,7 @@ echo "=== Publishing initial git-free /opt release ==="
 # from /opt/baudbot/releases/<sha>. This keeps live operations decoupled from
 # the mutable source checkout.
 BOOTSTRAP_BRANCH=$(sudo -u "$ADMIN_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" \
+BAUDBOT_ROOT="$REPO_DIR" BAUDBOT_CONFIG_USER="$ADMIN_USER" BAUDBOT_EXPERIMENTAL="$EXPERIMENTAL" \
   "$REPO_DIR/bin/update-release.sh" --repo "$REPO_DIR" --branch "$BOOTSTRAP_BRANCH" --skip-preflight --skip-restart
 echo "Published /opt release and deployed runtime files"
 

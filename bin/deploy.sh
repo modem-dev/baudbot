@@ -30,11 +30,35 @@ for arg in "$@"; do
   esac
 done
 
+# Determine admin config location (used for secret deploy + feature flags)
+if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
+  DEPLOY_USER="$BAUDBOT_CONFIG_USER"
+elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
+  DEPLOY_USER="$SUDO_USER"
+else
+  DEPLOY_USER=$(stat -c '%U' "$BAUDBOT_SRC" 2>/dev/null || echo "")
+  if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
+    DEPLOY_USER="$(whoami)"
+  fi
+fi
+DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
+ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
+
+EXPERIMENTAL_MODE="${BAUDBOT_EXPERIMENTAL:-}"
+if [ -z "$EXPERIMENTAL_MODE" ] && [ -f "$ADMIN_CONFIG" ]; then
+  EXPERIMENTAL_MODE=$(grep '^BAUDBOT_EXPERIMENTAL=' "$ADMIN_CONFIG" | head -1 | cut -d= -f2- || true)
+fi
+case "$EXPERIMENTAL_MODE" in
+  1|true|TRUE|yes|YES|on|ON) EXPERIMENTAL_MODE=1 ;;
+  *) EXPERIMENTAL_MODE=0 ;;
+esac
+
 log() { echo "  $1"; }
 
 # Security-critical files — deployed read-only (chmod a-w)
 PROTECTED_EXTENSIONS=(tool-guard.ts tool-guard.test.mjs)
 PROTECTED_BRIDGE_FILES=(security.mjs security.test.mjs)
+EXPERIMENTAL_EXTENSIONS=(agentmail email-monitor)
 
 # ── Stage source to temp dir (readable by agent) ────────────────────────────
 
@@ -75,15 +99,42 @@ set -euo pipefail
 # ── Extensions ───────────────────────────────────────────────────────────────
 
 echo "Deploying extensions..."
+log "experimental mode: $EXPERIMENTAL_MODE"
 
 EXT_SRC="$STAGE_DIR/extensions"
 EXT_DEST="$BAUDBOT_HOME/.pi/agent/extensions"
 
 [ "$DRY_RUN" -eq 0 ] && as_agent mkdir -p "$EXT_DEST"
 
+if [ "$EXPERIMENTAL_MODE" -ne 1 ]; then
+  for disabled in "${EXPERIMENTAL_EXTENSIONS[@]}"; do
+    if [ "$DRY_RUN" -eq 0 ]; then
+      as_agent rm -rf "$EXT_DEST/$disabled" 2>/dev/null || true
+      log "✓ removed $disabled/ (experimental-only)"
+    else
+      log "would remove: $disabled/ (experimental-only)"
+    fi
+  done
+fi
+
 for ext in "$EXT_SRC"/*; do
   base=$(basename "$ext")
   [ "$base" = "node_modules" ] && continue
+
+  skip_ext=0
+  if [ "$EXPERIMENTAL_MODE" -ne 1 ]; then
+    for experimental in "${EXPERIMENTAL_EXTENSIONS[@]}"; do
+      if [ "$base" = "$experimental" ]; then
+        skip_ext=1
+        break
+      fi
+    done
+  fi
+
+  if [ "$skip_ext" -eq 1 ]; then
+    log "- skipped $base/ (experimental-only)"
+    continue
+  fi
 
   if [ -d "$ext" ]; then
     if [ "$DRY_RUN" -eq 0 ]; then
@@ -269,21 +320,7 @@ fi
 
 echo "Deploying config..."
 
-# Determine who invoked this (the admin user)
-# Priority: BAUDBOT_CONFIG_USER env > SUDO_USER > repo owner > whoami
-if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
-  DEPLOY_USER="$BAUDBOT_CONFIG_USER"
-elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
-  DEPLOY_USER="$SUDO_USER"
-else
-  # Detect from repo ownership (the admin owns the source)
-  DEPLOY_USER=$(stat -c '%U' "$BAUDBOT_SRC" 2>/dev/null || echo "")
-  if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
-    DEPLOY_USER="$(whoami)"
-  fi
-fi
-DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
-ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
+# Uses admin config resolved near script start (ADMIN_CONFIG).
 
 if [ -f "$ADMIN_CONFIG" ]; then
   if [ "$DRY_RUN" -eq 0 ]; then
