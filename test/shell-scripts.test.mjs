@@ -31,4 +31,8 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/env.test.sh")).not.toThrow();
   });
 
+  it("json helper", () => {
+    expect(() => runScript("bin/lib/json-common.test.sh")).not.toThrow();
+  });
+
 });

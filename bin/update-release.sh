@@ -58,6 +58,8 @@ die() {
 
 # shellcheck source=bin/lib/release-common.sh
 source "$SCRIPT_DIR/lib/release-common.sh"
+# shellcheck source=bin/lib/json-common.sh
+source "$SCRIPT_DIR/lib/json-common.sh"
 
 cleanup() {
   if [ -n "$CHECKOUT_DIR" ] && [ -d "$CHECKOUT_DIR" ]; then
@@ -305,7 +307,7 @@ run_restart_and_health() {
   local version_file="$BAUDBOT_AGENT_HOME/.pi/agent/baudbot-version.json"
   local deployed_sha
 
-  deployed_sha="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "grep '\"sha\"' '$version_file' 2>/dev/null | head -1 | sed 's/.*\"sha\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/'")"
+  deployed_sha="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "sha" 2>/dev/null || true)"
 
   if [ -z "$deployed_sha" ]; then
     die "deployed version file missing or unreadable: $version_file"
