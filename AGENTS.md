@@ -209,8 +209,8 @@ The CI scripts (`bin/ci/setup-ubuntu.sh`, `bin/ci/setup-arch.sh`) run the bootst
 
 ## Security Notes
 
-- `tool-guard.ts` blocks: writes outside `/home/baudbot_agent/`, writes to source repo, writes to protected runtime files, dangerous bash patterns (reverse shells, fork bombs, rm -rf /, etc.), credential exfiltration.
-- `baudbot-safe-bash` (root-owned, `/usr/local/bin/`) is a second layer that blocks the same patterns at the shell level.
+- `tool-guard.ts` is a policy/guidance layer: it blocks many risky writes/bash patterns and provides safety-interruption reasoning, but it is not a hard sandbox boundary by itself.
+- `baudbot-safe-bash` (root-owned, `/usr/local/bin/`) is a second deny-list layer at the shell level; hard containment still comes from OS permissions and runtime hardening.
 - The firewall (`setup-firewall.sh`) restricts `baudbot_agent`'s network egress to an allowlist.
 - `/proc` is mounted with `hidepid=2` — agent can only see its own processes.
 - Secrets in `~/.config/.env` are `600` perms, never committed.

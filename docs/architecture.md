@@ -57,6 +57,6 @@ Slack/Email → bridge + wrapping → control-agent
 - clear trust boundaries between admin and agent runtime
 - predictable operations for deploy/update/rollback
 - support for concurrent, task-scoped coding workers
-- safer enablement of high-privilege tools via layered controls
+- safer enablement of high-privilege tools via layered controls (policy layers plus OS-level boundaries)
 
 For security controls and known risks, see [../SECURITY.md](../SECURITY.md).

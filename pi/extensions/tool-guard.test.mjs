@@ -121,6 +121,16 @@ function checkWritePath(filePath) {
   return false; // allowed
 }
 
+function buildSafetyReason({ tier, label, ruleId, rationale, saferAlternative, nextStep }) {
+  const resolvedNextStep = nextStep || "Stop and choose a safer command. If this is truly required, ask for admin approval.";
+  return [
+    `🛡️ Safety interruption (${tier}-risk): ${label} [${ruleId}]`,
+    `Why risky: ${rationale}`,
+    `Safer option: ${saferAlternative}`,
+    `Next step: ${resolvedNextStep}`,
+  ].join("\n");
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe("tool-guard: safe commands pass through", () => {
@@ -145,6 +155,23 @@ describe("tool-guard: safe commands pass through", () => {
       assert.equal(result.blocked, false, `should not block: ${cmd}`);
     });
   }
+});
+
+describe("tool-guard: safety interruption messaging", () => {
+  it("includes concise reasoning and safer alternative", () => {
+    const msg = buildSafetyReason({
+      tier: "high",
+      label: "Recursive delete of root filesystem",
+      ruleId: "rm-rf-root",
+      rationale: "This can destroy the host filesystem and permanently break the system.",
+      saferAlternative: "Delete only a scoped workspace path under your own home directory.",
+    });
+
+    assert.match(msg, /Safety interruption \(high-risk\)/);
+    assert.match(msg, /Why risky:/);
+    assert.match(msg, /Safer option:/);
+    assert.match(msg, /Next step:/);
+  });
 });
 
 describe("tool-guard: destructive commands blocked", () => {
