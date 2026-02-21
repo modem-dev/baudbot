@@ -7,11 +7,18 @@
 
 set -euo pipefail
 
+apt_background_procs() {
+  # Ignore unattended-upgrade-shutdown --wait-for-signal. That service can stay
+  # running while apt is actually idle and causes false "busy" detections.
+  pgrep -f -a '(apt.systemd.daily|apt-get|dpkg|unattended-upgrade)' 2>/dev/null \
+    | grep -v 'unattended-upgrade-shutdown --wait-for-signal' || true
+}
+
 wait_for_apt_idle() {
   # Fresh Ubuntu droplets may run unattended-upgrades on first boot.
-  # Wait until apt/dpkg background processes are gone.
+  # Wait until real apt/dpkg workers are gone.
   for _ in $(seq 1 90); do
-    if ! pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
+    if [ -z "$(apt_background_procs)" ]; then
       return 0
     fi
     sleep 2
@@ -24,16 +31,19 @@ wait_for_apt_idle || echo "  continuing after timeout; will retry apt commands i
 
 echo "=== [Ubuntu] Installing git (needed to init test repo) ==="
 for attempt in $(seq 1 8); do
-  if apt-get update -qq && apt-get install -y -qq git 2>&1 | tail -1; then
+  if apt-get -o DPkg::Lock::Timeout=120 update -qq \
+    && apt-get -o DPkg::Lock::Timeout=120 install -y -qq git 2>&1 | tail -1; then
     break
   fi
 
   if [ "$attempt" -eq 8 ]; then
     echo "apt failed after $attempt attempts" >&2
+    apt_background_procs >&2 || true
     exit 1
   fi
 
   echo "  apt busy (attempt $attempt/8), retrying in 5s..."
+  apt_background_procs || true
   wait_for_apt_idle || true
   sleep 5
 done

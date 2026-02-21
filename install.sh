@@ -142,19 +142,40 @@ info "Admin user: ${BOLD}$ADMIN_USER${RESET} ($ADMIN_HOME)"
 
 header "Prerequisites"
 
+apt_background_procs_ubuntu() {
+  # Ignore unattended-upgrade-shutdown --wait-for-signal. It can remain active
+  # with no apt/dpkg lock contention and causes false waits on fresh Ubuntu VMs.
+  pgrep -f -a '(apt.systemd.daily|apt-get|dpkg|unattended-upgrade)' 2>/dev/null \
+    | grep -v 'unattended-upgrade-shutdown --wait-for-signal' || true
+}
+
 install_prereqs_ubuntu() {
   # Wait for unattended-upgrades (common on fresh VMs)
-  if pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
+  if [ -n "$(apt_background_procs_ubuntu)" ]; then
     info "Waiting for background apt to finish..."
     for _ in $(seq 1 60); do
-      if ! pgrep -f -a '(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; then
+      if [ -z "$(apt_background_procs_ubuntu)" ]; then
         break
       fi
       sleep 2
     done
   fi
-  apt-get update -qq
-  apt-get install -y -qq git curl tmux iptables docker.io gh sudo 2>&1 | tail -3
+
+  for attempt in $(seq 1 5); do
+    if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update -qq \
+      && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl tmux iptables docker.io gh sudo 2>&1 | tail -3; then
+      return 0
+    fi
+
+    if [ "$attempt" -eq 5 ]; then
+      err "apt failed after $attempt attempts"
+      apt_background_procs_ubuntu >&2 || true
+      return 1
+    fi
+
+    warn "apt busy (attempt $attempt/5), retrying in 5s..."
+    sleep 5
+  done
 }
 
 install_prereqs_arch() {
