@@ -224,11 +224,15 @@ fi
 if [ "$HAS_LLM" = false ]; then
   MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)\n"
 fi
-for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
+for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
   if ! grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
     MISSING+="  - $key\n"
   fi
 done
+
+if ! grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
+  warn "SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
+fi
 
 if [ -n "$MISSING" ]; then
   warn "Missing required secrets — skipping launch:"

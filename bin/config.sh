@@ -202,9 +202,9 @@ prompt_secret "SLACK_APP_TOKEN" \
   "xapp-"
 
 prompt_secret "SLACK_ALLOWED_USERS" \
-  "Slack user IDs (comma-separated)" \
+  "Slack user IDs (comma-separated; optional — allow all if empty)" \
   "Click your Slack profile → ··· → Copy member ID" \
-  "required" \
+  "" \
   "U" \
   "false"
 

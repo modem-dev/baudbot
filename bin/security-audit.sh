@@ -656,19 +656,19 @@ echo ""
 
 echo "Bridge Configuration"
 
-# Check SLACK_ALLOWED_USERS is set (without reading the actual value)
+# Check SLACK_ALLOWED_USERS mode (without reading the actual value)
 if [ -f "$BAUDBOT_HOME/.config/.env" ]; then
   if grep -q '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
     allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
     if [ "$allowed_count" -gt 0 ]; then
       ok "SLACK_ALLOWED_USERS configured ($allowed_count user(s))"
     else
-      finding "CRITICAL" "SLACK_ALLOWED_USERS is empty" \
-        "Bridge will refuse to start — add at least one user ID"
+      finding "WARN" "SLACK_ALLOWED_USERS is empty" \
+        "Bridge will allow all workspace members"
     fi
   else
-    finding "CRITICAL" "SLACK_ALLOWED_USERS not set in .env" \
-      "Bridge will refuse to start — add SLACK_ALLOWED_USERS=U..."
+    finding "WARN" "SLACK_ALLOWED_USERS not set in .env" \
+      "Bridge will allow all workspace members"
   fi
 fi
 echo ""

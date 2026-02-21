@@ -8,7 +8,7 @@
  * Required env vars:
  *   SLACK_BOT_TOKEN        - Slack bot OAuth token
  *   SLACK_APP_TOKEN        - Slack app-level token (for Socket Mode)
- *   SLACK_ALLOWED_USERS    - comma-separated Slack user IDs (REQUIRED, fail-closed)
+ *   SLACK_ALLOWED_USERS    - comma-separated Slack user IDs (optional — allow all if unset)
  *
  * Optional:
  *   PI_SESSION_ID          - target pi session ID (defaults to auto-detect control-agent)
@@ -51,7 +51,7 @@ for (const key of ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]) {
   }
 }
 
-// ── Access Control (fail-closed) ────────────────────────────────────────────
+// ── Access Control ───────────────────────────────────────────────────────────
 
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 

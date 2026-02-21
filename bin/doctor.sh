@@ -136,13 +136,19 @@ if [ -f "$ENV_FILE" ]; then
   fi
 
   # Check required keys
-  for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN SLACK_ALLOWED_USERS; do
+  for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
     if grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
       pass "$key is set"
     else
       warn "$key is not set"
     fi
   done
+
+  if grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
+    pass "SLACK_ALLOWED_USERS is set"
+  else
+    warn "SLACK_ALLOWED_USERS is not set (all workspace members allowed)"
+  fi
 else
   if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.config" ]; then
     warn "cannot verify agent .env as non-root (run: sudo baudbot doctor)"

@@ -818,7 +818,7 @@ async function startPollLoop() {
   logInfo(`   broker: ${brokerBaseUrl}`);
   logInfo(`   workspace: ${workspaceId}`);
   logInfo(`   poll interval: ${POLL_INTERVAL_MS}ms, max messages: ${MAX_MESSAGES}`);
-  logInfo(`   allowed users: ${ALLOWED_USERS.length}`);
+  logInfo(`   allowed users: ${ALLOWED_USERS.length || "all"}`);
   logInfo(`   pi socket: ${socketPath || "(not found — will retry on message)"}`);
   await startPollLoop();
 })();
