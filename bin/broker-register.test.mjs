@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import {
   parseArgs,
   normalizeBrokerUrl,
@@ -9,6 +13,7 @@ import {
   registerWithBroker,
   upsertEnvContent,
   runRegistration,
+  isMainModule,
 } from "./broker-register.mjs";
 
 const FIXTURE_SERVER_KEYS = {
@@ -51,6 +56,24 @@ test("parseArgs sets verbose=true for -v and --verbose", () => {
 
   const long = parseArgs(["--verbose"]);
   assert.equal(long.verbose, true);
+});
+
+test("isMainModule handles symlink argv path", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "broker-register-main-"));
+  const realFile = path.join(tempDir, "real.mjs");
+  const symlinkFile = path.join(tempDir, "link.mjs");
+
+  try {
+    fs.writeFileSync(realFile, "export default 1;\n", "utf8");
+    fs.symlinkSync(realFile, symlinkFile);
+
+    const moduleUrl = pathToFileURL(fs.realpathSync(realFile)).href;
+    assert.equal(isMainModule(moduleUrl, symlinkFile), true);
+  } finally {
+    try { fs.unlinkSync(symlinkFile); } catch {}
+    try { fs.unlinkSync(realFile); } catch {}
+    try { fs.rmdirSync(tempDir); } catch {}
+  }
 });
 
 test("parseArgs accepts registration token", () => {

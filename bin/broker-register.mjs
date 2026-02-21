@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { webcrypto } from "node:crypto";
+import { pathToFileURL } from "node:url";
 
 const { subtle } = webcrypto;
 
@@ -602,6 +603,27 @@ export async function runRegistration({
   };
 }
 
+export function isMainModule(moduleUrl = import.meta.url, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+
+  let argvUrl = "";
+  let argvRealUrl = "";
+
+  try {
+    argvUrl = pathToFileURL(path.resolve(argv1)).href;
+  } catch {
+    argvUrl = "";
+  }
+
+  try {
+    argvRealUrl = pathToFileURL(fs.realpathSync(argv1)).href;
+  } catch {
+    argvRealUrl = "";
+  }
+
+  return moduleUrl === argvUrl || (argvRealUrl !== "" && moduleUrl === argvRealUrl);
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const parsed = parseArgs(argv);
 
@@ -650,7 +672,7 @@ export async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule()) {
   main().catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`❌ ${message}`);
