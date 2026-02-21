@@ -9,6 +9,8 @@ CONFIG_SCRIPT="$SCRIPT_DIR/config.sh"
 PASS=0
 FAIL=0
 TMPDIR=$(mktemp -d)
+OUT_FILE="$TMPDIR/config-test.out"
+ERR_FILE="$TMPDIR/config-test.err"
 cleanup() { rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 
@@ -22,7 +24,7 @@ run_config() {
   mkdir -p "$home"
   printf "%b" "$input" \
     | HOME="$home" BAUDBOT_CONFIG_USER="$config_user" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" \
-      >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
+      >"$OUT_FILE" 2>"$ERR_FILE"
 }
 
 write_existing_env() {
@@ -64,7 +66,7 @@ expect_exit_nonzero() {
   set +e
   printf "%b" "$input" \
     | HOME="$home" BAUDBOT_CONFIG_USER="$config_user" BAUDBOT_TRY_INSTALL_GUM=0 bash "$CONFIG_SCRIPT" \
-      >/tmp/baudbot-config-test.out 2>/tmp/baudbot-config-test.err
+      >"$OUT_FILE" 2>"$ERR_FILE"
   local rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
