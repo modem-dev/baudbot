@@ -56,19 +56,19 @@ function getConfig() {
 function isSocketAlive(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.createConnection(socketPath);
-    const timeout = setTimeout(() => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(false);
-    }, 300);
+    let settled = false;
 
     const cleanup = (alive: boolean) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       socket.removeAllListeners();
       if (alive) socket.end();
       else socket.destroy();
       resolve(alive);
     };
+
+    const timeout = setTimeout(() => cleanup(false), 300);
 
     socket.once("connect", () => cleanup(true));
     socket.once("error", () => cleanup(false));
@@ -121,7 +121,12 @@ function hasInProgressTodos(): boolean {
         const jsonEnd = content.indexOf("\n\n");
         const jsonStr = jsonEnd > 0 ? content.slice(0, jsonEnd) : content;
         const frontMatter = JSON.parse(jsonStr.trim());
-        if (frontMatter.status === "in-progress" || frontMatter.status === "in_progress") {
+        if (
+          frontMatter.status === "in-progress" ||
+          frontMatter.status === "in_progress" ||
+          (typeof frontMatter.assigned_to_session === "string" &&
+            frontMatter.assigned_to_session.trim().length > 0)
+        ) {
           return true;
         }
       } catch {
@@ -169,7 +174,8 @@ export default function idleCompactExtension(pi: ExtensionAPI): void {
 
     // Check 1: context usage above threshold?
     const usage = lastCtx.getContextUsage();
-    if (!usage || usage.tokens === null || usage.contextWindow === null) return;
+    if (!usage || usage.tokens === null || usage.contextWindow === null || usage.contextWindow <= 0)
+      return;
 
     const pctUsed = (usage.tokens / usage.contextWindow) * 100;
     if (pctUsed < thresholdPct) {
