@@ -224,11 +224,27 @@ fi
 if [ "$HAS_LLM" = false ]; then
   MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)\n"
 fi
-for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-  if ! grep -q "^${key}=.\+" "$ENV_FILE" 2>/dev/null; then
-    MISSING+="  - $key\n"
-  fi
-done
+HAS_SOCKET=false
+HAS_BROKER=false
+
+if grep -q '^SLACK_BOT_TOKEN=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_APP_TOKEN=.\+' "$ENV_FILE" 2>/dev/null; then
+  HAS_SOCKET=true
+fi
+
+if grep -q '^SLACK_BROKER_URL=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_WORKSPACE_ID=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_SERVER_PRIVATE_KEY=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_SERVER_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null \
+  && grep -q '^SLACK_BROKER_SIGNING_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null; then
+  HAS_BROKER=true
+fi
+
+if [ "$HAS_SOCKET" = false ] && [ "$HAS_BROKER" = false ]; then
+  MISSING+="  - Slack integration (either SLACK_BOT_TOKEN + SLACK_APP_TOKEN, or broker registration via 'sudo baudbot broker register')\n"
+fi
 
 if ! grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
   warn "SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
