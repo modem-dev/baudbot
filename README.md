@@ -14,6 +14,8 @@ Baudbot runs a persistent AI control agent on Linux, connected to Slack, with wo
 
 Built for teams that want autonomous execution speed **without giving up operational control**.
 
+_**⚠️ WARNING: Baudbot is in alpha/early testing. If you use this, prepare to fix things. It might burn tokens. Be careful!**_
+
 ## What Baudbot does
 
 - **Shared Slack interface for the whole team.** Anyone in allowed channels can hand work to the same agent system.
