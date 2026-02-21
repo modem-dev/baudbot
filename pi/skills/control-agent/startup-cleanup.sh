@@ -74,19 +74,29 @@ if tmux has-session -t slack-bridge 2>/dev/null; then
 fi
 
 # Select bridge script: prefer broker pull mode when SLACK_BROKER_* vars are present,
-# otherwise fall back to direct Socket Mode.
-BRIDGE_SCRIPT="bridge.mjs"
-if [ -f "$HOME/runtime/slack-bridge/broker-bridge.mjs" ]; then
-  if varlock run --path "$HOME/.config/" -- sh -c '
-    test -n "$SLACK_BROKER_URL" &&
-    test -n "$SLACK_BROKER_WORKSPACE_ID" &&
-    test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
-    test -n "$SLACK_BROKER_SERVER_PUBLIC_KEY" &&
-    test -n "$SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY" &&
-    test -n "$SLACK_BROKER_PUBLIC_KEY" &&
-    test -n "$SLACK_BROKER_SIGNING_PUBLIC_KEY"' 2>/dev/null; then
-    BRIDGE_SCRIPT="broker-bridge.mjs"
-  fi
+# then Socket Mode when SLACK_BOT_TOKEN + SLACK_APP_TOKEN are present.
+# If neither mode is configured, skip bridge startup.
+BRIDGE_SCRIPT=""
+if [ -f "$HOME/runtime/slack-bridge/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
+  test -n "$SLACK_BROKER_URL" &&
+  test -n "$SLACK_BROKER_WORKSPACE_ID" &&
+  test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
+  test -n "$SLACK_BROKER_SERVER_PUBLIC_KEY" &&
+  test -n "$SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY" &&
+  test -n "$SLACK_BROKER_PUBLIC_KEY" &&
+  test -n "$SLACK_BROKER_SIGNING_PUBLIC_KEY"' 2>/dev/null; then
+  BRIDGE_SCRIPT="broker-bridge.mjs"
+elif varlock run --path "$HOME/.config/" -- sh -c '
+  test -n "$SLACK_BOT_TOKEN" &&
+  test -n "$SLACK_APP_TOKEN"' 2>/dev/null; then
+  BRIDGE_SCRIPT="bridge.mjs"
+fi
+
+if [ -z "$BRIDGE_SCRIPT" ]; then
+  echo "No Slack transport configured (missing broker keys and socket tokens); skipping bridge startup."
+  echo ""
+  echo "=== Cleanup Complete ==="
+  exit 0
 fi
 
 # Start fresh slack-bridge
