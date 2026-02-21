@@ -96,6 +96,17 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+# command backend with spaces/pipeline remains executable
+run_env backend set-command 'printf "ANTHROPIC_API_KEY=sk-ant-space\n" | tr -d "\r"' >/dev/null
+PIPE_KEY="$(run_render --get ANTHROPIC_API_KEY)"
+if [ "$PIPE_KEY" = "sk-ant-space" ]; then
+  echo "  PASS: command backend handles spaces and pipeline"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: command backend handles spaces and pipeline"
+  FAIL=$((FAIL + 1))
+fi
+
 # set should fail on command backend
 set +e
 run_env set ANTHROPIC_API_KEY sk-ant-should-fail >/dev/null 2>&1
