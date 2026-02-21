@@ -41,6 +41,59 @@ version() {
   fi
 }
 
+version_sha() {
+  local sha=""
+  local release_target=""
+  local version_file=""
+
+  # Source checkout path (git repo)
+  if command -v git >/dev/null 2>&1; then
+    sha="$(git -C "$BAUDBOT_ROOT" rev-parse --short=7 HEAD 2>/dev/null || true)"
+    if [ -n "$sha" ]; then
+      echo "$sha"
+      return 0
+    fi
+  fi
+
+  # /opt/baudbot/releases/<sha>
+  if printf '%s\n' "$BAUDBOT_ROOT" | grep -Eq '/releases/[0-9a-f]{7,40}$'; then
+    sha="${BAUDBOT_ROOT##*/}"
+    echo "${sha:0:7}"
+    return 0
+  fi
+
+  # /opt/baudbot/current -> /opt/baudbot/releases/<sha>
+  release_target="$(readlink -f /opt/baudbot/current 2>/dev/null || true)"
+  if printf '%s\n' "$release_target" | grep -Eq '/releases/[0-9a-f]{7,40}$'; then
+    sha="${release_target##*/}"
+    echo "${sha:0:7}"
+    return 0
+  fi
+
+  # Runtime metadata fallback
+  version_file="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}/.pi/agent/baudbot-version.json"
+  if [ -r "$version_file" ]; then
+    sha="$(grep -E '"sha"[[:space:]]*:' "$version_file" | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+    [ -n "$sha" ] && echo "${sha:0:7}" && return 0
+  fi
+
+  echo ""
+}
+
+version_display() {
+  local base
+  local sha
+
+  base="$(version)"
+  sha="$(version_sha)"
+
+  if [ -n "$sha" ]; then
+    echo "$base ($sha)"
+  else
+    echo "$base"
+  fi
+}
+
 usage() {
   echo -e "${BOLD}baudbot${RESET} — hardened infrastructure for always-on AI agents"
   echo ""
@@ -65,14 +118,14 @@ usage() {
   echo -e "${BOLD}Operations:${RESET}"
   echo "  doctor         Health check (perms, firewall, secrets, deps)"
   echo "  audit          Security posture audit"
-  echo "  version        Show baudbot CLI version"
+  echo "  version        Show baudbot CLI version (+ git SHA when available)"
   echo "  test           Run test suite"
   echo "  update         Build/test in temp checkout, publish git-free release, deploy"
   echo "  rollback       Re-deploy previous (or specified) git-free release snapshot"
   echo "  uninstall      Remove everything"
   echo ""
   echo -e "${BOLD}Options:${RESET}"
-  echo "  --version      Show version"
+  echo "  --version      Show version (+ git SHA when available)"
   echo "  --help, -h     Show this help"
 }
 
@@ -719,11 +772,11 @@ case "${1:-}" in
 
   version)
     shift
-    echo "baudbot $(version)"
+    echo "baudbot $(version_display)"
     ;;
 
   --version|-v)
-    echo "baudbot $(version)"
+    echo "baudbot $(version_display)"
     ;;
 
   --help|-h|"")
