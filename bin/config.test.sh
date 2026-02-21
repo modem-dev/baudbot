@@ -16,6 +16,8 @@ run_config() {
   local home="$1"
   local input="$2"
   local config_user
+  # config.sh exits when run as root unless BAUDBOT_CONFIG_USER is set.
+  # CI shell tests run as root on droplets, so force an explicit target user.
   config_user="$(id -un)"
   mkdir -p "$home"
   printf "%b" "$input" \
@@ -57,6 +59,7 @@ expect_file_not_contains() {
 expect_exit_nonzero() {
   local desc="$1" home="$2" input="$3"
   local config_user
+  # Same reason as run_config(): make behavior deterministic under root CI runs.
   config_user="$(id -un)"
   set +e
   printf "%b" "$input" \
