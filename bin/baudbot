@@ -326,34 +326,11 @@ print_deployed_version() {
   echo -e "${BOLD}deployed version:${RESET} $line"
 }
 
-is_broker_configured() {
-  local agent_user="${1:-baudbot_agent}"
-  local env_file="/home/$agent_user/.config/.env"
-  local required_key=""
-  local line=""
-  local value=""
-
+broker_mode_configured() {
+  local env_file="/home/${1:-baudbot_agent}/.config/.env"
   [ -r "$env_file" ] || return 1
-
-  for required_key in \
-    SLACK_BROKER_URL \
-    SLACK_BROKER_WORKSPACE_ID \
-    SLACK_BROKER_SERVER_PRIVATE_KEY \
-    SLACK_BROKER_SERVER_PUBLIC_KEY \
-    SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY \
-    SLACK_BROKER_PUBLIC_KEY \
-    SLACK_BROKER_SIGNING_PUBLIC_KEY; do
-    line="$(grep -E "^${required_key}=" "$env_file" | tail -1 || true)"
-    [ -n "$line" ] || return 1
-
-    value="${line#*=}"
-    value="${value//[[:space:]]/}"
-    [ -n "$value" ] || return 1
-    [ "$value" != "\"\"" ] || return 1
-    [ "$value" != "''" ] || return 1
-  done
-
-  return 0
+  grep -Eq '^SLACK_BROKER_URL=[^[:space:]].*$' "$env_file" || return 1
+  grep -Eq '^SLACK_BROKER_WORKSPACE_ID=[^[:space:]].*$' "$env_file" || return 1
 }
 
 print_broker_connection_status() {
@@ -361,39 +338,43 @@ print_broker_connection_status() {
   local pane=""
   local latest_signal=""
 
-  if ! is_broker_configured "$agent_user"; then
+  if ! broker_mode_configured "$agent_user"; then
     echo -e "${BOLD}broker connection:${RESET} not configured"
     return 0
   fi
 
   if [ "$(id -u)" -eq 0 ]; then
-    if ! sudo -u "$agent_user" tmux has-session -t slack-bridge 2>/dev/null; then
+    sudo -u "$agent_user" tmux has-session -t slack-bridge 2>/dev/null || {
       echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
       return 0
-    fi
-    pane="$(sudo -u "$agent_user" tmux capture-pane -p -t slack-bridge -S -400 2>/dev/null || true)"
+    }
+    pane="$(sudo -u "$agent_user" tmux capture-pane -p -t slack-bridge -S -200 2>/dev/null || true)"
   elif [ "$(id -un)" = "$agent_user" ]; then
-    if ! tmux has-session -t slack-bridge 2>/dev/null; then
+    tmux has-session -t slack-bridge 2>/dev/null || {
       echo -e "${BOLD}broker connection:${RESET} disconnected (bridge tmux session not running)"
       return 0
-    fi
-    pane="$(tmux capture-pane -p -t slack-bridge -S -400 2>/dev/null || true)"
+    }
+    pane="$(tmux capture-pane -p -t slack-bridge -S -200 2>/dev/null || true)"
   else
     echo -e "${BOLD}broker connection:${RESET} configured (run with sudo for runtime status)"
     return 0
   fi
 
   latest_signal="$(printf '%s\n' "$pane" | grep -E 'inbox poll failed|backing off|idle|pulled [0-9]+ message\(s\)|Slack broker pull bridge is running' | tail -1 || true)"
-
-  if printf '%s\n' "$latest_signal" | grep -Eq 'inbox poll failed|backing off'; then
-    echo -e "${BOLD}broker connection:${RESET} reconnecting (recent inbox poll failure)"
-  elif printf '%s\n' "$latest_signal" | grep -Eq 'idle|pulled [0-9]+ message\(s\)'; then
-    echo -e "${BOLD}broker connection:${RESET} connected"
-  elif printf '%s\n' "$latest_signal" | grep -q 'Slack broker pull bridge is running'; then
-    echo -e "${BOLD}broker connection:${RESET} starting"
-  else
-    echo -e "${BOLD}broker connection:${RESET} unknown (bridge running, no recent poll telemetry)"
-  fi
+  case "$latest_signal" in
+    *"inbox poll failed"*|*"backing off"*)
+      echo -e "${BOLD}broker connection:${RESET} reconnecting (recent inbox poll failure)"
+      ;;
+    *"idle"*|*"pulled "*)
+      echo -e "${BOLD}broker connection:${RESET} connected"
+      ;;
+    *"Slack broker pull bridge is running"*)
+      echo -e "${BOLD}broker connection:${RESET} starting"
+      ;;
+    *)
+      echo -e "${BOLD}broker connection:${RESET} unknown (bridge running, no recent poll telemetry)"
+      ;;
+  esac
 }
 
 pi_control_dir() {
