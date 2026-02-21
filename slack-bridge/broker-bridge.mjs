@@ -121,9 +121,14 @@ function canonicalizeOutbound(workspace, action, timestamp, encryptedBody) {
  */
 function stableStringify(obj) {
   if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
-  if (Array.isArray(obj)) return "[" + obj.map(stableStringify).join(",") + "]";
+  if (Array.isArray(obj)) return "[" + obj.map((v) => stableStringify(v) ?? "null").join(",") + "]";
   const keys = Object.keys(obj).sort();
-  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
+  const pairs = [];
+  for (const k of keys) {
+    const v = stableStringify(obj[k]);
+    if (v !== undefined) pairs.push(JSON.stringify(k) + ":" + v);
+  }
+  return "{" + pairs.join(",") + "}";
 }
 
 /**
