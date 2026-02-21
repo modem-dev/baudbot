@@ -39,6 +39,7 @@ pi/
     heartbeat.ts            periodic health check loop
     auto-name.ts            session naming
     control.ts              inter-session communication
+    idle-compact.ts         compact context during idle periods (40% threshold)
     ...
   skills/                   source of truth for agent skill templates
     control-agent/          orchestration agent
