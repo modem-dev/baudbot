@@ -7,8 +7,8 @@
 
 set -euo pipefail
 
-echo "=== [Arch] Installing git (needed to init test repo) ==="
-pacman -Sy --noconfirm --needed git sudo 2>&1 | tail -3
+echo "=== [Arch] Installing base CI deps ==="
+pacman -Sy --noconfirm --needed git jq sudo 2>&1 | tail -3
 
 echo "=== Preparing source ==="
 useradd -m -s /bin/bash baudbot_admin

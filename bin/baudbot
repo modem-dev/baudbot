@@ -18,11 +18,30 @@ if [ -z "${BAUDBOT_ROOT:-}" ]; then
     # Handle relative symlinks
     [[ "$SCRIPT" != /* ]] && SCRIPT="$DIR/$SCRIPT"
   done
-  BAUDBOT_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+
+  CANDIDATE_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+  if [ -f "$CANDIDATE_ROOT/bin/baudbot" ] && [ -f "$CANDIDATE_ROOT/package.json" ]; then
+    BAUDBOT_ROOT="$CANDIDATE_ROOT"
+  elif [ -d /opt/baudbot/current/bin ]; then
+    BAUDBOT_ROOT="$(readlink -f /opt/baudbot/current 2>/dev/null || echo /opt/baudbot/current)"
+  else
+    BAUDBOT_ROOT="$CANDIDATE_ROOT"
+  fi
 fi
 
-# shellcheck source=bin/lib/json-common.sh
-source "$BAUDBOT_ROOT/bin/lib/json-common.sh"
+json_get_string_or_empty() {
+  local file="$1"
+  local key="$2"
+  [ -r "$file" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -er --arg k "$key" 'if (type == "object") and has($k) and (.[$k] | type == "string") then .[$k] else empty end' "$file" 2>/dev/null || true
+}
+
+json_get_string_stdin_or_empty() {
+  local key="$1"
+  command -v jq >/dev/null 2>&1 || return 0
+  jq -er --arg k "$key" 'if (type == "object") and has($k) and (.[$k] | type == "string") then .[$k] else empty end' 2>/dev/null || true
+}
 
 # Colors (disabled if not a terminal)
 if [ -t 1 ]; then
@@ -301,10 +320,10 @@ print_deployed_version() {
     branch="$(json_get_string_or_empty "$version_file" "branch")"
     deployed_at="$(json_get_string_or_empty "$version_file" "deployed_at")"
   elif [ "$(id -u)" -eq 0 ] && id "$agent_user" >/dev/null 2>&1; then
-    short="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "short" 2>/dev/null || true)"
-    sha="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "sha" 2>/dev/null || true)"
-    branch="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "branch" 2>/dev/null || true)"
-    deployed_at="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "deployed_at" 2>/dev/null || true)"
+    short="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "short" 2>/dev/null || true)"
+    sha="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "sha" 2>/dev/null || true)"
+    branch="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "branch" 2>/dev/null || true)"
+    deployed_at="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "deployed_at" 2>/dev/null || true)"
   fi
 
   if [ -z "$short" ] && [ -z "$sha" ] && [ -z "$branch" ] && [ -z "$deployed_at" ]; then
