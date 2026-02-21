@@ -448,6 +448,6 @@ if [ "$DRY_RUN" -eq 1 ]; then
 else
   echo "✅ Deployed $GIT_SHA_SHORT. Protected files are read-only."
   echo ""
-  echo "If the bridge is running, restart it:"
-  echo "  sudo -u baudbot_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'"
+  echo "Restart runtime services to load changes (recommended):"
+  echo "  sudo baudbot restart"
 fi
