@@ -453,10 +453,6 @@ async function handleUserMessage(userMessage, event) {
     logWarn(`⚠️ Suspicious patterns from <@${event.user}>: ${suspicious.join(", ")}`);
   }
 
-  try {
-    await react(event.channel, event.ts, "eyes");
-  } catch {}
-
   refreshSocket();
   const currentSocket = socketPath;
   if (!currentSocket) {

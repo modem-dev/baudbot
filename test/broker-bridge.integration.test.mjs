@@ -345,6 +345,6 @@ describe("broker pull bridge semi-integration", () => {
     expect(receivedCommands.some((cmd) => cmd.type === "get_message")).toBe(false);
 
     expect(sendPayloads.some((payload) => payload.action === "chat.postMessage")).toBe(false);
-    expect(sendPayloads.some((payload) => payload.action === "reactions.add")).toBe(true);
+    expect(sendPayloads.some((payload) => payload.action === "reactions.add")).toBe(false);
   });
 });

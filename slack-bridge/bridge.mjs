@@ -259,16 +259,6 @@ async function handleMessage(userMessage, event, say) {
 
   console.log(`💬 from <@${event.user}>: ${userMessage}`);
 
-  // React with eyes to show we're working
-  try {
-    await app.client.reactions.add({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: event.channel,
-      name: "eyes",
-      timestamp: event.ts,
-    });
-  } catch {}
-
   try {
     // Always re-resolve the socket before sending (handles agent restarts).
     // Capture into a local to avoid TOCTOU with concurrent handleMessage calls.
