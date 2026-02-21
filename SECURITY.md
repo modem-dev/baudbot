@@ -49,7 +49,7 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   Cannot read admin home directory (admin home is 700)           │
-│   Source repo ~/baudbot/ is read-only (permissions + tool-guard)  │
+│   Source repo ~/baudbot/ is read-only (permissions first, tool-guard backup) │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -68,7 +68,7 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 |-------|------|-------------|
 | **Read-only source** | ~/baudbot/ lives under admin home (700 perms) — agent has zero access. Optional bind mount for defense-in-depth (not applied by default). | Root access |
 | **File permissions** | Security-critical runtime files deployed `chmod a-w` by deploy.sh. Hard OS-level boundary — blocks `sed`, `python`, any write mechanism. | Root access or `chmod u+w` (which tool-guard blocks) |
-| **Tool-guard rules** | Blocks Edit/Write tools to source repo + protected runtime files. Blocks `chmod`/`chown` on source repo via bash. Does NOT catch `sed`/`python` writes through bash — file permissions handle that. | `sed -i` through bash (caught by file perms) |
+| **Tool-guard rules** | Policy/guidance layer: blocks many high-risk Edit/Write/bash patterns and returns safety-interruption reasoning. Not a hard sandbox; novel command patterns may bypass it. | Novel bypass patterns; rely on OS file perms + runtime hardening for hard boundaries |
 | **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
 | **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
 
@@ -141,7 +141,7 @@ sudo -u baudbot_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'
 ## Known Risks
 
 ### Agent has unrestricted shell
-Within its own user permissions, `baudbot_agent` can run any command. The tool-guard and safe-bash wrapper block known-dangerous patterns, but a prompt injection could attempt novel commands.
+Within its own user permissions, `baudbot_agent` can run any command. Tool-guard and the safe-bash wrapper are defense-in-depth policy layers that block many known-dangerous patterns, but they are not a complete containment boundary and prompt injection could attempt novel commands.
 
 ### Agent can modify its own runtime files
 The deployed copies of non-security files (bridge.mjs, skills, most extensions) are agent-writable by design. The agent could modify these. Security-critical files (tool-guard.ts, security.mjs) are write-protected at the filesystem level and monitored via integrity checks.

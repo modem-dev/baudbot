@@ -52,6 +52,7 @@ Linux-native does not mean unrestricted root access:
 
 - no general sudo for agents
 - security-critical files are read-only at runtime
+- tool/shell guards add policy + guidance (not a standalone sandbox)
 - network controls can restrict outbound traffic
 - source/runtime separation limits self-tampering blast radius
 
