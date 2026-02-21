@@ -68,7 +68,7 @@ fi
 if command -v varlock &>/dev/null || [ -x "$BAUDBOT_HOME/.varlock/bin/varlock" ]; then
   pass "varlock is installed"
   if [ -f "$BAUDBOT_HOME/.varlock/config.json" ] && grep -q '"anonymousId"' "$BAUDBOT_HOME/.varlock/config.json"; then
-    warn "~/.varlock/config.json includes anonymousId (remove to avoid varlock run crash)"
+    warn "$BAUDBOT_HOME/.varlock/config.json includes anonymousId (remove to avoid varlock run crash)"
   fi
 else
   fail "varlock not found"
