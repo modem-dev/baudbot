@@ -71,6 +71,12 @@ else
   fail "varlock not found"
 fi
 
+if command -v jq &>/dev/null; then
+  pass "jq is installed"
+else
+  fail "jq not found (required for shell JSON parsing)"
+fi
+
 if command -v docker &>/dev/null; then
   pass "docker is available"
 else

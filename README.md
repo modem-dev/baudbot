@@ -52,6 +52,8 @@ Baudbot is designed as shared engineering infrastructure, not a single-user desk
 | **CPU** | 2 vCPU | 4 vCPU |
 | **Disk** | 20 GB | 40 GB+ (repos, dependencies, Docker images) |
 
+System package dependencies (installed by `baudbot install`): `git`, `curl`, `tmux`, `iptables`, `docker`, `gh`, `jq`, `sudo`.
+
 ## Quick Start
 
 ```bash

@@ -163,7 +163,7 @@ install_prereqs_ubuntu() {
 
   for attempt in $(seq 1 5); do
     if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update -qq \
-      && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl tmux iptables docker.io gh sudo 2>&1 | tail -3; then
+      && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl tmux iptables docker.io gh jq sudo 2>&1 | tail -3; then
       return 0
     fi
 
@@ -179,10 +179,10 @@ install_prereqs_ubuntu() {
 }
 
 install_prereqs_arch() {
-  pacman -Syu --noconfirm --needed git curl tmux iptables docker github-cli sudo 2>&1 | tail -5
+  pacman -Syu --noconfirm --needed git curl tmux iptables docker github-cli jq sudo 2>&1 | tail -5
 }
 
-info "Installing: git, curl, tmux, iptables, docker, gh, sudo"
+info "Installing: git, curl, tmux, iptables, docker, gh, jq, sudo"
 "install_prereqs_$DISTRO"
 info "Prerequisites installed"
 
