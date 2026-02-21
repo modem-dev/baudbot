@@ -320,10 +320,14 @@ print_deployed_version() {
     branch="$(json_get_string_or_empty "$version_file" "branch")"
     deployed_at="$(json_get_string_or_empty "$version_file" "deployed_at")"
   elif [ "$(id -u)" -eq 0 ] && id "$agent_user" >/dev/null 2>&1; then
-    short="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "short" 2>/dev/null || true)"
-    sha="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "sha" 2>/dev/null || true)"
-    branch="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "branch" 2>/dev/null || true)"
-    deployed_at="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin_or_empty "deployed_at" 2>/dev/null || true)"
+    local version_json=""
+    version_json="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" || true)"
+    if [ -n "$version_json" ]; then
+      short="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "short" 2>/dev/null || true)"
+      sha="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "sha" 2>/dev/null || true)"
+      branch="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "branch" 2>/dev/null || true)"
+      deployed_at="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "deployed_at" 2>/dev/null || true)"
+    fi
   fi
 
   if [ -z "$short" ] && [ -z "$sha" ] && [ -z "$branch" ] && [ -z "$deployed_at" ]; then
