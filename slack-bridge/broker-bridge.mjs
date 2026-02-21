@@ -115,6 +115,45 @@ function canonicalizeOutbound(workspace, action, timestamp, encryptedBody) {
   return utf8Bytes(`${workspace}|${action}|${timestamp}|${encryptedBody}`);
 }
 
+/**
+ * Deterministic JSON serialization with sorted keys (recursive).
+ * Compatible with npm `json-stable-stringify` for flat/nested objects.
+ */
+function stableStringify(obj) {
+  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return "[" + obj.map(stableStringify).join(",") + "]";
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
+}
+
+/**
+ * Construct canonical bytes for /api/send request signing.
+ *
+ * Matches broker's `canonicalizeSendRequest()` — includes routing metadata
+ * and nonce to prevent tampering of delivery targets or ciphertext replay
+ * with modified metadata.
+ *
+ * Uses deterministic JSON serialization (sorted keys) so both sides produce
+ * identical canonical bytes regardless of object key insertion order.
+ */
+function canonicalizeSendRequest(ws, action, timestamp, encryptedBody, nonce, routing) {
+  return utf8Bytes(
+    stableStringify({
+      workspace_id: ws,
+      action,
+      timestamp,
+      encrypted_body: encryptedBody,
+      nonce,
+      routing: {
+        channel: routing.channel,
+        thread_ts: routing.thread_ts ?? "",
+        timestamp: routing.timestamp ?? "",
+        emoji: routing.emoji ?? "",
+      },
+    }),
+  );
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -322,14 +361,22 @@ async function sendViaBroker({ action, routing, body }) {
   );
 
   const encryptedBody = toBase64(ciphertext);
-  const signature = signRequest(action, timestamp, encryptedBody);
+  const nonceB64 = toBase64(nonce);
+
+  // Sign over full send payload (routing + nonce) to match broker's
+  // canonicalizeSendRequest() from modem-dev/baudbot-services#12.
+  const canonical = canonicalizeSendRequest(
+    workspaceId, action, timestamp, encryptedBody, nonceB64, routing,
+  );
+  const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
+  const signature = toBase64(sig);
 
   return brokerFetch("/api/send", {
     workspace_id: workspaceId,
     action,
     routing,
     encrypted_body: encryptedBody,
-    nonce: toBase64(nonce),
+    nonce: nonceB64,
     timestamp,
     signature,
   });
