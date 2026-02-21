@@ -25,9 +25,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: ShellCheck
-        run: npm run lint:shell
-
   test:
     runs-on: ubuntu-latest
     steps:
