@@ -2,7 +2,6 @@
   "all": false,
   "include": [
     "slack-bridge/security.mjs",
-    "control-plane/server.mjs",
     "bin/scan-extensions.mjs"
   ],
   "exclude": [
