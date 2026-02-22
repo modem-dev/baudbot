@@ -173,32 +173,32 @@ export async function generateServerKeyMaterial() {
 export async function fetchBrokerPubkeys(brokerUrl, fetchImpl = fetch) {
   const endpoint = new URL("/api/broker-pubkey", brokerUrl);
 
-  let response;
+  let brokerPubkeyResponse;
   try {
-    response = await fetchImpl(endpoint, { method: "GET" });
+    brokerPubkeyResponse = await fetchImpl(endpoint, { method: "GET" });
   } catch (err) {
     throw new Error(`network failure fetching broker pubkey: ${err instanceof Error ? err.message : "unknown error"}`);
   }
 
-  let body;
+  let brokerPubkeyResponseBody;
   try {
-    body = await response.json();
+    brokerPubkeyResponseBody = await brokerPubkeyResponse.json();
   } catch {
     throw new Error("broker pubkey endpoint returned invalid JSON");
   }
 
-  if (!response.ok || !body?.ok) {
-    const errorMessage = body?.error || `HTTP ${response.status}`;
+  if (!brokerPubkeyResponse.ok || !brokerPubkeyResponseBody?.ok) {
+    const errorMessage = brokerPubkeyResponseBody?.error || `HTTP ${brokerPubkeyResponse.status}`;
     throw new Error(`failed to fetch broker pubkey: ${errorMessage}`);
   }
 
-  if (!isLikelyBase64(body.broker_pubkey) || !isLikelyBase64(body.broker_signing_pubkey)) {
+  if (!isLikelyBase64(brokerPubkeyResponseBody.broker_pubkey) || !isLikelyBase64(brokerPubkeyResponseBody.broker_signing_pubkey)) {
     throw new Error("broker pubkey endpoint returned malformed keys");
   }
 
   return {
-    broker_pubkey: body.broker_pubkey,
-    broker_signing_pubkey: body.broker_signing_pubkey,
+    broker_pubkey: brokerPubkeyResponseBody.broker_pubkey,
+    broker_signing_pubkey: brokerPubkeyResponseBody.broker_signing_pubkey,
   };
 }
 
@@ -279,7 +279,7 @@ export async function registerWithBroker({
   const fetchedBrokerKeys = await fetchBrokerPubkeys(brokerUrl, fetchImpl);
 
   const endpoint = new URL("/api/register", brokerUrl);
-  const payload = {
+  const registerRequestBody = {
     workspace_id: workspaceId,
     server_pubkey: serverKeys.server_pubkey,
     server_signing_pubkey: serverKeys.server_signing_pubkey,
@@ -288,30 +288,30 @@ export async function registerWithBroker({
 
   logger(`Registering workspace ${workspaceId} at ${endpoint}`);
 
-  let response;
+  let registerResponse;
   try {
-    response = await fetchImpl(endpoint, {
+    registerResponse = await fetchImpl(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(registerRequestBody),
     });
   } catch (err) {
     throw new Error(`network failure registering workspace: ${err instanceof Error ? err.message : "unknown error"}`);
   }
 
-  let body = {};
+  let registerResponseBody = {};
   try {
-    body = await response.json();
+    registerResponseBody = await registerResponse.json();
   } catch {
     // keep default empty body for error handling
   }
 
-  if (!response.ok || !body?.ok) {
-    throw new Error(mapRegisterError(response.status, body?.error));
+  if (!registerResponse.ok || !registerResponseBody?.ok) {
+    throw new Error(mapRegisterError(registerResponse.status, registerResponseBody?.error));
   }
 
-  const registerBrokerPubkey = body?.broker_pubkey;
-  const registerBrokerSigningPubkey = body?.broker_signing_pubkey;
+  const registerBrokerPubkey = registerResponseBody?.broker_pubkey;
+  const registerBrokerSigningPubkey = registerResponseBody?.broker_signing_pubkey;
 
   if (
     registerBrokerPubkey &&
@@ -328,11 +328,11 @@ export async function registerWithBroker({
   }
 
   let decryptedBotToken = null;
-  if (body?.encrypted_bot_token) {
+  if (registerResponseBody?.encrypted_bot_token) {
     logger("Decrypting bot token from broker response...");
     try {
       decryptedBotToken = await decryptSealedBox(
-        body.encrypted_bot_token,
+        registerResponseBody.encrypted_bot_token,
         serverKeys.server_private_key,
         serverKeys.server_pubkey,
       );
@@ -350,13 +350,13 @@ export async function registerWithBroker({
   return {
     broker_pubkey: registerBrokerPubkey || fetchedBrokerKeys.broker_pubkey,
     broker_signing_pubkey: registerBrokerSigningPubkey || fetchedBrokerKeys.broker_signing_pubkey,
-    broker_access_token: body?.broker_access_token,
-    broker_access_token_expires_at: body?.broker_access_token_expires_at,
-    broker_access_token_scopes: Array.isArray(body?.broker_access_token_scopes)
-      ? body.broker_access_token_scopes.filter((scope) => typeof scope === "string")
+    broker_access_token: registerResponseBody?.broker_access_token,
+    broker_access_token_expires_at: registerResponseBody?.broker_access_token_expires_at,
+    broker_access_token_scopes: Array.isArray(registerResponseBody?.broker_access_token_scopes)
+      ? registerResponseBody.broker_access_token_scopes.filter((scope) => typeof scope === "string")
       : undefined,
     decrypted_bot_token: decryptedBotToken,
-    request_payload: payload,
+    request_payload: registerRequestBody,
   };
 }
 

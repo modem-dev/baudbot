@@ -389,12 +389,12 @@ function startApiServer() {
     }
 
     // Read body
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    let rawApiRequestBody = "";
+    for await (const chunk of req) rawApiRequestBody += chunk;
 
-    let params;
+    let apiRequestBody;
     try {
-      params = JSON.parse(body);
+      apiRequestBody = JSON.parse(rawApiRequestBody);
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid JSON" }));
@@ -406,14 +406,14 @@ function startApiServer() {
       const pathname = url.pathname;
 
       if (pathname === "/send") {
-        const validationError = validateSendParams(params);
+        const validationError = validateSendParams(apiRequestBody);
         if (validationError) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: validationError }));
           return;
         }
 
-        const { channel, text, thread_ts } = params;
+        const { channel, text, thread_ts } = apiRequestBody;
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel,
@@ -427,7 +427,7 @@ function startApiServer() {
 
       } else if (pathname === "/reply") {
         // Look up thread by friendly ID and post a reply
-        const { thread_id, text } = params;
+        const { thread_id, text } = apiRequestBody;
 
         if (typeof thread_id !== "string" || !thread_id) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -464,14 +464,14 @@ function startApiServer() {
         res.end(JSON.stringify({ ok: true, ts: result.ts, channel: result.channel }));
 
       } else if (pathname === "/react") {
-        const validationError = validateReactParams(params);
+        const validationError = validateReactParams(apiRequestBody);
         if (validationError) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: validationError }));
           return;
         }
 
-        const { channel, timestamp, emoji } = params;
+        const { channel, timestamp, emoji } = apiRequestBody;
         await app.client.reactions.add({
           token: process.env.SLACK_BOT_TOKEN,
           channel,

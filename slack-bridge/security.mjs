@@ -206,17 +206,17 @@ export function formatForSlack(text) {
 /**
  * Validate params for POST /send. Returns error string or null if valid.
  */
-export function validateSendParams(params) {
-  if (typeof params.channel !== "string" || !params.channel.startsWith("C")) {
+export function validateSendParams(sendRequestBody) {
+  if (typeof sendRequestBody.channel !== "string" || !sendRequestBody.channel.startsWith("C")) {
     return "channel must be a string starting with C";
   }
-  if (typeof params.text !== "string" || params.text.length === 0) {
+  if (typeof sendRequestBody.text !== "string" || sendRequestBody.text.length === 0) {
     return "text must be a non-empty string";
   }
-  if (params.text.length > 4000) {
+  if (sendRequestBody.text.length > 4000) {
     return "text too long (max 4000)";
   }
-  if (params.thread_ts !== undefined && typeof params.thread_ts !== "string") {
+  if (sendRequestBody.thread_ts !== undefined && typeof sendRequestBody.thread_ts !== "string") {
     return "thread_ts must be a string";
   }
   return null;
@@ -225,14 +225,14 @@ export function validateSendParams(params) {
 /**
  * Validate params for POST /react. Returns error string or null if valid.
  */
-export function validateReactParams(params) {
-  if (typeof params.channel !== "string") {
+export function validateReactParams(reactRequestBody) {
+  if (typeof reactRequestBody.channel !== "string") {
     return "channel must be a string";
   }
-  if (typeof params.timestamp !== "string" || !/^\d+\.\d+$/.test(params.timestamp)) {
+  if (typeof reactRequestBody.timestamp !== "string" || !/^\d+\.\d+$/.test(reactRequestBody.timestamp)) {
     return "timestamp must be a string matching digits.digits";
   }
-  if (typeof params.emoji !== "string" || !/^[a-z0-9_+-]+$/.test(params.emoji)) {
+  if (typeof reactRequestBody.emoji !== "string" || !/^[a-z0-9_+-]+$/.test(reactRequestBody.emoji)) {
     return "emoji must be a valid emoji name (lowercase alphanumeric, _, +, -)";
   }
   return null;

@@ -369,13 +369,13 @@ function getThreadId(channel, threadTs) {
   return id;
 }
 
-function signProtocolRequest(action, timestamp, payload) {
+function signProtocolRequest(action, timestamp, protocolRequestPayload) {
   const canonical = canonicalizeProtocolRequest(
     workspaceId,
     INBOX_PROTOCOL_VERSION,
     action,
     timestamp,
-    payload,
+    protocolRequestPayload,
   );
   const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
   return toBase64(sig);
@@ -409,46 +409,46 @@ function enforceBrokerTokenFreshnessOrExit() {
   process.exit(1);
 }
 
-async function brokerFetch(pathname, body) {
+async function brokerFetch(pathname, brokerRequestBody) {
   enforceBrokerTokenFreshnessOrExit();
   const url = `${brokerBaseUrl}${pathname}`;
   const headers = { "Content-Type": "application/json" };
   if (brokerAccessToken) {
     headers.Authorization = `Bearer ${brokerAccessToken}`;
   }
-  const response = await fetch(url, {
+  const brokerHttpResponse = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify(brokerRequestBody),
   });
 
-  let rawBody = "";
-  let payload = {};
+  let rawBrokerResponseText = "";
+  let brokerResponseBody = {};
   try {
-    rawBody = await response.text();
-    payload = JSON.parse(rawBody);
+    rawBrokerResponseText = await brokerHttpResponse.text();
+    brokerResponseBody = JSON.parse(rawBrokerResponseText);
   } catch {
-    // keep empty payload, rawBody has the text
+    // keep empty response body; rawBrokerResponseText has the text
   }
 
-  if (!response.ok || payload?.ok === false) {
-    const detail = payload?.error || rawBody?.slice(0, 200) || "no response body";
-    const headers = Object.fromEntries(response.headers.entries());
-    const cfRay = headers["cf-ray"] || "n/a";
+  if (!brokerHttpResponse.ok || brokerResponseBody?.ok === false) {
+    const detail = brokerResponseBody?.error || rawBrokerResponseText?.slice(0, 200) || "no response body";
+    const responseHeaders = Object.fromEntries(brokerHttpResponse.headers.entries());
+    const cfRay = responseHeaders["cf-ray"] || "n/a";
     throw new Error(
-      `broker ${pathname} failed — HTTP ${response.status} | error: ${detail} | cf-ray: ${cfRay} | ` +
-      `content-type: ${headers["content-type"] || "n/a"}`
+      `broker ${pathname} failed — HTTP ${brokerHttpResponse.status} | error: ${detail} | cf-ray: ${cfRay} | ` +
+      `content-type: ${responseHeaders["content-type"] || "n/a"}`
     );
   }
 
-  return payload;
+  return brokerResponseBody;
 }
 
 async function pullInbox() {
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = signPullRequest(timestamp, MAX_MESSAGES, BROKER_WAIT_SECONDS);
 
-  const body = {
+  const inboxPullRequestBody = {
     workspace_id: workspaceId,
     protocol_version: INBOX_PROTOCOL_VERSION,
     max_messages: MAX_MESSAGES,
@@ -457,9 +457,9 @@ async function pullInbox() {
     signature,
   };
 
-  const payload = await brokerFetch("/api/inbox/pull", body);
+  const inboxPullResponseBody = await brokerFetch("/api/inbox/pull", inboxPullRequestBody);
 
-  return Array.isArray(payload.messages) ? payload.messages : [];
+  return Array.isArray(inboxPullResponseBody.messages) ? inboxPullResponseBody.messages : [];
 }
 
 async function ackInbox(messageIds) {
@@ -476,9 +476,9 @@ async function ackInbox(messageIds) {
   });
 }
 
-async function sendViaBroker({ action, routing, body }) {
+async function sendViaBroker({ action, routing, actionRequestBody }) {
   const timestamp = Math.floor(Date.now() / 1000);
-  const plaintext = utf8Bytes(JSON.stringify(body));
+  const plaintext = utf8Bytes(JSON.stringify(actionRequestBody));
   const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
   const ciphertext = sodium.crypto_box_easy(
     plaintext,
@@ -540,7 +540,7 @@ function escapeRegex(string) {
  * Send message to Slack using direct API call with bot token.
  * Used when SLACK_BOT_TOKEN is available.
  */
-async function sendDirectToSlack(apiMethod, params) {
+async function sendDirectToSlack(apiMethod, slackApiRequestBody) {
   // Rate limiting for direct API calls
   if (!directSlackRateLimiter.check('global')) {
     throw new Error('Rate limit exceeded for direct Slack API calls. Try again in a moment.');
@@ -553,7 +553,7 @@ async function sendDirectToSlack(apiMethod, params) {
         'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify(slackApiRequestBody),
     });
 
     const data = await response.json();
@@ -575,12 +575,12 @@ async function sendDirectToSlack(apiMethod, params) {
 
 async function say(channel, text, threadTs) {
   if (outboundMode === "direct") {
-    const params = {
+    const slackChatPostMessageRequestBody = {
       channel,
       text,
       ...(threadTs ? { thread_ts: threadTs } : {}),
     };
-    return await sendDirectToSlack("chat.postMessage", params);
+    return await sendDirectToSlack("chat.postMessage", slackChatPostMessageRequestBody);
   } else {
     // Fallback to broker mode
     await sendViaBroker({
@@ -589,25 +589,25 @@ async function say(channel, text, threadTs) {
         channel,
         ...(threadTs ? { thread_ts: threadTs } : {}),
       },
-      body: { text },
+      actionRequestBody: { text },
     });
   }
 }
 
 async function _react(channel, threadTs, emoji) {
   if (outboundMode === "direct") {
-    const params = {
+    const slackReactionAddRequestBody = {
       channel,
       timestamp: threadTs,
       name: emoji,
     };
-    return await sendDirectToSlack("reactions.add", params);
+    return await sendDirectToSlack("reactions.add", slackReactionAddRequestBody);
   } else {
     // Fallback to broker mode
     await sendViaBroker({
       action: "reactions.add",
       routing: { channel, timestamp: threadTs, emoji },
-      body: { emoji },
+      actionRequestBody: { emoji },
     });
   }
 }
@@ -697,23 +697,23 @@ async function processPulledMessage(message) {
     throw new Error("invalid broker envelope signature");
   }
 
-  let payload;
+  let slackEventEnvelopePayload;
   try {
-    payload = decryptEnvelope(message);
+    slackEventEnvelopePayload = decryptEnvelope(message);
     markHealth("inbound_decrypt", true);
   } catch (err) {
     markHealth("inbound_decrypt", false, err);
     throw err;
   }
 
-  logInfo(`📦 decrypted envelope — type: ${payload?.type || "unknown"}`);
+  logInfo(`📦 decrypted envelope — type: ${slackEventEnvelopePayload?.type || "unknown"}`);
 
-  if (payload?.type !== "event_callback") {
-    logInfo(`   ↳ ignoring non-event_callback type: ${payload?.type}`);
+  if (slackEventEnvelopePayload?.type !== "event_callback") {
+    logInfo(`   ↳ ignoring non-event_callback type: ${slackEventEnvelopePayload?.type}`);
     return true;
   }
 
-  const event = payload?.event;
+  const event = slackEventEnvelopePayload?.event;
   if (!event || typeof event !== "object") {
     logWarn("   ↳ event_callback with no event object");
     return true;
@@ -770,12 +770,12 @@ function startApiServer() {
       return;
     }
 
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    let rawApiRequestBody = "";
+    for await (const chunk of req) rawApiRequestBody += chunk;
 
-    let params;
+    let apiRequestBody;
     try {
-      params = JSON.parse(body);
+      apiRequestBody = JSON.parse(rawApiRequestBody);
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid JSON" }));
@@ -787,14 +787,14 @@ function startApiServer() {
       const pathname = url.pathname;
 
       if (pathname === "/send") {
-        const validationError = validateSendParams(params);
+        const validationError = validateSendParams(apiRequestBody);
         if (validationError) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: validationError }));
           return;
         }
 
-        const { channel, text, thread_ts } = params;
+        const { channel, text, thread_ts } = apiRequestBody;
         
         let result;
         if (outboundMode === "direct") {
@@ -807,7 +807,7 @@ function startApiServer() {
           result = await sendViaBroker({
             action: "chat.postMessage",
             routing: { channel, ...(thread_ts ? { thread_ts } : {}) },
-            body: { text },
+            actionRequestBody: { text },
           });
         }
 
@@ -817,7 +817,7 @@ function startApiServer() {
       }
 
       if (pathname === "/reply") {
-        const { thread_id, text } = params;
+        const { thread_id, text } = apiRequestBody;
         if (typeof thread_id !== "string" || !thread_id) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "thread_id must be a non-empty string" }));
@@ -847,7 +847,7 @@ function startApiServer() {
           result = await sendViaBroker({
             action: "chat.postMessage",
             routing: { channel: thread.channel, thread_ts: thread.thread_ts },
-            body: { text },
+            actionRequestBody: { text },
           });
         }
 
@@ -857,14 +857,14 @@ function startApiServer() {
       }
 
       if (pathname === "/react") {
-        const validationError = validateReactParams(params);
+        const validationError = validateReactParams(apiRequestBody);
         if (validationError) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: validationError }));
           return;
         }
 
-        const { channel, timestamp, emoji } = params;
+        const { channel, timestamp, emoji } = apiRequestBody;
         
         if (outboundMode === "direct") {
           await sendDirectToSlack("reactions.add", {
@@ -876,7 +876,7 @@ function startApiServer() {
           await sendViaBroker({
             action: "reactions.add",
             routing: { channel, timestamp, emoji },
-            body: { emoji },
+            actionRequestBody: { emoji },
           });
         }
 
