@@ -103,9 +103,15 @@ function checkSessions(): CheckResult[] {
       } else {
         results.push({ name: `session:${alias}`, ok: true });
       }
-    } catch {
-      // Can't read symlink — just check alias existence (already confirmed above)
-      results.push({ name: `session:${alias}`, ok: true });
+    } catch (err: unknown) {
+      // readlinkSync failed — alias exists but isn't a valid symlink,
+      // or we lack permissions. Report as unhealthy rather than masking.
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({
+        name: `session:${alias}`,
+        ok: false,
+        detail: `Session "${alias}" alias exists but symlink unreadable: ${msg}`,
+      });
     }
   }
 
