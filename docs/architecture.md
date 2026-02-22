@@ -17,9 +17,9 @@ baudbot_agent user
 └── ~/workspace/                   # project repos + task worktrees
 ```
 
-## Source checkouts (development only)
+## Deployment source vs live runtime
 
-A local checkout (for example `~/baudbot`) is for contributors/admin maintenance and is not the live runtime. `baudbot update` publishes a git-free snapshot into `/opt/baudbot/releases/<sha>` and runs from there.
+`baudbot update` publishes a git-free snapshot into `/opt/baudbot/releases/<sha>` and runs live execution from that release path.
 
 ## Deployment flow
 

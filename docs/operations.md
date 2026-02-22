@@ -78,7 +78,7 @@ sudo baudbot doctor
 sudo baudbot audit
 
 # Deep audit (extension scanner + extra checks)
-~/baudbot/bin/security-audit.sh --deep
+sudo baudbot audit --deep
 ```
 
 ## Test commands

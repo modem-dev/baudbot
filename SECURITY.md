@@ -19,7 +19,7 @@ agent runtime (baudbot_agent)
 Live execution runs from deployed/runtime copies.
 `baudbot update` publishes a snapshot, deploys runtime files, validates health, then atomically flips `current`.
 
-A local source checkout (for example `~/baudbot`) is a contributor/admin workflow, not the live execution path.
+Live execution runs from release snapshots under `/opt/baudbot`.
 
 ## Trust Boundaries
 
@@ -42,7 +42,7 @@ A local source checkout (for example `~/baudbot`) is a contributor/admin workflo
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   In default hardened installs, admin home is not readable by agent (typically mode 700) │
-│   If a local source checkout exists, it is expected to be inaccessible to agent under hardened host permissions │
+│   Runtime executes from release snapshots under /opt/baudbot              │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -59,11 +59,11 @@ A local source checkout (for example `~/baudbot`) is a contributor/admin workflo
 
 | Layer | What | Bypassed by |
 |-------|------|-------------|
-| **Read-only local source checkout (optional)** | When a local admin checkout is present (for maintenance/dev), hardened host permissions should block agent access. Optional bind mount adds defense-in-depth (not applied by default). | Root access |
+| **Immutable releases** | Runtime deploys from git-free snapshots under `/opt/baudbot/releases/<sha>`, reducing direct source-tampering risk during live execution. | Root access |
 | **File permissions** | Security-critical runtime files deployed `chmod a-w` by deploy.sh. Hard OS-level boundary — blocks `sed`, `python`, any write mechanism. | Root access or `chmod u+w` (which tool-guard blocks) |
 | **Tool-guard rules** | Policy/guidance layer: blocks many high-risk Edit/Write/bash patterns and returns safety-interruption reasoning. Not a hard sandbox; novel command patterns may bypass it. | Novel bypass patterns; rely on OS file perms + runtime hardening for hard boundaries |
 | **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
-| **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
+| **Pre-commit hook** | Blocks git commit of protected files in the repository | --no-verify (root-owned hook) |
 
 Primary hard boundaries are runtime permissions, user isolation, and release-based deployment. If local source isolation is also enforced, admin can re-deploy from source to restore expected state.
 

@@ -69,7 +69,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for all env vars and how to obtain them
 
 ## Architecture: Source / Runtime Separation
 
-Live execution is release/runtime-based (`/opt/baudbot` + `baudbot_agent` runtime). A local source checkout (for example `~/baudbot/`) is for admin/development workflows; in hardened setups, agent access to that checkout should be blocked by host permissions.
+Live execution is release/runtime-based (`/opt/baudbot` + `baudbot_agent` runtime).
 
 Live operations are now release-based under `/opt/baudbot` (git-free):
 
@@ -112,12 +112,12 @@ Agent runtime layout:
 
 ```bash
 # First-time install (interactive — handles everything)
-sudo ~/baudbot/install.sh
+sudo ./install.sh
 
-# Edit source files directly in ~/baudbot/
+# Edit source files in this repository checkout
 
 # For source-only changes (extensions/skills/bridge), deploy directly:
-~/baudbot/bin/deploy.sh
+./bin/deploy.sh
 
 # For operational updates from git (recommended for live bot):
 sudo baudbot update
