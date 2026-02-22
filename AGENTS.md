@@ -127,7 +127,7 @@ sudo baudbot update
 sudo baudbot rollback previous
 
 # Register a server with Slack broker (after OAuth callback)
-sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --auth-code <code>
+sudo baudbot broker register --broker-url https://broker.example.com --workspace-id T0123ABCD --registration-token <token>
 
 # Rotate an API key after setup (prompts hidden input)
 sudo baudbot env set ANTHROPIC_API_KEY --restart
@@ -146,7 +146,7 @@ tmux new-window -n baudbot 'sudo -u baudbot_agent ~/runtime/start.sh'
 ## Slack broker pull-mode notes
 
 - Broker delivery is now pull-based. Registration is callback-free:
-  - `sudo baudbot broker register --broker-url ... --workspace-id T... --auth-code ...`
+  - `sudo baudbot broker register --broker-url ... --workspace-id T... --registration-token ...`
 - After a successful broker registration, always restart to load new keys:
   - `sudo baudbot restart`
 - The runtime starts `broker-bridge.mjs` automatically when `SLACK_BROKER_*` vars are present.

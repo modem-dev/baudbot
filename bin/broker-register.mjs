@@ -5,7 +5,7 @@
  * Registers this baudbot server with a Slack broker workspace using:
  * - broker URL
  * - workspace ID
- * - one-time auth code from OAuth callback
+ * - registration token from dashboard callback
  *
  * On success, stores broker config and generated server key material in:
  * - admin config: ~/.baudbot/.env
@@ -47,8 +47,7 @@ export function usageText() {
     "Options:",
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
-    "  --registration-token TOKEN  10-minute registration token from dashboard callback",
-    "  --auth-code CODE            Legacy one-time auth code (fallback)",
+    "  --registration-token TOKEN  Registration token from dashboard callback (required)",
     "  -v, --verbose          Show detailed registration progress",
     "  -h, --help             Show this help",
     "",
@@ -61,7 +60,6 @@ export function parseArgs(argv) {
     brokerUrl: "",
     workspaceId: "",
     registrationToken: "",
-    authCode: "",
     verbose: false,
     help: false,
   };
@@ -109,15 +107,6 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (arg.startsWith("--auth-code=")) {
-      out.authCode = arg.slice("--auth-code=".length);
-      continue;
-    }
-    if (arg === "--auth-code") {
-      i++;
-      out.authCode = argv[i] || "";
-      continue;
-    }
 
     throw new Error(`unknown argument: ${arg}`);
   }
@@ -215,17 +204,14 @@ export async function fetchBrokerPubkeys(brokerUrl, fetchImpl = fetch) {
 
 export function mapRegisterError(status, errorText) {
   const text = String(errorText || "request failed");
+  if (status === 400 && /missing registration proof/i.test(text)) {
+    return "registration token is required";
+  }
   if (status === 403 && /invalid registration token/i.test(text)) {
     return "invalid registration token — re-run OAuth install and use a fresh token";
   }
   if (status === 403 && /registration token already used/i.test(text)) {
     return "registration token already used — re-run OAuth install and use a fresh token";
-  }
-  if (status === 403 && /invalid auth code/i.test(text)) {
-    return "invalid auth code — re-run OAuth install and use the new auth code";
-  }
-  if (status === 403 && /auth code already consumed/i.test(text)) {
-    return "auth code already consumed — re-install the Slack app to get a fresh code";
   }
   if (status === 409 && /already active/i.test(text)) {
     return "workspace already active — unregister the current server first";
@@ -285,7 +271,6 @@ export async function registerWithBroker({
   brokerUrl,
   workspaceId,
   registrationToken,
-  authCode,
   serverKeys,
   fetchImpl = fetch,
   logger = () => {},
@@ -298,8 +283,7 @@ export async function registerWithBroker({
     workspace_id: workspaceId,
     server_pubkey: serverKeys.server_pubkey,
     server_signing_pubkey: serverKeys.server_signing_pubkey,
-    ...(registrationToken ? { registration_token: registrationToken } : {}),
-    ...(authCode ? { auth_code: authCode } : {}),
+    registration_token: registrationToken,
   };
 
   logger(`Registering workspace ${workspaceId} at ${endpoint}`);
@@ -536,18 +520,16 @@ async function collectInputs(parsedArgs) {
     || existing.SLACK_BROKER_WORKSPACE_ID
     || (await prompt("Workspace ID (starts with T): "));
 
-  const registrationToken = parsedArgs.registrationToken || (await prompt("Registration token (leave blank to use auth code): "));
-  const authCode = parsedArgs.authCode || (!registrationToken ? (await prompt("Auth code (legacy): ")) : "");
+  const registrationToken = parsedArgs.registrationToken || (await prompt("Registration token: "));
 
-  if (!registrationToken && !authCode) {
-    throw new Error("registration token or auth code is required");
+  if (!registrationToken) {
+    throw new Error("registration token is required");
   }
 
   return {
     brokerUrl: normalizeBrokerUrl(brokerUrl),
     workspaceId: workspaceId.trim(),
     registrationToken,
-    authCode,
     configTargets,
   };
 }
@@ -556,7 +538,6 @@ export async function runRegistration({
   brokerUrl,
   workspaceId,
   registrationToken,
-  authCode,
   fetchImpl = fetch,
   logger = () => {},
 }) {
@@ -564,8 +545,8 @@ export async function runRegistration({
     throw new Error("workspace ID must match Slack team ID format (e.g. T0123ABCD)");
   }
 
-  if (!registrationToken && !authCode) {
-    throw new Error("registration token or auth code is required");
+  if (!registrationToken) {
+    throw new Error("registration token is required");
   }
 
   const normalizedBrokerUrl = normalizeBrokerUrl(brokerUrl);
@@ -576,7 +557,6 @@ export async function runRegistration({
     brokerUrl: normalizedBrokerUrl,
     workspaceId,
     registrationToken,
-    authCode,
     serverKeys,
     fetchImpl,
     logger,

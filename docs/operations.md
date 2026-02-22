@@ -63,7 +63,7 @@ sudo baudbot env sync --restart
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
   --workspace-id T0123ABCD \
-  --auth-code <auth-code-from-oauth-callback>
+  --registration-token <token-from-dashboard-callback>
 ```
 
 Do not use `baudbot setup --slack-broker` — `setup` is host provisioning only.
