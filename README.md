@@ -95,7 +95,7 @@ Slack broker registration (after OAuth callback). When `SLACK_BROKER_*` variable
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
   --workspace-id T0123ABCD \
-  --auth-code <auth-code-from-oauth-callback>
+  --registration-token <token-from-dashboard-callback>
 ```
 
 Need to rotate/update a key later?

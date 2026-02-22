@@ -49,7 +49,7 @@ If you're using the Slack broker OAuth flow, register this server after install:
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
   --workspace-id T0123ABCD \
-  --auth-code <auth-code-from-oauth-callback>
+  --registration-token <token-from-dashboard-callback>
 ```
 
 `baudbot setup` is host provisioning only; do not use `baudbot setup --slack-broker`.
