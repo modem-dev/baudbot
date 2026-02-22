@@ -43,7 +43,7 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   Cannot read admin home directory (admin home is 700)           │
-│   Source repo ~/baudbot/ is admin-owned/inaccessible to agent (permissions first, tool-guard backup) │
+│   Source repo (typically ~/baudbot/) is expected to be admin-owned/inaccessible to agent in default installs │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -60,7 +60,7 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 
 | Layer | What | Bypassed by |
 |-------|------|-------------|
-| **Read-only source** | ~/baudbot/ lives under admin home (700 perms) — agent has zero access. Optional bind mount for defense-in-depth (not applied by default). | Root access |
+| **Read-only source** | In default installs, source lives under admin home (700 perms), so agent access is expected to be blocked. Optional bind mount adds defense-in-depth (not applied by default). | Root access |
 | **File permissions** | Security-critical runtime files deployed `chmod a-w` by deploy.sh. Hard OS-level boundary — blocks `sed`, `python`, any write mechanism. | Root access or `chmod u+w` (which tool-guard blocks) |
 | **Tool-guard rules** | Policy/guidance layer: blocks many high-risk Edit/Write/bash patterns and returns safety-interruption reasoning. Not a hard sandbox; novel command patterns may bypass it. | Novel bypass patterns; rely on OS file perms + runtime hardening for hard boundaries |
 | **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
