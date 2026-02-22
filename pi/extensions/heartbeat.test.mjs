@@ -60,7 +60,7 @@ function readHeartbeatFile(filepath) {
 
 function computeBackoffMs(consecutiveErrors, baseInterval) {
   if (consecutiveErrors <= 0) return baseInterval;
-  const backoff = baseInterval * Math.pow(BACKOFF_MULTIPLIER, consecutiveErrors);
+  const backoff = baseInterval * BACKOFF_MULTIPLIER ** consecutiveErrors;
   return Math.min(backoff, MAX_BACKOFF_MS);
 }
 

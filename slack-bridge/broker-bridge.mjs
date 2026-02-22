@@ -23,7 +23,6 @@ import {
   createRateLimiter,
 } from "./security.mjs";
 import {
-  stableStringify,
   canonicalizeEnvelope,
   canonicalizeOutbound,
   canonicalizeSendRequest,
@@ -534,7 +533,7 @@ async function say(channel, text, threadTs) {
   }
 }
 
-async function react(channel, threadTs, emoji) {
+async function _react(channel, threadTs, emoji) {
   if (outboundMode === "direct") {
     const params = {
       channel,

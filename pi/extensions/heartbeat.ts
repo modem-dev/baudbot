@@ -18,7 +18,7 @@
  * checklist that the agent evaluates on each tick.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { existsSync, readFileSync } from "node:fs";
@@ -31,8 +31,7 @@ const DEFAULT_HEARTBEAT_FILE = join(homedir(), ".pi", "agent", "HEARTBEAT.md");
 // Minimum interval to prevent accidental token burn (2 minutes)
 const MIN_INTERVAL_MS = 2 * 60 * 1000;
 
-// Maximum consecutive errors before backing off
-const MAX_CONSECUTIVE_ERRORS = 5;
+// Exponential backoff after errors
 const BACKOFF_MULTIPLIER = 2;
 const MAX_BACKOFF_MS = 60 * 60 * 1000; // 1 hour
 
@@ -84,13 +83,13 @@ function readHeartbeatFile(filepath: string): string | null {
 
 function computeBackoffMs(consecutiveErrors: number, baseInterval: number): number {
   if (consecutiveErrors <= 0) return baseInterval;
-  const backoff = baseInterval * Math.pow(BACKOFF_MULTIPLIER, consecutiveErrors);
+  const backoff = baseInterval * BACKOFF_MULTIPLIER ** consecutiveErrors;
   return Math.min(backoff, MAX_BACKOFF_MS);
 }
 
 export default function heartbeatExtension(pi: ExtensionAPI): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let state: HeartbeatState = {
+  const state: HeartbeatState = {
     enabled: true,
     intervalMs: DEFAULT_INTERVAL_MS,
     heartbeatFile: DEFAULT_HEARTBEAT_FILE,
@@ -160,7 +159,7 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
       // Success — reset error counter
       state.consecutiveErrors = 0;
       saveState();
-    } catch (err) {
+    } catch {
       // Increment error counter for backoff — never let the heartbeat die
       state.consecutiveErrors += 1;
       try {
