@@ -85,6 +85,23 @@ run_rollback() {
     "$ROLLBACK_SCRIPT" "$target"
 }
 
+run_rollback_with_stale_release_paths() {
+  local release_root="$1"
+  local stale_root="$2"
+
+  BAUDBOT_ROLLBACK_ALLOW_NON_ROOT=1 \
+    BAUDBOT_RELEASE_ROOT="$release_root" \
+    BAUDBOT_RELEASES_DIR="$stale_root/releases" \
+    BAUDBOT_CURRENT_LINK="$stale_root/current" \
+    BAUDBOT_PREVIOUS_LINK="$stale_root/previous" \
+    BAUDBOT_ROLLBACK_DEPLOY_CMD="true" \
+    BAUDBOT_ROLLBACK_RESTART_CMD="true" \
+    BAUDBOT_ROLLBACK_HEALTH_CMD="true" \
+    BAUDBOT_ROLLBACK_SKIP_VERSION_CHECK=1 \
+    BAUDBOT_ROLLBACK_SKIP_CLI_LINK=1 \
+    "$ROLLBACK_SCRIPT" previous
+}
+
 test_rollback_previous_switches_current() {
   (
     set -euo pipefail
@@ -164,12 +181,47 @@ test_rollback_deploy_failure_keeps_current() {
   )
 }
 
+test_rollback_release_root_overrides_stale_release_path_env() {
+  (
+    set -euo pipefail
+    local tmp repo release_root stale_root sha1 sha2 current previous
+
+    tmp="$(mktemp -d /tmp/baudbot-rollback-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    repo="$tmp/repo"
+    release_root="$tmp/opt/baudbot"
+    stale_root="$tmp/stale"
+
+    mkdir -p "$stale_root/releases/fake-current" "$stale_root/releases/fake-previous"
+    ln -s "$stale_root/releases/fake-current" "$stale_root/current"
+    ln -s "$stale_root/releases/fake-previous" "$stale_root/previous"
+
+    make_repo "$repo"
+    run_update "$repo" "$release_root"
+    sha1="$(git -C "$repo" rev-parse HEAD)"
+
+    new_commit "$repo" "second"
+    run_update "$repo" "$release_root"
+    sha2="$(git -C "$repo" rev-parse HEAD)"
+
+    run_rollback_with_stale_release_paths "$release_root" "$stale_root"
+
+    current="$(readlink -f "$release_root/current")"
+    previous="$(readlink -f "$release_root/previous")"
+
+    [ "$current" = "$release_root/releases/$sha1" ]
+    [ "$previous" = "$release_root/releases/$sha2" ]
+  )
+}
+
 echo "=== rollback-release tests ==="
 echo ""
 
 run_test "rollback previous switches current" test_rollback_previous_switches_current
 run_test "rollback missing release keeps current" test_rollback_missing_release_fails_without_mutation
 run_test "rollback deploy failure keeps current" test_rollback_deploy_failure_keeps_current
+run_test "rollback release-root overrides stale env" test_rollback_release_root_overrides_stale_release_path_env
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

@@ -46,7 +46,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --release-root)
       [ "$#" -ge 2 ] || die "--release-root requires a value"
-      bb_refresh_release_paths "$2" 1
+      BAUDBOT_RELEASE_ROOT="$2"
       shift 2
       ;;
     --skip-restart)
@@ -62,6 +62,10 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+# Normalize release paths after env + CLI parsing so BAUDBOT_RELEASE_ROOT always
+# wins over any inherited BAUDBOT_CURRENT/PREVIOUS/RELEASES path variables.
+bb_refresh_release_paths "${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}" 1
 
 bb_require_root "rollback (or BAUDBOT_ROLLBACK_ALLOW_NON_ROOT=1 for tests)" "$BAUDBOT_ROLLBACK_ALLOW_NON_ROOT"
 
