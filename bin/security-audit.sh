@@ -12,9 +12,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/shell-common.sh
 source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
 bb_enable_strict_mode
+bb_init_paths
 
-BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
 # Source repo — auto-detect from this script's location, or use env override
 BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
@@ -97,12 +99,12 @@ echo ""
 # ── Docker group ─────────────────────────────────────────────────────────────
 
 echo "Docker Access"
-if id baudbot_agent 2>/dev/null | grep -q '(docker)'; then
-  finding "CRITICAL" "baudbot_agent is in docker group" \
+if id "$BAUDBOT_AGENT_USER" 2>/dev/null | grep -q '(docker)'; then
+  finding "CRITICAL" "$BAUDBOT_AGENT_USER is in docker group" \
     "Can bypass baudbot-docker wrapper via /usr/bin/docker directly"
-  fix_skip "Remove from docker group" "Requires root: sudo gpasswd -d baudbot_agent docker"
+  fix_skip "Remove from docker group" "Requires root: sudo gpasswd -d $BAUDBOT_AGENT_USER docker"
 else
-  ok "baudbot_agent not in docker group"
+  ok "$BAUDBOT_AGENT_USER not in docker group"
 fi
 
 if [ -f /usr/local/bin/baudbot-docker ]; then
@@ -191,7 +193,7 @@ echo "Source Isolation & Integrity"
 # Source repo lives outside agent's home — agent should not be able to read it
 if [ -r "$BAUDBOT_SRC/setup.sh" ] 2>/dev/null; then
   # If we're running as admin, this is expected — check agent can't
-  agent_can_read=$(sudo -u baudbot_agent test -r "$BAUDBOT_SRC/setup.sh" 2>/dev/null && echo "yes" || echo "no")
+  agent_can_read=$(sudo -u "$BAUDBOT_AGENT_USER" test -r "$BAUDBOT_SRC/setup.sh" 2>/dev/null && echo "yes" || echo "no")
   if [ "$agent_can_read" = "yes" ]; then
     finding "WARN" "Agent can read source repo at $BAUDBOT_SRC" \
       "Ensure admin home is 700: chmod 700 $(dirname "$BAUDBOT_SRC")"
@@ -566,10 +568,10 @@ echo ""
 echo "Extension & Skill Safety"
 
 # Check pi extensions for suspicious patterns (deployed copies only)
-AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+AGENT_USER="$BAUDBOT_AGENT_USER"
 suspicious_extension_patterns="(eval\s*\(|new\s+Function\s*\(|child_process|execSync|execFile|spawn\s*\(|writeFileSync.*\/etc|writeFileSync.*\/home\/(?!${AGENT_USER}))"
 ext_dirs=(
-  "$BAUDBOT_HOME/.pi/agent/extensions"
+  "$BAUDBOT_AGENT_EXT_DIR"
 )
 ext_findings=0
 for ext_dir in "${ext_dirs[@]}"; do
@@ -588,7 +590,7 @@ fi
 
 # Check skills for dangerous tool instructions (deployed copies only)
 skill_dirs=(
-  "$BAUDBOT_HOME/.pi/agent/skills"
+  "$BAUDBOT_AGENT_SKILLS_DIR"
 )
 skill_findings=0
 for skill_dir in "${skill_dirs[@]}"; do

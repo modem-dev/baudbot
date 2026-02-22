@@ -15,18 +15,21 @@
 
 # Auto-detect source repo from this script's location
 BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
-BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
-AGENT_USER="baudbot_agent"
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # shellcheck source=bin/lib/shell-common.sh
 source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
 # shellcheck source=bin/lib/deploy-common.sh
 source "$SCRIPT_DIR/lib/deploy-common.sh"
 bb_enable_strict_mode
+bb_init_paths
+
+AGENT_USER="${AGENT_USER:-$BAUDBOT_AGENT_USER}"
 
 # Helper: run a command as baudbot_agent
 as_agent() {
