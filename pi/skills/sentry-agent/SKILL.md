@@ -98,23 +98,15 @@ Keep it concise. The control-agent will decide whether to notify via Slack, crea
 ## Tool Reference
 
 ```
-sentry_monitor start                  — Begin polling #bots-sentry (3 min default)
-sentry_monitor start interval_minutes=5  — Custom poll interval
-sentry_monitor stop                   — Stop polling
-sentry_monitor status                 — Check config and state
-sentry_monitor check                  — Manual poll now
 sentry_monitor get issue_id=<id>      — Fetch issue details + stack trace from Sentry API
 sentry_monitor list                   — Show recent channel messages
 sentry_monitor list count=50          — Show more messages
+sentry_monitor status                 — Check config and state
 ```
 
 ## Environment
 
-Required in `~/.config/.env` (must be sourced with `set -a` so vars are exported):
-
-- `SLACK_BOT_TOKEN` — Slack bot OAuth token
+Required env vars (injected via `varlock` at launch):
 - `SENTRY_AUTH_TOKEN` — Sentry API bearer token
 - `SENTRY_CHANNEL_ID` — Slack channel ID for Sentry alerts
 - `SENTRY_ORG` — Sentry organization slug
-
-**Note**: The tmux launch command must use `set -a && source ~/.config/.env && set +a` to ensure env vars are exported to child processes. Plain `source` without `set -a` will NOT export the vars, and tools like `sentry_monitor` won't see the tokens.

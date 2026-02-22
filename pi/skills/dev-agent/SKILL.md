@@ -33,28 +33,18 @@ The repo name and todo ID are encoded in your session name. Baudbot uses this to
 
 ```
 ~/workspace/
-├── myapp/           ← product app repo (main branch, DO NOT commit here)
-├── website/         ← marketing site repo (main branch, DO NOT commit here)
-├── baudbot/         ← agent infra repo
-└── worktrees/       ← all worktrees live here
+├── <repo>/          ← repo checkouts (main branch — DO NOT commit here)
+└── worktrees/
     └── <branch>/    ← YOUR worktree (you start here)
 ```
 
-## Self-Modification & Scripts
+## Self-Modification
 
-You **can** create and modify:
-- `~/scripts/` — your operational scripts (commit to track your work)
-- `~/workspace/baudbot/pi/skills/` — skill files (operational knowledge)
-- `~/workspace/baudbot/pi/extensions/` — non-security extensions
+You **can** modify: `~/scripts/`, `~/workspace/baudbot/pi/skills/`, non-security extensions.
 
-You **cannot** modify protected security files in `~/workspace/baudbot/`:
+You **cannot** modify protected files (enforced by file ownership, tool-guard, and pre-commit hook):
 - `bin/`, `hooks/`, `setup.sh`, `start.sh`, `SECURITY.md`
 - `pi/extensions/tool-guard.ts`, `slack-bridge/security.mjs` (and their tests)
-
-These are enforced by three layers:
-1. **File ownership** — protected files are owned by the admin user
-2. **Tool-guard** — blocks write/edit tool calls to protected paths
-3. **Pre-commit hook** — blocks git commits of protected files
 
 ## Memory
 
@@ -84,43 +74,14 @@ If there is no `CODEX.md`, check for `AGENTS.md` or `CLAUDE.md`. If none exist, 
 
 ## Working in Your Worktree
 
-Baudbot creates your worktree before spawning you. Your CWD is already the worktree. You do NOT need to create one.
-
-```bash
-# You're already in ~/workspace/worktrees/<branch-name>/
-# Just work here directly:
-# ... make changes, run tests ...
-
-# Commit and push
-git add -A && git commit -m "description"
-git push -u origin <branch-name>
-```
-
-**Never commit to main branches.** Never `cd` to `~/workspace/<repo>` to make changes. Stay in your worktree.
-
-**Do NOT clean up your worktree** — Baudbot handles worktree removal after you exit.
+Your CWD is already the worktree — work here directly. **Never commit to main branches**, never `cd` to `~/workspace/<repo>`, and do NOT clean up your worktree (Baudbot handles removal).
 
 ## Code Quality Standards
 
-### Security
-
-- **Never interpolate user input into queries.** Use parameterized queries / prepared statements for SQL, GraphQL variables for GraphQL, etc. This applies even when the input comes from tool parameters or internal sources.
-- **Validate and sanitize inputs** at trust boundaries (API endpoints, webhook handlers, user-facing forms).
-
-### External APIs & Libraries
-
-- **Read the official API docs** before building an integration — don't rely on general knowledge or what the task prompt says for auth formats, endpoint structures, or field names. Verify it yourself.
-- **Use the `variables` / parameters mechanism** provided by the API client (e.g. GraphQL variables, SQL bind params) — never build queries via string concatenation or template literals with user input.
-
-### Follow Repo Conventions
-
-On startup, you read `CODEX.md` / `AGENTS.md` for project context. **Reading is not enough — you must follow the conventions you find.** If the repo's guidance says "update X when you add Y", do it. Common examples:
-- Documentation updates (changelogs, config docs, READMEs)
-- Env var schemas or registries
-- Testing requirements
-- Commit message conventions
-
-Don't skip these. Reviewers will flag them and you'll have to come back to fix it.
+- **Never interpolate user input into queries** — use parameterized queries / bind params / GraphQL variables.
+- **Validate inputs** at trust boundaries.
+- **Read official API docs** before building integrations — verify auth formats, endpoints, field names yourself.
+- **Follow repo conventions** from `CODEX.md` / `AGENTS.md` — if the repo says "update X when you add Y", do it. Don't skip doc updates, schema changes, or test requirements.
 
 ## Post-Push Lifecycle
 
