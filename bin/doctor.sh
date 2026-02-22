@@ -279,13 +279,14 @@ else
   fi
 fi
 
-if [ -d "$BAUDBOT_HOME/runtime/slack-bridge" ] && [ -f "$BAUDBOT_HOME/runtime/slack-bridge/bridge.mjs" ]; then
-  pass "slack bridge deployed"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
+if [ -d "$BRIDGE_DIR" ] && [ -f "$BRIDGE_DIR/bridge.mjs" ]; then
+  pass "slack bridge deployed ($BRIDGE_DIR)"
 else
-  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/runtime" ]; then
+  if [ "$IS_ROOT" -ne 1 ] && { [ -d "$BAUDBOT_CURRENT_LINK" ] || [ -e "$BAUDBOT_CURRENT_LINK" ]; }; then
     warn "cannot verify slack bridge files as non-root (run: sudo baudbot doctor)"
   else
-    fail "slack bridge not deployed (run: baudbot deploy)"
+    fail "slack bridge not deployed (expected: $BRIDGE_DIR; run: sudo baudbot update)"
   fi
 fi
 

@@ -19,7 +19,7 @@ trap cleanup EXIT
 setup_base() {
   local home="$1"
   rm -rf "$home"
-  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/baudbot/slack-bridge" "$home/baudbot/.git"
+  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/opt/baudbot/current/slack-bridge" "$home/baudbot/.git"
 
   # Secrets file
   echo "SLACK_BOT_TOKEN=xoxb-test" > "$home/.config/.env"
@@ -38,8 +38,8 @@ setup_base() {
   echo -e "[user]\n\tname = test\n\temail = test@test.com" > "$home/.gitconfig"
 
   # Bridge security module
-  echo "// security" > "$home/baudbot/slack-bridge/security.mjs"
-  echo "// tests" > "$home/baudbot/slack-bridge/security.test.mjs"
+  echo "// security" > "$home/opt/baudbot/current/slack-bridge/security.mjs"
+  echo "// tests" > "$home/opt/baudbot/current/slack-bridge/security.test.mjs"
 
   # Audit log (fallback location)
   mkdir -p "$home/logs"
@@ -50,7 +50,7 @@ setup_base() {
 run_audit() {
   local home="$1"
   shift
-  BAUDBOT_HOME="$home" bash "$SCRIPT" "$@" 2>&1 || true
+  BAUDBOT_HOME="$home" BAUDBOT_RELEASE_ROOT="$home/opt/baudbot" bash "$SCRIPT" "$@" 2>&1 || true
 }
 
 expect_contains() {
@@ -183,7 +183,7 @@ echo ""
 echo "Test: missing bridge security module"
 HOME8="$TMPDIR/no-bridge-sec"
 setup_base "$HOME8"
-rm -f "$HOME8/baudbot/slack-bridge/security.mjs"
+rm -f "$HOME8/opt/baudbot/current/slack-bridge/security.mjs"
 
 output=$(run_audit "$HOME8")
 expect_contains "reports missing security module" "$output" "Bridge security module not found"
@@ -195,7 +195,7 @@ echo ""
 echo "Test: missing bridge tests"
 HOME9="$TMPDIR/no-bridge-tests"
 setup_base "$HOME9"
-rm -f "$HOME9/baudbot/slack-bridge/security.test.mjs"
+rm -f "$HOME9/opt/baudbot/current/slack-bridge/security.test.mjs"
 
 output=$(run_audit "$HOME9")
 expect_contains "reports missing tests" "$output" "No tests for bridge security"
@@ -224,7 +224,7 @@ HOME11="$TMPDIR/exitcode"
 setup_base "$HOME11"
 echo "SLACK_ALLOWED_USERS=U12345" >> "$HOME11/.config/.env"
 set +e
-BAUDBOT_HOME="$HOME11" bash "$SCRIPT" >/dev/null 2>&1
+BAUDBOT_HOME="$HOME11" BAUDBOT_RELEASE_ROOT="$HOME11/opt/baudbot" bash "$SCRIPT" >/dev/null 2>&1
 code=$?
 set -e
 if [ "$code" -le 2 ]; then
@@ -239,7 +239,7 @@ HOME11b="$TMPDIR/exitcode-crit"
 setup_base "$HOME11b"
 chmod 644 "$HOME11b/.config/.env"
 set +e
-BAUDBOT_HOME="$HOME11b" bash "$SCRIPT" >/dev/null 2>&1
+BAUDBOT_HOME="$HOME11b" BAUDBOT_RELEASE_ROOT="$HOME11b/opt/baudbot" bash "$SCRIPT" >/dev/null 2>&1
 code=$?
 set -e
 if [ "$code" -eq 2 ]; then

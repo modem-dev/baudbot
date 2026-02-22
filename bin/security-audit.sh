@@ -219,13 +219,13 @@ else
   ok "~/.pi/agent/skills/ is a real directory"
 fi
 
-# Check runtime bridge exists
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
 # shellcheck disable=SC2088
-if [ -d "$BAUDBOT_HOME/runtime/slack-bridge" ]; then
-  ok "Runtime bridge directory exists"
+if [ -d "$BRIDGE_DIR" ]; then
+  ok "Release bridge directory exists ($BRIDGE_DIR)"
 else
-  finding "WARN" "~/runtime/slack-bridge/ not found" \
-    "Run: deploy.sh"
+  finding "WARN" "release bridge directory not found" \
+    "Expected: $BRIDGE_DIR (run: sudo baudbot update)"
 fi
 
 # Check version stamp exists
@@ -251,10 +251,14 @@ if [ -f "$MANIFEST_FILE" ]; then
   for critical_file in \
     ".pi/agent/extensions/tool-guard.ts" \
     ".pi/agent/extensions/tool-guard.test.mjs" \
-    "runtime/slack-bridge/security.mjs" \
-    "runtime/slack-bridge/security.test.mjs"; do
+    "release/slack-bridge/security.mjs" \
+    "release/slack-bridge/security.test.mjs"; do
 
-    full_path="$BAUDBOT_HOME/$critical_file"
+    if [[ "$critical_file" == release/* ]]; then
+      full_path="$BAUDBOT_CURRENT_LINK/${critical_file#release/}"
+    else
+      full_path="$BAUDBOT_HOME/$critical_file"
+    fi
     if [ ! -f "$full_path" ]; then
       finding "WARN" "Missing critical file: $critical_file" "Run deploy.sh"
       missing=$((missing + 1))
@@ -649,17 +653,17 @@ if [ "$DEEP" -eq 1 ]; then
 fi
 
 # Check that bridge security.mjs exists and is tested
-if [ -f "$BAUDBOT_HOME/runtime/slack-bridge/security.mjs" ]; then
-  ok "Bridge security module exists (runtime)"
-  if [ -f "$BAUDBOT_HOME/runtime/slack-bridge/security.test.mjs" ]; then
-    ok "Bridge security tests exist (runtime)"
+if [ -f "$BRIDGE_DIR/security.mjs" ]; then
+  ok "Bridge security module exists (release)"
+  if [ -f "$BRIDGE_DIR/security.test.mjs" ]; then
+    ok "Bridge security tests exist (release)"
   else
-    finding "WARN" "No tests for bridge security module in runtime" \
-      "Run deploy.sh to copy from source"
+    finding "WARN" "No tests for bridge security module in release" \
+      "Run: sudo baudbot update"
   fi
 else
   finding "WARN" "Bridge security module not found" \
-    "Expected in ~/runtime/slack-bridge/security.mjs — run deploy.sh"
+    "Expected in $BRIDGE_DIR/security.mjs — run: sudo baudbot update"
 fi
 echo ""
 
