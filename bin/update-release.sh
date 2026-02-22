@@ -205,6 +205,25 @@ EOF
   chmod 644 "$release_dir/baudbot-release.json"
 }
 
+install_release_bridge_dependencies() {
+  local release_dir="$1"
+  local bridge_dir="$release_dir/slack-bridge"
+
+  if [ ! -d "$bridge_dir" ] || [ ! -f "$bridge_dir/package.json" ]; then
+    log "slack-bridge package.json missing; skipping bridge dependency install"
+    return 0
+  fi
+
+  log "installing production Slack bridge dependencies in release"
+  rm -rf "$bridge_dir/node_modules"
+
+  if [ -f "$bridge_dir/package-lock.json" ]; then
+    (cd "$bridge_dir" && npm ci --omit=dev)
+  else
+    (cd "$bridge_dir" && npm install --omit=dev)
+  fi
+}
+
 publish_release() {
   local checkout="$1"
   local repo_url="$2"
@@ -235,6 +254,7 @@ publish_release() {
 
   verify_git_free_release "$STAGING_DIR" || die "staged release contains .git"
   write_release_metadata "$STAGING_DIR" "$repo_url" "$branch"
+  install_release_bridge_dependencies "$STAGING_DIR"
 
   # Release snapshots are immutable artifacts (files read-only).
   # Keep directories writable for release pruning/cleanup workflows.

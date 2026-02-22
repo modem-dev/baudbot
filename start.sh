@@ -3,10 +3,10 @@
 # Run as: sudo -u baudbot_agent ~/runtime/start.sh
 #
 # The agent runs entirely from deployed copies — no source repo access needed:
-#   ~/.pi/agent/extensions/  ← pi extensions
-#   ~/.pi/agent/skills/      ← operational skills
-#   ~/runtime/slack-bridge/  ← bridge process
-#   ~/runtime/bin/           ← utility scripts
+#   ~/.pi/agent/extensions/          ← pi extensions
+#   ~/.pi/agent/skills/              ← operational skills
+#   /opt/baudbot/current/slack-bridge/ ← bridge process
+#   ~/runtime/bin/                   ← utility scripts
 #
 # To update, admin edits source and runs deploy.sh.
 
@@ -82,11 +82,12 @@ elif [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
 fi
 
 if [ -n "$BRIDGE_SCRIPT" ]; then
+  RELEASE_BRIDGE="/opt/baudbot/current/slack-bridge"
   tmux kill-session -t slack-bridge 2>/dev/null || true
   echo "Starting Slack bridge ($BRIDGE_SCRIPT)..."
   tmux new-session -d -s slack-bridge \
     "export PATH=$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
-     cd ~/runtime/slack-bridge && \
+     cd $RELEASE_BRIDGE && \
      while true; do \
        varlock run --path ~/.config/ -- node $BRIDGE_SCRIPT; \
        echo '⚠️  Bridge exited (\$?), restarting in 5s...'; \

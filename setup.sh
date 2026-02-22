@@ -219,12 +219,12 @@ fi
 echo "=== Setting up runtime directories ==="
 # The agent runs from deployed copies, not from the source repo directly.
 # Source: ~/baudbot/ (typically not readable by agent in hardened default installs)
-# Runtime: ~/.pi/agent/extensions/, ~/.pi/agent/skills/, ~/runtime/slack-bridge/
+# Runtime: ~/.pi/agent/extensions/, ~/.pi/agent/skills/, ~/runtime/
 sudo -u baudbot_agent bash -c '
   mkdir -p ~/.pi/agent/extensions
   mkdir -p ~/.pi/agent/skills
   mkdir -p ~/.pi/agent/memory
-  mkdir -p ~/runtime/slack-bridge
+  mkdir -p ~/runtime
 '
 
 echo "=== Installing extension dependencies ==="

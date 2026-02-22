@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy extensions and bridge from baudbot source to agent runtime.
+# Deploy extensions/skills/runtime scripts from baudbot source to agent runtime.
 #
 # Run as admin:
 #   ~/baudbot/bin/deploy.sh
@@ -69,7 +69,6 @@ log() { bb_log "$1"; }
 
 # Security-critical files — deployed read-only (chmod a-w)
 PROTECTED_EXTENSIONS=(tool-guard.ts tool-guard.test.mjs)
-PROTECTED_BRIDGE_FILES=(security.mjs security.test.mjs)
 EXPERIMENTAL_EXTENSIONS=(agentmail email-monitor)
 
 # ── Stage source to temp dir (readable by agent) ────────────────────────────
@@ -81,7 +80,6 @@ trap 'rm -rf "$STAGE_DIR"' EXIT
 if [ "$DRY_RUN" -eq 0 ]; then
   cp -r --no-preserve=ownership "$BAUDBOT_SRC/pi/extensions" "$STAGE_DIR/extensions"
   cp -r --no-preserve=ownership "$BAUDBOT_SRC/pi/skills" "$STAGE_DIR/skills"
-  cp -r --no-preserve=ownership "$BAUDBOT_SRC/slack-bridge" "$STAGE_DIR/slack-bridge"
   cp --no-preserve=ownership "$BAUDBOT_SRC/start.sh" "$STAGE_DIR/start.sh"
   mkdir -p "$STAGE_DIR/bin"
   for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
@@ -241,42 +239,6 @@ else
   log "would seed: memory/*.md (only if missing)"
 fi
 
-# ── Slack Bridge ─────────────────────────────────────────────────────────────
-
-echo "Deploying slack-bridge..."
-
-BRIDGE_SRC="$STAGE_DIR/slack-bridge"
-BRIDGE_DEST="$BAUDBOT_HOME/runtime/slack-bridge"
-
-if [ "$DRY_RUN" -eq 0 ]; then
-  as_agent bash -c "
-    mkdir -p '$BRIDGE_DEST'
-    # Unlock protected files before bulk copy
-    for pf in ${PROTECTED_BRIDGE_FILES[*]}; do
-      [ -f '$BRIDGE_DEST/\$pf' ] && chmod u+w '$BRIDGE_DEST/\$pf' 2>/dev/null || true
-    done
-    cp -r '$BRIDGE_SRC/.' '$BRIDGE_DEST/'
-  "
-
-  # Lock protected files read-only
-  for pf in "${PROTECTED_BRIDGE_FILES[@]}"; do
-    if as_agent test -f "$BRIDGE_DEST/$pf"; then
-      as_agent chmod a-w "$BRIDGE_DEST/$pf"
-      log "✓ $pf (read-only)"
-    fi
-  done
-
-  # Agent-modifiable files stay writable
-  if as_agent test -f "$BRIDGE_DEST/bridge.mjs"; then
-    as_agent chmod u+w "$BRIDGE_DEST/bridge.mjs"
-    log "✓ bridge.mjs"
-  fi
-
-  log "✓ node_modules/ + package files"
-else
-  log "would copy: slack-bridge/"
-fi
-
 # ── Runtime bin (utility scripts + start.sh) ─────────────────────────────────
 
 echo "Deploying runtime scripts..."
@@ -414,11 +376,17 @@ VEOF
       echo '  \"source_sha\": \"$GIT_SHA\",'
       echo '  \"files\": {'
       first=1
-      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '$BAUDBOT_HOME/runtime/slack-bridge' '$BAUDBOT_HOME/runtime/bin'; do
+      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '/opt/baudbot/current/slack-bridge' '$BAUDBOT_HOME/runtime/bin'; do
         if [ -d \"\$dir\" ]; then
           while IFS= read -r f; do
             hash=\$(sha256sum \"\$f\" | cut -d' ' -f1)
-            rel=\"\${f#$BAUDBOT_HOME/}\"
+            if [[ \"\$f\" == "$BAUDBOT_HOME/"* ]]; then
+              rel=\"\${f#$BAUDBOT_HOME/}\"
+            elif [[ \"\$f\" == \"/opt/baudbot/current/\"* ]]; then
+              rel=\"release/\${f#/opt/baudbot/current/}\"
+            else
+              rel=\"\$f\"
+            fi
             [ \"\$first\" -eq 1 ] && first=0 || echo ','
             printf '    \"%s\": \"%s\"' \"\$rel\" \"\$hash\"
           done < <(find \"\$dir\" -type f -not -path '*/node_modules/*' -not -name '*.log' | sort)
