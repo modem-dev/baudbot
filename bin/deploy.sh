@@ -20,12 +20,17 @@ AGENT_USER="baudbot_agent"
 DRY_RUN=0
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
+# shellcheck source=bin/lib/deploy-common.sh
+source "$SCRIPT_DIR/lib/deploy-common.sh"
+bb_enable_strict_mode
 
 # Helper: run a command as baudbot_agent
 as_agent() {
-  sudo -u "$AGENT_USER" "$@"
+  bb_as_user "$AGENT_USER" "$@"
 }
 
 for arg in "$@"; do
@@ -34,32 +39,18 @@ for arg in "$@"; do
   esac
 done
 
+command -v sudo >/dev/null 2>&1 || bb_die "deploy requires sudo in PATH"
+[ -d "$BAUDBOT_SRC" ] || bb_die "source repo not found: $BAUDBOT_SRC"
+
 # Determine admin config location (used for secret deploy + feature flags)
-if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
-  DEPLOY_USER="$BAUDBOT_CONFIG_USER"
-elif [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-}" != "root" ]; then
-  DEPLOY_USER="$SUDO_USER"
-else
-  DEPLOY_USER=$(stat -c '%U' "$BAUDBOT_SRC" 2>/dev/null || echo "")
-  if [ -z "$DEPLOY_USER" ] || [ "$DEPLOY_USER" = "root" ]; then
-    DEPLOY_USER="$(whoami)"
-  fi
-fi
+DEPLOY_USER="$(bb_resolve_deploy_user "$BAUDBOT_SRC")"
 DEPLOY_HOME=$(getent passwd "$DEPLOY_USER" | cut -d: -f6 2>/dev/null || echo "")
 ADMIN_CONFIG="$DEPLOY_HOME/.baudbot/.env"
 RENDER_ENV_SCRIPT="$BAUDBOT_SRC/bin/render-env.sh"
 
 source_env_value() {
   local key="$1"
-  if [ -x "$RENDER_ENV_SCRIPT" ]; then
-    BAUDBOT_ADMIN_HOME="$DEPLOY_HOME" BAUDBOT_CONFIG_USER="$DEPLOY_USER" "$RENDER_ENV_SCRIPT" --get "$key" 2>/dev/null || true
-    return 0
-  fi
-  if [ -f "$ADMIN_CONFIG" ]; then
-    grep -E "^${key}=" "$ADMIN_CONFIG" | tail -n 1 | cut -d= -f2- || true
-    return 0
-  fi
-  return 0
+  bb_source_env_value "$RENDER_ENV_SCRIPT" "$DEPLOY_HOME" "$DEPLOY_USER" "$ADMIN_CONFIG" "$key"
 }
 
 EXPERIMENTAL_MODE="${BAUDBOT_EXPERIMENTAL:-}"
@@ -71,7 +62,7 @@ case "$EXPERIMENTAL_MODE" in
   *) EXPERIMENTAL_MODE=0 ;;
 esac
 
-log() { echo "  $1"; }
+log() { bb_log "$1"; }
 
 # Security-critical files — deployed read-only (chmod a-w)
 PROTECTED_EXTENSIONS=(tool-guard.ts tool-guard.test.mjs)
@@ -111,8 +102,6 @@ if [ "$DRY_RUN" -eq 0 ]; then
   as_agent chmod u+w "$BAUDBOT_HOME/.pi/agent/baudbot-version.json" 2>/dev/null || true
   as_agent chmod u+w "$BAUDBOT_HOME/.pi/agent/baudbot-manifest.json" 2>/dev/null || true
 fi
-
-set -euo pipefail
 
 # ── Extensions ───────────────────────────────────────────────────────────────
 

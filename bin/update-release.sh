@@ -10,9 +10,11 @@
 #
 # This script keeps the currently active release untouched on failure.
 
-set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+bb_enable_strict_mode
+
 BAUDBOT_ROOT="${BAUDBOT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 BAUDBOT_RELEASE_ROOT="${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}"
@@ -49,12 +51,8 @@ TARGET_BRANCH=""
 TARGET_SHORT=""
 RELEASE_DIR=""
 
-log() { echo "  $1"; }
-
-die() {
-  echo "❌ $1" >&2
-  exit 1
-}
+log() { bb_log "$1"; }
+die() { bb_die "$1"; }
 
 # shellcheck source=bin/lib/release-common.sh
 source "$SCRIPT_DIR/lib/release-common.sh"
@@ -131,9 +129,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$(id -u)" -ne 0 ] && [ "$BAUDBOT_UPDATE_ALLOW_NON_ROOT" != "1" ]; then
-  die "update requires root (or BAUDBOT_UPDATE_ALLOW_NON_ROOT=1 for tests)"
-fi
+bb_require_root "update (or BAUDBOT_UPDATE_ALLOW_NON_ROOT=1 for tests)" "$BAUDBOT_UPDATE_ALLOW_NON_ROOT"
 
 resolve_repo_url() {
   if [ -n "$BAUDBOT_UPDATE_REPO" ]; then
@@ -337,12 +333,8 @@ echo "=== Baudbot update ==="
 REPO_URL="$(resolve_repo_url)" || die "cannot resolve update repo URL; pass --repo or set BAUDBOT_UPDATE_REPO"
 BRANCH="$(resolve_branch)"
 
-if [ -z "$REPO_URL" ]; then
-  die "empty repo URL"
-fi
-if [ -z "$BRANCH" ]; then
-  die "empty branch"
-fi
+bb_require_non_empty "repo URL" "$REPO_URL"
+bb_require_non_empty "branch" "$BRANCH"
 
 save_source_metadata "$REPO_URL" "$BRANCH"
 

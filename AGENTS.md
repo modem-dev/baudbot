@@ -182,6 +182,8 @@ Add new test files to `vitest.config.mjs` (and shell wrappers under `test/` as n
 - Security functions must be pure, testable modules (no side effects, no env vars at module scope).
 - All security code must have tests before merging.
 - Run `bin/security-audit.sh --deep` after any security-relevant changes.
+- Keep shell CLIs thin: move reusable logic to `bin/lib/*.sh`, and source shared helpers (`shell-common.sh`, `release-common.sh`, `deploy-common.sh`, `doctor-common.sh`) instead of duplicating logging/error/root-check patterns.
+- For shell scripts, standardize on `bb_enable_strict_mode` and shared helper functions (`bb_log`, `bb_die`, etc.) rather than ad-hoc wrappers.
 - Protected files (`tool-guard.ts`, `security.mjs`, their tests) are deployed read-only. The agent cannot modify them at runtime.
 - New integrations get their own subdirectory (e.g. `discord-bridge/`).
 - Extensions are deployed from `pi/extensions/` → agent's `~/.pi/agent/extensions/`.

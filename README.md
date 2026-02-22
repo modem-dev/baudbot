@@ -162,6 +162,23 @@ See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and know
 - [SECURITY.md](SECURITY.md) — deep security model and vulnerability reporting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow
 
+## Shell script architecture
+
+Operational shell scripts under `bin/` follow a shared module pattern to keep command entrypoints thin and behavior consistent:
+
+- shared safety/logging/error helpers in `bin/lib/shell-common.sh`
+- release lifecycle helpers in `bin/lib/release-common.sh`
+- deploy-specific helpers in `bin/lib/deploy-common.sh`
+- doctor output/counter helpers in `bin/lib/doctor-common.sh`
+- JSON parsing helpers in `bin/lib/json-common.sh`
+
+Conventions:
+
+- source shared modules near the top of each script
+- call `bb_enable_strict_mode` (strict bash mode)
+- prefer shared `bb_log`/`bb_die` helpers instead of ad-hoc logging/error code
+- keep heavy logic in `bin/lib/*` and keep CLI-facing scripts focused on orchestration
+
 ## Tests
 
 ```bash

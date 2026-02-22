@@ -5,9 +5,10 @@
 #   rollback-release.sh previous
 #   rollback-release.sh <sha>
 
-set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+bb_enable_strict_mode
 
 BAUDBOT_RELEASE_ROOT="${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}"
 BAUDBOT_RELEASES_DIR="${BAUDBOT_RELEASES_DIR:-$BAUDBOT_RELEASE_ROOT/releases}"
@@ -26,12 +27,8 @@ BAUDBOT_ROLLBACK_ALLOW_NON_ROOT="${BAUDBOT_ROLLBACK_ALLOW_NON_ROOT:-0}"
 BAUDBOT_AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
 BAUDBOT_AGENT_HOME="${BAUDBOT_AGENT_HOME:-/home/baudbot_agent}"
 
-log() { echo "  $1"; }
-
-die() {
-  echo "❌ $1" >&2
-  exit 1
-}
+log() { bb_log "$1"; }
+die() { bb_die "$1"; }
 
 usage() {
   cat <<EOF
@@ -73,9 +70,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$(id -u)" -ne 0 ] && [ "$BAUDBOT_ROLLBACK_ALLOW_NON_ROOT" != "1" ]; then
-  die "rollback requires root (or BAUDBOT_ROLLBACK_ALLOW_NON_ROOT=1 for tests)"
-fi
+bb_require_root "rollback (or BAUDBOT_ROLLBACK_ALLOW_NON_ROOT=1 for tests)" "$BAUDBOT_ROLLBACK_ALLOW_NON_ROOT"
 
 [ -d "$BAUDBOT_RELEASES_DIR" ] || die "release directory missing: $BAUDBOT_RELEASES_DIR"
 
