@@ -8,12 +8,11 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/lib/shell-common.sh
 source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
 bb_enable_strict_mode
 
-BAUDBOT_RELEASE_ROOT="${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}"
-BAUDBOT_RELEASES_DIR="${BAUDBOT_RELEASES_DIR:-$BAUDBOT_RELEASE_ROOT/releases}"
-BAUDBOT_CURRENT_LINK="${BAUDBOT_CURRENT_LINK:-$BAUDBOT_RELEASE_ROOT/current}"
-BAUDBOT_PREVIOUS_LINK="${BAUDBOT_PREVIOUS_LINK:-$BAUDBOT_RELEASE_ROOT/previous}"
+bb_init_paths
 
 BAUDBOT_ROLLBACK_DEPLOY_CMD="${BAUDBOT_ROLLBACK_DEPLOY_CMD:-}"
 BAUDBOT_ROLLBACK_RESTART_CMD="${BAUDBOT_ROLLBACK_RESTART_CMD:-}"
@@ -23,9 +22,6 @@ BAUDBOT_ROLLBACK_SKIP_RESTART="${BAUDBOT_ROLLBACK_SKIP_RESTART:-0}"
 BAUDBOT_ROLLBACK_SKIP_VERSION_CHECK="${BAUDBOT_ROLLBACK_SKIP_VERSION_CHECK:-0}"
 BAUDBOT_ROLLBACK_SKIP_CLI_LINK="${BAUDBOT_ROLLBACK_SKIP_CLI_LINK:-0}"
 BAUDBOT_ROLLBACK_ALLOW_NON_ROOT="${BAUDBOT_ROLLBACK_ALLOW_NON_ROOT:-0}"
-
-BAUDBOT_AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-BAUDBOT_AGENT_HOME="${BAUDBOT_AGENT_HOME:-/home/baudbot_agent}"
 
 log() { bb_log "$1"; }
 die() { bb_die "$1"; }
@@ -50,10 +46,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --release-root)
       [ "$#" -ge 2 ] || die "--release-root requires a value"
-      BAUDBOT_RELEASE_ROOT="$2"
-      BAUDBOT_RELEASES_DIR="$BAUDBOT_RELEASE_ROOT/releases"
-      BAUDBOT_CURRENT_LINK="$BAUDBOT_RELEASE_ROOT/current"
-      BAUDBOT_PREVIOUS_LINK="$BAUDBOT_RELEASE_ROOT/previous"
+      bb_refresh_release_paths "$2" 1
       shift 2
       ;;
     --skip-restart)

@@ -7,9 +7,12 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/shell-common.sh
 source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
 # shellcheck source=bin/lib/doctor-common.sh
 source "$SCRIPT_DIR/lib/doctor-common.sh"
 bb_enable_strict_mode
+bb_init_paths
 
 for arg in "$@"; do
   case "$arg" in
@@ -20,7 +23,6 @@ for arg in "$@"; do
   esac
 done
 
-BAUDBOT_HOME="/home/baudbot_agent"
 doctor_init_counters
 IS_ROOT=0
 if [ "$(id -u)" -eq 0 ]; then
@@ -42,10 +44,10 @@ fi
 # ── User ─────────────────────────────────────────────────────────────────────
 
 echo "User:"
-if id baudbot_agent &>/dev/null; then
-  pass "baudbot_agent user exists"
+if id "$BAUDBOT_AGENT_USER" &>/dev/null; then
+  pass "$BAUDBOT_AGENT_USER user exists"
 else
-  fail "baudbot_agent user does not exist (run: baudbot setup)"
+  fail "$BAUDBOT_AGENT_USER user does not exist (run: baudbot setup)"
 fi
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
@@ -90,10 +92,10 @@ else
 fi
 
 if command -v gh &>/dev/null; then
-  if sudo -u baudbot_agent gh auth status &>/dev/null; then
+  if sudo -u "$BAUDBOT_AGENT_USER" gh auth status &>/dev/null; then
     pass "gh cli authenticated"
   else
-    warn "gh cli installed but not authenticated (run: sudo -u baudbot_agent gh auth login)"
+    warn "gh cli installed but not authenticated (run: sudo -u $BAUDBOT_AGENT_USER gh auth login)"
   fi
 else
   fail "gh cli not found"
@@ -136,10 +138,10 @@ if [ -f "$ENV_FILE" ]; then
   else
     fail ".env has $PERMS permissions (should be 600)"
   fi
-  if [ "$OWNER" = "baudbot_agent" ]; then
-    pass ".env owned by baudbot_agent"
+  if [ "$OWNER" = "$BAUDBOT_AGENT_USER" ]; then
+    pass ".env owned by $BAUDBOT_AGENT_USER"
   else
-    fail ".env owned by $OWNER (should be baudbot_agent)"
+    fail ".env owned by $OWNER (should be $BAUDBOT_AGENT_USER)"
   fi
 
   # LLM key validation: require at least one valid key, and flag malformed configured keys.
@@ -369,7 +371,7 @@ if bb_has_systemd; then
   fi
 else
   # No systemd — check for pi process
-  if pgrep -u baudbot_agent -f "pi --session-control" &>/dev/null; then
+  if pgrep -u "$BAUDBOT_AGENT_USER" -f "pi --session-control" &>/dev/null; then
     pass "agent is running (direct mode)"
   else
     warn "agent is not running"

@@ -16,22 +16,25 @@
 # - Bind to ports (no inbound listeners/backdoors)
 # - Do DNS tunneling over non-53 UDP
 
-set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
+bb_enable_strict_mode
+bb_init_paths
 
-if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ Must run as root (sudo $0)"
-  exit 1
-fi
+bb_require_root "setup-firewall"
 
-UID_BAUDBOT=$(id -u baudbot_agent 2>/dev/null)
+UID_BAUDBOT=$(id -u "$BAUDBOT_AGENT_USER" 2>/dev/null)
 if [ -z "$UID_BAUDBOT" ]; then
-  echo "❌ baudbot_agent user not found"
+  echo "❌ $BAUDBOT_AGENT_USER user not found"
   exit 1
 fi
 
 CHAIN="BAUDBOT_OUTPUT"
 
-echo "🔒 Setting up firewall rules for baudbot_agent (uid $UID_BAUDBOT)..."
+echo "🔒 Setting up firewall rules for $BAUDBOT_AGENT_USER (uid $UID_BAUDBOT)..."
 
 # Clean up any existing rules first
 iptables -w -D OUTPUT -m owner --uid-owner "$UID_BAUDBOT" -j "$CHAIN" 2>/dev/null || true

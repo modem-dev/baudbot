@@ -316,7 +316,7 @@ describe("scan-extensions: new rules", () => {
       await writeFile(join(dir, "bad.js"), `
         const mod = require(userInput);
       `);
-      const { output, exitCode } = runScanner(dir);
+      const { output } = runScanner(dir);
       // info severity = exit 0, but should appear in output
       assert.ok(output.includes("dynamic") || output.includes("Dynamic") || output.includes("require"), output);
     });

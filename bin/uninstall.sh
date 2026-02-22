@@ -4,14 +4,24 @@
 # Run as root: sudo ~/baudbot/bin/uninstall.sh
 #
 # Flags:
-#   --keep-home   Remove user but preserve /home/baudbot_agent
+#   --keep-home   Remove user but preserve agent home directory
 #   --dry-run     Print what would be done without doing it
 #   --yes         Skip confirmation prompt
 #
 # ⚠️  Keep this in sync with setup.sh — if you add something to setup,
 #     add the reverse here.
 
-set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/paths-common.sh
+source "$SCRIPT_DIR/lib/paths-common.sh"
+bb_enable_strict_mode
+bb_init_paths
+
+AGENT_USER="$BAUDBOT_AGENT_USER"
+AGENT_HOME="$BAUDBOT_AGENT_HOME"
+RELEASE_ROOT="$BAUDBOT_RELEASE_ROOT"
 
 KEEP_HOME=false
 DRY_RUN=false
@@ -25,7 +35,7 @@ for arg in "$@"; do
     -h|--help)
       echo "Usage: sudo $0 [--keep-home] [--dry-run] [--yes]"
       echo ""
-      echo "  --keep-home   Remove user but preserve /home/baudbot_agent"
+      echo "  --keep-home   Remove user but preserve $AGENT_HOME"
       echo "  --dry-run     Print what would be done without doing it"
       echo "  --yes         Skip confirmation prompt"
       exit 0
@@ -37,12 +47,9 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ Must run as root (sudo $0)"
-  exit 1
-fi
+bb_require_root "uninstall"
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REMOVED=()
 SKIPPED=()
 
@@ -60,11 +67,11 @@ skipped() { SKIPPED+=("$1"); }
 # ── Confirmation ─────────────────────────────────────────────────────────────
 
 if ! $AUTO_YES && ! $DRY_RUN; then
-  echo "⚠️  This will remove the baudbot_agent user and all system-level changes."
+  echo "⚠️  This will remove the $AGENT_USER user and all system-level changes."
   if $KEEP_HOME; then
-    echo "   (--keep-home: /home/baudbot_agent will be preserved)"
+    echo "   (--keep-home: $AGENT_HOME will be preserved)"
   else
-    echo "   ⚠️  /home/baudbot_agent will be DELETED (use --keep-home to preserve)"
+    echo "   ⚠️  $AGENT_HOME will be DELETED (use --keep-home to preserve)"
   fi
   echo ""
   read -rp "Continue? [y/N] " confirm
@@ -80,18 +87,18 @@ if $DRY_RUN; then
   echo ""
 fi
 
-# ── 1. Kill all baudbot_agent processes ───────────────────────────────────────
+# ── 1. Kill all agent processes ─────────────────────────────────────────────
 
-echo "=== Killing baudbot_agent processes ==="
-if id baudbot_agent &>/dev/null; then
-  if pgrep -u baudbot_agent &>/dev/null; then
-    run pkill -u baudbot_agent || true
+echo "=== Killing $AGENT_USER processes ==="
+if id "$AGENT_USER" &>/dev/null; then
+  if pgrep -u "$AGENT_USER" &>/dev/null; then
+    run pkill -u "$AGENT_USER" || true
     sleep 1
     # Force kill stragglers
-    if pgrep -u baudbot_agent &>/dev/null; then
-      run pkill -9 -u baudbot_agent || true
+    if pgrep -u "$AGENT_USER" &>/dev/null; then
+      run pkill -9 -u "$AGENT_USER" || true
     fi
-    removed "baudbot_agent processes"
+    removed "$AGENT_USER processes"
   else
     skipped "processes (none running)"
   fi
@@ -121,8 +128,8 @@ fi
 # ── 3. Flush iptables rules ─────────────────────────────────────────────────
 
 echo "=== Removing iptables rules ==="
-if id baudbot_agent &>/dev/null; then
-  UID_BAUDBOT=$(id -u baudbot_agent)
+if id "$AGENT_USER" &>/dev/null; then
+  UID_BAUDBOT=$(id -u "$AGENT_USER")
   if iptables -w -L BAUDBOT_OUTPUT -n &>/dev/null 2>&1; then
     run iptables -w -D OUTPUT -m owner --uid-owner "$UID_BAUDBOT" -j BAUDBOT_OUTPUT 2>/dev/null || true
     run iptables -w -F BAUDBOT_OUTPUT
@@ -196,12 +203,12 @@ else
   skipped "/usr/local/bin/baudbot (not found)"
 fi
 
-echo "=== Removing /opt release snapshots ==="
-if [ -d /opt/baudbot ]; then
-  run rm -rf /opt/baudbot
-  removed "/opt/baudbot releases"
+echo "=== Removing release snapshots ==="
+if [ -d "$RELEASE_ROOT" ]; then
+  run rm -rf "$RELEASE_ROOT"
+  removed "$RELEASE_ROOT releases"
 else
-  skipped "/opt/baudbot (not found)"
+  skipped "$RELEASE_ROOT (not found)"
 fi
 
 echo "=== Removing sudoers ==="
@@ -228,7 +235,7 @@ done
 
 echo "=== Removing procview group ==="
 if getent group procview &>/dev/null; then
-  # Check if anyone else is in the group besides baudbot_agent
+  # Check if anyone else is in the group besides the agent user
   members=$(getent group procview | cut -d: -f4)
   if [ -n "$members" ]; then
     echo "  ⚠️  procview group has members: $members"
@@ -256,19 +263,19 @@ else
   skipped "pre-commit hook (not found)"
 fi
 
-# ── 9. Remove baudbot_agent user + home ───────────────────────────────────────
+# ── 9. Remove agent user + home ─────────────────────────────────────────────
 
-echo "=== Removing baudbot_agent user ==="
-if id baudbot_agent &>/dev/null; then
+echo "=== Removing $AGENT_USER user ==="
+if id "$AGENT_USER" &>/dev/null; then
   if $KEEP_HOME; then
-    run userdel baudbot_agent
-    removed "baudbot_agent user (home preserved)"
+    run userdel "$AGENT_USER"
+    removed "$AGENT_USER user (home preserved)"
   else
-    run userdel -r baudbot_agent
-    removed "baudbot_agent user + /home/baudbot_agent"
+    run userdel -r "$AGENT_USER"
+    removed "$AGENT_USER user + $AGENT_HOME"
   fi
 else
-  skipped "baudbot_agent user (doesn't exist)"
+  skipped "$AGENT_USER user (doesn't exist)"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -301,11 +308,11 @@ if $DRY_RUN; then
 else
   echo "✅ Uninstall complete."
   if $KEEP_HOME; then
-    echo "   /home/baudbot_agent was preserved. Remove manually when ready."
+    echo "   $AGENT_HOME was preserved. Remove manually when ready."
   fi
   echo ""
   echo "Remaining manual steps:"
-  echo "  - Remove admin user from baudbot_agent group: gpasswd -d <user> baudbot_agent"
+  echo "  - Remove admin user from $AGENT_USER group: gpasswd -d <user> $AGENT_USER"
   echo "    (or log out and back in — group was deleted)"
   echo "  - The source repo ($REPO_DIR) was not removed."
 fi
