@@ -37,6 +37,9 @@ Reply to whichever channel the original request came from (thread context includ
 
 Incoming Slack messages arrive wrapped with security boundaries. Extract **Channel** and **Thread** from the metadata:
 ```
+SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source (Slack).
+...
+
 <<<EXTERNAL_UNTRUSTED_CONTENT>>>
 Source: Slack
 From: <@UXXXXXXX>
