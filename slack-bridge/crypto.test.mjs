@@ -10,7 +10,7 @@ import {
   stableStringify,
   canonicalizeEnvelope,
   canonicalizeOutbound,
-  canonicalizeOutboundV2,
+  canonicalizeProtocolRequest,
   canonicalizeSendRequest,
 } from "./crypto.mjs";
 
@@ -152,26 +152,25 @@ describe("canonicalizeOutbound", () => {
   });
 });
 
-// ── canonicalizeOutboundV2 ──────────────────────────────────────────────────
+// ── canonicalizeProtocolRequest ─────────────────────────────────────────────
 
-describe("canonicalizeOutboundV2", () => {
-  it("produces stable JSON payload for inbox.pull.v2", () => {
+describe("canonicalizeProtocolRequest", () => {
+  it("produces stable JSON payload for protocol-versioned inbox.pull", () => {
     const result = decode(
-      canonicalizeOutboundV2("T123", "inbox.pull.v2", 1700000000, {
+      canonicalizeProtocolRequest("T123", "2026-02-1", "inbox.pull", 1700000000, {
         max_messages: 10,
         wait_seconds: 20,
       }),
     );
     assert.equal(
       result,
-      '{"action":"inbox.pull.v2","payload":{"max_messages":10,"wait_seconds":20},"timestamp":1700000000,"workspace_id":"T123"}',
+      '{"action":"inbox.pull","payload":{"max_messages":10,"wait_seconds":20},"protocol_version":"2026-02-1","timestamp":1700000000,"workspace_id":"T123"}',
     );
   });
 
   it("returns Uint8Array", () => {
-    const result = canonicalizeOutboundV2("T123", "inbox.pull.v2", 1700000000, {
-      max_messages: 10,
-      wait_seconds: 20,
+    const result = canonicalizeProtocolRequest("T123", "2026-02-1", "inbox.ack", 1700000000, {
+      message_ids: ["m1", "m2"],
     });
     assert.ok(result instanceof Uint8Array);
   });

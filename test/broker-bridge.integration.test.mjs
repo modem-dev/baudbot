@@ -9,8 +9,7 @@ import { tmpdir } from "node:os";
 import sodium from "libsodium-wrappers-sumo";
 import {
   canonicalizeEnvelope,
-  canonicalizeOutbound,
-  canonicalizeOutboundV2,
+  canonicalizeProtocolRequest,
 } from "../slack-bridge/crypto.mjs";
 
 function b64(bytes = 32, fill = 1) {
@@ -54,6 +53,8 @@ describe("broker pull bridge semi-integration", () => {
   });
 
   it("acks poison messages from broker to avoid infinite retry loops", async () => {
+    await sodium.ready;
+
     let pullCount = 0;
     let ackPayload = null;
 
@@ -162,7 +163,16 @@ describe("broker pull bridge semi-integration", () => {
     await Promise.race([ackWait, bridgeExited]);
 
     expect(ackPayload.workspace_id).toBe("T123BROKER");
+    expect(ackPayload.protocol_version).toBe("2026-02-1");
     expect(ackPayload.message_ids).toContain("m-poison-1");
+
+    const signKeypair = sodium.crypto_sign_seed_keypair(new Uint8Array(Buffer.alloc(32, 13)));
+    const canonical = canonicalizeProtocolRequest("T123BROKER", "2026-02-1", "inbox.ack", ackPayload.timestamp, {
+      message_ids: ackPayload.message_ids,
+    });
+    const sigBytes = new Uint8Array(Buffer.from(ackPayload.signature, "base64"));
+    const valid = sodium.crypto_sign_verify_detached(sigBytes, canonical, signKeypair.publicKey);
+    expect(valid).toBe(true);
   });
 
   it("forwards user messages to agent in fire-and-forget mode without get_message/turn_end RPCs", async () => {
@@ -352,7 +362,7 @@ describe("broker pull bridge semi-integration", () => {
     expect(sendPayloads.some((payload) => payload.action === "reactions.add")).toBe(false);
   });
 
-  it("uses inbox.pull.v2 signatures with wait_seconds by default", async () => {
+  it("uses protocol-versioned inbox.pull signatures with wait_seconds by default", async () => {
     await sodium.ready;
 
     const workspaceId = "T123BROKER";
@@ -423,10 +433,11 @@ describe("broker pull bridge semi-integration", () => {
     await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for inbox pull request");
 
     expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(10);
     expect(pullPayload.wait_seconds).toBe(20);
 
-    const canonical = canonicalizeOutboundV2(workspaceId, "inbox.pull.v2", pullPayload.timestamp, {
+    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 10,
       wait_seconds: 20,
     });
@@ -437,7 +448,7 @@ describe("broker pull bridge semi-integration", () => {
     bridge.kill("SIGTERM");
   });
 
-  it("falls back to legacy inbox.pull signature when SLACK_BROKER_WAIT_SECONDS=0", async () => {
+  it("uses protocol-versioned inbox.pull signature with wait_seconds=0", async () => {
     await sodium.ready;
 
     const workspaceId = "T123BROKER";
@@ -506,13 +517,17 @@ describe("broker pull bridge semi-integration", () => {
     });
     children.push(bridge);
 
-    await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for legacy inbox pull request");
+    await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for protocol inbox pull request");
 
     expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(10);
-    expect(Object.prototype.hasOwnProperty.call(pullPayload, "wait_seconds")).toBe(false);
+    expect(pullPayload.wait_seconds).toBe(0);
 
-    const canonical = canonicalizeOutbound(workspaceId, "inbox.pull", pullPayload.timestamp, "10");
+    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
+      max_messages: 10,
+      wait_seconds: 0,
+    });
     const sigBytes = new Uint8Array(Buffer.from(pullPayload.signature, "base64"));
     const valid = sodium.crypto_sign_verify_detached(sigBytes, canonical, signKeypair.publicKey);
     expect(valid).toBe(true);
@@ -592,10 +607,11 @@ describe("broker pull bridge semi-integration", () => {
     await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for clamped inbox pull request");
 
     expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(100);
     expect(pullPayload.wait_seconds).toBe(20);
 
-    const canonical = canonicalizeOutboundV2(workspaceId, "inbox.pull.v2", pullPayload.timestamp, {
+    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 100,
       wait_seconds: 20,
     });

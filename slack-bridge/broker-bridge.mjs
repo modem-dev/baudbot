@@ -24,8 +24,7 @@ import {
 } from "./security.mjs";
 import {
   canonicalizeEnvelope,
-  canonicalizeOutbound,
-  canonicalizeOutboundV2,
+  canonicalizeProtocolRequest,
   canonicalizeSendRequest,
 } from "./crypto.mjs";
 
@@ -50,6 +49,7 @@ const DEDUPE_TTL_MS = clampInt(
   20 * 60 * 1000,
 );
 const MAX_BACKOFF_MS = 30_000;
+const INBOX_PROTOCOL_VERSION = "2026-02-1";
 const BROKER_HEALTH_PATH = path.join(homedir(), ".pi", "agent", "broker-health.json");
 
 function ts() {
@@ -366,23 +366,23 @@ function getThreadId(channel, threadTs) {
   return id;
 }
 
-function signRequest(action, timestamp, payloadField) {
-  const canonical = canonicalizeOutbound(workspaceId, action, timestamp, payloadField);
+function signProtocolRequest(action, timestamp, payload) {
+  const canonical = canonicalizeProtocolRequest(
+    workspaceId,
+    INBOX_PROTOCOL_VERSION,
+    action,
+    timestamp,
+    payload,
+  );
   const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
   return toBase64(sig);
 }
 
 function signPullRequest(timestamp, maxMessages, waitSeconds) {
-  if (waitSeconds <= 0) {
-    return signRequest("inbox.pull", timestamp, String(maxMessages));
-  }
-
-  const canonical = canonicalizeOutboundV2(workspaceId, "inbox.pull.v2", timestamp, {
+  return signProtocolRequest("inbox.pull", timestamp, {
     max_messages: maxMessages,
     wait_seconds: waitSeconds,
   });
-  const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
-  return toBase64(sig);
 }
 
 async function brokerFetch(pathname, body) {
@@ -421,8 +421,9 @@ async function pullInbox() {
 
   const body = {
     workspace_id: workspaceId,
+    protocol_version: INBOX_PROTOCOL_VERSION,
     max_messages: MAX_MESSAGES,
-    ...(BROKER_WAIT_SECONDS > 0 ? { wait_seconds: BROKER_WAIT_SECONDS } : {}),
+    wait_seconds: BROKER_WAIT_SECONDS,
     timestamp,
     signature,
   };
@@ -435,11 +436,11 @@ async function pullInbox() {
 async function ackInbox(messageIds) {
   if (messageIds.length === 0) return;
   const timestamp = Math.floor(Date.now() / 1000);
-  const joined = messageIds.join(",");
-  const signature = signRequest("inbox.ack", timestamp, joined);
+  const signature = signProtocolRequest("inbox.ack", timestamp, { message_ids: messageIds });
 
   await brokerFetch("/api/inbox/ack", {
     workspace_id: workspaceId,
+    protocol_version: INBOX_PROTOCOL_VERSION,
     message_ids: messageIds,
     timestamp,
     signature,
@@ -993,6 +994,7 @@ async function startPollLoop() {
   logInfo(`   outbound mode: ${outboundMode} ${outboundMode === "direct" ? "(using SLACK_BOT_TOKEN)" : "(via broker)"}`);
   logInfo(`   broker: ${brokerBaseUrl}`);
   logInfo(`   workspace: ${workspaceId}`);
+  logInfo(`   inbox protocol: ${INBOX_PROTOCOL_VERSION}`);
   logInfo(
     `   poll mode: ${BROKER_WAIT_SECONDS > 0 ? `long-poll (${BROKER_WAIT_SECONDS}s)` : "short-poll"}, ` +
     `interval: ${POLL_INTERVAL_MS}ms, max messages: ${MAX_MESSAGES}`,
