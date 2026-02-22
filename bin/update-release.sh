@@ -20,9 +20,6 @@ bb_enable_strict_mode
 BAUDBOT_ROOT="${BAUDBOT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 bb_init_paths
 
-SOURCE_URL_FILE="$BAUDBOT_SOURCE_URL_FILE"
-SOURCE_BRANCH_FILE="$BAUDBOT_SOURCE_BRANCH_FILE"
-
 BAUDBOT_UPDATE_TMP_PARENT="${BAUDBOT_UPDATE_TMP_PARENT:-/tmp}"
 BAUDBOT_UPDATE_REPO="${BAUDBOT_UPDATE_REPO:-}"
 BAUDBOT_UPDATE_BRANCH="${BAUDBOT_UPDATE_BRANCH:-}"
@@ -98,9 +95,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --release-root)
       [ "$#" -ge 2 ] || die "--release-root requires a value"
-      bb_refresh_release_paths "$2" 1
-      SOURCE_URL_FILE="$BAUDBOT_SOURCE_URL_FILE"
-      SOURCE_BRANCH_FILE="$BAUDBOT_SOURCE_BRANCH_FILE"
+      BAUDBOT_RELEASE_ROOT="$2"
       shift 2
       ;;
     --skip-preflight)
@@ -121,6 +116,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# Normalize release paths after env + CLI parsing so BAUDBOT_RELEASE_ROOT always
+# wins over any inherited BAUDBOT_SOURCE_* path variables.
+bb_refresh_release_paths "${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}" 1
+
 bb_require_root "update (or BAUDBOT_UPDATE_ALLOW_NON_ROOT=1 for tests)" "$BAUDBOT_UPDATE_ALLOW_NON_ROOT"
 
 resolve_repo_url() {
@@ -129,8 +128,8 @@ resolve_repo_url() {
     return 0
   fi
 
-  if [ -f "$SOURCE_URL_FILE" ]; then
-    head -n 1 "$SOURCE_URL_FILE"
+  if [ -f "$BAUDBOT_SOURCE_URL_FILE" ]; then
+    head -n 1 "$BAUDBOT_SOURCE_URL_FILE"
     return 0
   fi
 
@@ -147,8 +146,8 @@ resolve_branch() {
     return 0
   fi
 
-  if [ -f "$SOURCE_BRANCH_FILE" ]; then
-    head -n 1 "$SOURCE_BRANCH_FILE"
+  if [ -f "$BAUDBOT_SOURCE_BRANCH_FILE" ]; then
+    head -n 1 "$BAUDBOT_SOURCE_BRANCH_FILE"
     return 0
   fi
 
@@ -164,8 +163,8 @@ save_source_metadata() {
   local branch="$2"
 
   mkdir -p "$BAUDBOT_RELEASE_ROOT"
-  printf '%s\n' "$repo_url" > "$SOURCE_URL_FILE"
-  printf '%s\n' "$branch" > "$SOURCE_BRANCH_FILE"
+  printf '%s\n' "$repo_url" > "$BAUDBOT_SOURCE_URL_FILE"
+  printf '%s\n' "$branch" > "$BAUDBOT_SOURCE_BRANCH_FILE"
 }
 
 run_preflight() {

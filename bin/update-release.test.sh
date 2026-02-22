@@ -78,6 +78,26 @@ run_update() {
     "$UPDATE_SCRIPT"
 }
 
+run_update_with_stale_source_paths() {
+  local repo="$1"
+  local release_root="$2"
+  local stale_root="$3"
+
+  BAUDBOT_UPDATE_ALLOW_NON_ROOT=1 \
+    BAUDBOT_RELEASE_ROOT="$release_root" \
+    BAUDBOT_SOURCE_URL_FILE="$stale_root/source.url" \
+    BAUDBOT_SOURCE_BRANCH_FILE="$stale_root/source.branch" \
+    BAUDBOT_UPDATE_REPO="$repo" \
+    BAUDBOT_UPDATE_BRANCH="main" \
+    BAUDBOT_UPDATE_PREFLIGHT_CMD="test -f hello.txt" \
+    BAUDBOT_UPDATE_DEPLOY_CMD="true" \
+    BAUDBOT_UPDATE_RESTART_CMD="true" \
+    BAUDBOT_UPDATE_HEALTH_CMD="true" \
+    BAUDBOT_UPDATE_SKIP_VERSION_CHECK=1 \
+    BAUDBOT_UPDATE_SKIP_CLI_LINK=1 \
+    "$UPDATE_SCRIPT"
+}
+
 assert_no_git_dirs() {
   local dir="$1"
 
@@ -170,12 +190,37 @@ test_deploy_failure_keeps_current() {
   )
 }
 
+test_release_root_overrides_stale_source_path_env() {
+  (
+    set -euo pipefail
+    local tmp repo release_root stale_root
+
+    tmp="$(mktemp -d /tmp/baudbot-update-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    repo="$tmp/repo"
+    release_root="$tmp/opt/baudbot"
+    stale_root="$tmp/stale"
+
+    mkdir -p "$stale_root"
+    make_repo "$repo"
+
+    run_update_with_stale_source_paths "$repo" "$release_root" "$stale_root"
+
+    [ -f "$release_root/source.url" ]
+    [ -f "$release_root/source.branch" ]
+    [ ! -f "$stale_root/source.url" ]
+    [ ! -f "$stale_root/source.branch" ]
+  )
+}
+
 echo "=== update-release tests ==="
 echo ""
 
 run_test "publishes git-free release snapshot" test_publish_git_free_release
 run_test "preflight failure keeps current release" test_preflight_failure_keeps_current
 run_test "deploy failure keeps current release" test_deploy_failure_keeps_current
+run_test "release root overrides stale source env" test_release_root_overrides_stale_source_path_env
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="
