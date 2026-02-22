@@ -5,7 +5,7 @@
 #   ~/baudbot/bin/deploy.sh
 #   ~/baudbot/bin/deploy.sh --dry-run
 #
-# The source repo lives in the admin's home (agent can't read it).
+# In default hardened installs, source lives in admin-owned paths not readable by the agent.
 # This script stages files to a temp dir, then uses sudo -u baudbot_agent
 # to install them into the agent's runtime directories. It also stamps
 # a version file + hash manifest so the agent can verify integrity

@@ -69,7 +69,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for all env vars and how to obtain them
 
 ## Architecture: Source / Runtime Separation
 
-The admin owns source checkouts (for example `~/baudbot/`). The agent (`baudbot_agent` user) owns runtime state. The agent **cannot read the source repo** — admin home is `700`.
+The admin owns source checkouts (for example `~/baudbot/`). The agent (`baudbot_agent` user) owns runtime state. In default hardened installs, agent access to the admin source checkout is blocked by filesystem permissions; if host permissions are loosened, this boundary no longer holds.
 
 Live operations are now release-based under `/opt/baudbot` (git-free):
 

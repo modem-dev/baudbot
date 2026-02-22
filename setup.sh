@@ -218,7 +218,7 @@ fi
 
 echo "=== Setting up runtime directories ==="
 # The agent runs from deployed copies, not from the source repo directly.
-# Source: ~/baudbot/ (read-only to agent)
+# Source: ~/baudbot/ (typically not readable by agent in hardened default installs)
 # Runtime: ~/.pi/agent/extensions/, ~/.pi/agent/skills/, ~/runtime/slack-bridge/
 sudo -u baudbot_agent bash -c '
   mkdir -p ~/.pi/agent/extensions

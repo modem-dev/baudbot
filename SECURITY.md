@@ -42,8 +42,8 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 ┌─────────────────────────────────────────────────────────────────┐
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
-│   Cannot read admin home directory (admin home is 700)           │
-│   Source repo (typically ~/baudbot/) is expected to be admin-owned/inaccessible to agent in default installs │
+│   In default hardened installs, admin home is not readable by agent (typically mode 700) │
+│   Source repo (typically ~/baudbot/) is expected to be inaccessible to agent under those permissions │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -66,8 +66,8 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 | **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
 | **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
 
-The read-only source repo is the primary defense. Even if the agent modifies runtime copies,
-the admin can re-deploy from the untampered source at any time.
+When source isolation is enforced, it is a primary defense. Even if the agent modifies runtime copies,
+admin can re-deploy from source to restore expected state.
 
 ## User Model
 
@@ -78,7 +78,7 @@ the admin can re-deploy from the untampered source at any time.
 
 **Admin → baudbot_agent access**: The admin user is in the `baudbot_agent` group and has `NOPASSWD: ALL` as baudbot_agent via sudo. This is intentional for management. Run `bin/harden-permissions.sh` to ensure pi state files are owner-only (prevents passive group-level reads).
 
-**baudbot_agent → admin access**: None. Admin home is `700`, baudbot_agent is not in the admin user's group.
+**baudbot_agent → admin access**: Expected to be none in default installs. This depends on host permissions (for example, admin home mode and group membership) remaining hardened.
 
 ## Data Flows
 
