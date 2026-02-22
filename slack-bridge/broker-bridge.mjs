@@ -37,7 +37,7 @@ function clampInt(value, min, max, fallback) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-const API_PORT = clampInt(process.env.BRIDGE_API_PORT || "7890", 1, 65535, 7890);
+const API_PORT = clampInt(process.env.BRIDGE_API_PORT || "7890", 0, 65535, 7890);
 const POLL_INTERVAL_MS = clampInt(process.env.SLACK_BROKER_POLL_INTERVAL_MS || "3000", 0, 60_000, 3000);
 const MAX_MESSAGES = clampInt(process.env.SLACK_BROKER_MAX_MESSAGES || "10", 1, 100, 10);
 const MAX_WAIT_SECONDS = 25;
