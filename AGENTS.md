@@ -20,7 +20,6 @@ bin/                        security & operations scripts
   prune-session-logs.sh     retention cleanup for old pi session logs
   config.sh                 env var validation helper
   broker-register.mjs       Slack broker workspace registration CLI
-  control-plane.sh          starts the admin web dashboard
   doctor.sh                 system health checks
   uninstall.sh              clean removal of baudbot
   test.sh                   runs all test suites
@@ -52,9 +51,6 @@ pi/
     dev-agent/              coding agent
     sentry-agent/           monitoring/triage agent
   settings.json             pi agent settings
-control-plane/
-  server.mjs                admin-owned web dashboard + API (port 28800)
-  server.test.mjs           control plane tests
 slack-bridge/
   bridge.mjs                Slack ↔ agent bridge (legacy Socket Mode)
   broker-bridge.mjs         Slack ↔ agent bridge (broker pull mode — preferred)

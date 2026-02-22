@@ -5,7 +5,6 @@ export default defineConfig({
     include: [
       "pi/extensions/heartbeat.test.mjs",
       "pi/extensions/memory.test.mjs",
-      "control-plane/server.test.mjs",
       "test/legacy-node-tests.test.mjs",
       "test/broker-bridge.integration.test.mjs",
       "test/shell-scripts.test.mjs",

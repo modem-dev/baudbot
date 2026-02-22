@@ -86,18 +86,6 @@ the admin can re-deploy from the untampered source at any time.
 
 **baudbot_agent → admin access**: None. Admin home is `700`, baudbot_agent is not in the admin user's group.
 
-## Control Plane Isolation
-
-The control plane (`control-plane/server.mjs`) is an admin-owned web server on port 28800.
-
-- Runs as the **admin user**, not `baudbot_agent`
-- Port 28800 is **not** in the agent's firewall allowlist — the agent cannot reach it
-- Provides read-only visibility into agent state (processes, config, sessions)
-- Optional bearer token auth (`BAUDBOT_CP_TOKEN`)
-- Config endpoint shows which env vars are set, **never** their values
-
-The agent cannot use the control plane to reconfigure or inspect itself.
-
 ## Data Flows
 
 ```

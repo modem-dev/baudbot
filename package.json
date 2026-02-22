@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "test": "vitest run --config vitest.config.mjs",
-    "test:js": "vitest run --config vitest.config.mjs pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs test/broker-bridge.integration.test.mjs",
+    "test:js": "vitest run --config vitest.config.mjs pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs test/legacy-node-tests.test.mjs test/broker-bridge.integration.test.mjs",
     "test:shell": "vitest run --config vitest.config.mjs test/shell-scripts.test.mjs test/security-audit.test.mjs",
-    "test:coverage": "vitest run --config vitest.config.mjs --coverage pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs control-plane/server.test.mjs test/legacy-node-tests.test.mjs",
+    "test:coverage": "vitest run --config vitest.config.mjs --coverage pi/extensions/heartbeat.test.mjs pi/extensions/memory.test.mjs test/legacy-node-tests.test.mjs",
     "lint": "npm run lint:js && npm run lint:shell",
     "lint:js": "biome lint",
     "lint:shell": "bash bin/lint-shell.sh",
@@ -20,7 +20,6 @@
     "@sinclair/typebox": "^0.34.48",
     "@vitest/coverage-v8": "^4.0.18",
     "agentmail": "^0.2.15",
-    "express": "^5.2.1",
     "libsodium-wrappers-sumo": "^0.8.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

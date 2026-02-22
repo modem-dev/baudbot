@@ -135,17 +135,6 @@ These are **command-time overrides** for `baudbot update` / `baudbot rollback` (
 | `BAUDBOT_UPDATE_REPO` | Update source repo URL/path override | auto-detected / remembered |
 | `BAUDBOT_UPDATE_BRANCH` | Update source branch override | remembered / `main` |
 
-### Control Plane
-
-The control plane runs as the admin user, not `baudbot_agent`. These env vars are for the admin's environment.
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `BAUDBOT_CP_PORT` | Control plane listen port | `28800` |
-| `BAUDBOT_CP_TOKEN` | Bearer token for API auth | *(empty — no auth, localhost only)* |
-
-Port 28800 is intentionally outside the agent's firewall allowlist — the agent cannot reach the control plane.
-
 ### Setup Overrides
 
 Set during `setup.sh` / `baudbot install` via env vars:

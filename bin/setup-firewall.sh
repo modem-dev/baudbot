@@ -84,10 +84,6 @@ iptables -w -A "$CHAIN" -o lo -p tcp --dport 53 -j ACCEPT
 # Allow localhost responses (established connections back to us)
 iptables -w -A "$CHAIN" -o lo -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# ── NOTE: control plane (28800) is intentionally NOT allowed ──────────
-# The admin-owned control plane runs on port 28800. The agent must not
-# be able to reach it — the default-deny below handles this.
-
 # Block everything else on localhost
 iptables -w -A "$CHAIN" -o lo -j LOG --log-prefix "BAUDBOT_LOCAL_BLOCKED: " --log-level 4
 iptables -w -A "$CHAIN" -o lo -j DROP

@@ -107,7 +107,6 @@ export PATH="/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:$PATH"
 cd /home/baudbot_admin/baudbot
 npm install --ignore-scripts 2>&1 | tail -1
 cd slack-bridge && npm install 2>&1 | tail -1
-cd ../control-plane && npm install 2>&1 | tail -1
 cd ..
 
 echo "=== Running tests ==="

@@ -94,24 +94,6 @@ bin/test.sh js
 bin/test.sh shell
 ```
 
-## Control plane
-
-Start admin-owned control plane dashboard/API:
-
-```bash
-~/baudbot/bin/control-plane.sh
-```
-
-Recommended with auth token:
-
-```bash
-BAUDBOT_CP_TOKEN=$(openssl rand -hex 32) ~/baudbot/bin/control-plane.sh
-```
-
-Default local dashboard:
-
-- `http://127.0.0.1:28800/dashboard`
-
 ## Common runbook actions
 
 - verify Slack bridge responsiveness
