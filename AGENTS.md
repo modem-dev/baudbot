@@ -70,6 +70,9 @@ sudo baudbot rollback previous
 **Strong defaults:**
 - When behavior changes, update docs in the same PR (`README.md`, `docs/*`, `CONFIGURATION.md`, and relevant `AGENTS.md` files).
 - Prefer distro-agnostic shell; distro-specific branches are acceptable when reliability improves.
+- Prefer explicit, domain-aware naming for shared code (`FooRequestBody`, `SlackWorkspaceKVRecord`, `BrokerHttpResponse`, etc.).
+- Keep action names semantic (`activateWorkspace`), and use storage/runtime qualifiers on read/write helpers when helpful (`getWorkspaceKVRecord`, `putWorkspaceDBRow`).
+- Local variables may be lighter-weight when scope is short and context is obvious, but avoid ambiguous names (`data`, `payload`, `body`, `response`) when crossing boundaries.
 
 ## Tests and quality gates
 
