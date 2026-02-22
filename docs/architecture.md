@@ -1,17 +1,10 @@
 # Architecture
 
-Baudbot separates admin-owned source from agent-owned runtime to reduce blast radius while still enabling always-on autonomous execution.
+Baudbot runs live operations from release snapshots under `/opt/baudbot`, with an agent-owned runtime under `/home/baudbot_agent`.
 
-## Source / release / runtime layout
+## Release / runtime layout (production)
 
 ```text
-admin user
-├── ~/baudbot/                     # source repo (admin-owned)
-│   ├── bin/
-│   ├── pi/extensions/
-│   ├── pi/skills/
-│   └── slack-bridge/              # Slack integration (Socket Mode + broker pull mode)
-
 root-managed releases
 ├── /opt/baudbot/
 │   ├── releases/<sha>/            # immutable, git-free snapshots
@@ -24,9 +17,13 @@ baudbot_agent user
 └── ~/workspace/                   # project repos + task worktrees
 ```
 
+## Source checkouts (development only)
+
+A local checkout (for example `~/baudbot`) is for contributors/admin maintenance and is not the live runtime. `baudbot update` publishes a git-free snapshot into `/opt/baudbot/releases/<sha>` and runs from there.
+
 ## Deployment flow
 
-1. Admin updates source repo.
+1. Update is initiated from a target ref/repo.
 2. Deploy/update scripts build a staged snapshot.
 3. Snapshot is published to `/opt/baudbot/releases/<sha>`.
 4. Runtime files are deployed for `baudbot_agent`.

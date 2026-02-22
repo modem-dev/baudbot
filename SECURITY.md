@@ -2,12 +2,9 @@
 
 For product overview and team workflow context, start with [README.md](README.md). For architecture and operations docs, see [`docs/architecture.md`](docs/architecture.md) and [`docs/operations.md`](docs/operations.md).
 
-## Architecture: Source / Runtime Separation
+## Architecture: Release / Runtime Separation
 
 ```text
-admin source checkout
-├── ~/baudbot/                         # source of truth (admin-owned)
-
 root-managed releases
 ├── /opt/baudbot/releases/<sha>/       # immutable, git-free snapshots
 ├── /opt/baudbot/current -> <sha>
@@ -19,8 +16,10 @@ agent runtime (baudbot_agent)
 └── ~/workspace/                       # repos + task worktrees
 ```
 
-The agent runs from deployed/runtime copies, never directly from the admin source checkout.
+Live execution runs from deployed/runtime copies.
 `baudbot update` publishes a snapshot, deploys runtime files, validates health, then atomically flips `current`.
+
+A local source checkout (for example `~/baudbot`) is a contributor/admin workflow, not the live execution path.
 
 ## Trust Boundaries
 
@@ -43,7 +42,7 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   In default hardened installs, admin home is not readable by agent (typically mode 700) │
-│   Source repo (typically ~/baudbot/) is expected to be inaccessible to agent under those permissions │
+│   If a local source checkout exists, it is expected to be inaccessible to agent under hardened host permissions │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -60,14 +59,13 @@ The agent runs from deployed/runtime copies, never directly from the admin sourc
 
 | Layer | What | Bypassed by |
 |-------|------|-------------|
-| **Read-only source** | In default installs, source lives under admin home (700 perms), so agent access is expected to be blocked. Optional bind mount adds defense-in-depth (not applied by default). | Root access |
+| **Read-only local source checkout (optional)** | When a local admin checkout is present (for maintenance/dev), hardened host permissions should block agent access. Optional bind mount adds defense-in-depth (not applied by default). | Root access |
 | **File permissions** | Security-critical runtime files deployed `chmod a-w` by deploy.sh. Hard OS-level boundary — blocks `sed`, `python`, any write mechanism. | Root access or `chmod u+w` (which tool-guard blocks) |
 | **Tool-guard rules** | Policy/guidance layer: blocks many high-risk Edit/Write/bash patterns and returns safety-interruption reasoning. Not a hard sandbox; novel command patterns may bypass it. | Novel bypass patterns; rely on OS file perms + runtime hardening for hard boundaries |
 | **Integrity checks** | security-audit.sh compares runtime file hashes against deploy manifest | None (detection, not prevention) |
 | **Pre-commit hook** | Blocks git commit of protected files in source repo | --no-verify (root-owned hook) |
 
-When source isolation is enforced, it is a primary defense. Even if the agent modifies runtime copies,
-admin can re-deploy from source to restore expected state.
+Primary hard boundaries are runtime permissions, user isolation, and release-based deployment. If local source isolation is also enforced, admin can re-deploy from source to restore expected state.
 
 ## User Model
 
