@@ -31,6 +31,7 @@ bin/                        security & operations scripts
     setup-arch.sh           Arch Linux droplet: prereqs + setup + tests
   lib/                      shared shell helpers sourced by CLI/release scripts
     shell-common.sh         strict mode + shared logging/error/root-check helpers
+    paths-common.sh         shared path constants (bb_init_paths, bb_refresh_release_paths)
     release-common.sh       shared update/rollback helpers
     deploy-common.sh        deploy/runtime helper functions
     doctor-common.sh        doctor status/check formatting helpers
@@ -181,7 +182,7 @@ Add new test files to `vitest.config.mjs` (and shell wrappers under `test/` as n
 - Security functions must be pure, testable modules (no side effects, no env vars at module scope).
 - All security code must have tests before merging.
 - Run `bin/security-audit.sh --deep` after any security-relevant changes.
-- Keep shell CLIs thin: move reusable logic to `bin/lib/*.sh`, and source shared helpers (`shell-common.sh`, `release-common.sh`, `deploy-common.sh`, `doctor-common.sh`) instead of duplicating logging/error/root-check patterns.
+- Keep shell CLIs thin: move reusable logic to `bin/lib/*.sh`, and source shared helpers (`shell-common.sh`, `paths-common.sh`, `release-common.sh`, `deploy-common.sh`, `doctor-common.sh`) instead of duplicating logging/error/root-check patterns.
 - For shell scripts, standardize on `bb_enable_strict_mode` and shared helper functions (`bb_log`, `bb_die`, etc.) rather than ad-hoc wrappers.
 - Protected files (`tool-guard.ts`, `security.mjs`, their tests) are deployed read-only. The agent cannot modify them at runtime.
 - New integrations get their own subdirectory (e.g. `discord-bridge/`).
