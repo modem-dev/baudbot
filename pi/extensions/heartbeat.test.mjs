@@ -301,6 +301,28 @@ Some markdown body here.`;
     assert.equal(result.id, "ws");
   });
 
+  it("handles braces inside string values", () => {
+    const content = `{"id": "brace1", "title": "Fix {bug} in {module}", "status": "open"}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "brace1");
+    assert.equal(result.title, "Fix {bug} in {module}");
+    assert.equal(result.status, "open");
+  });
+
+  it("handles escaped quotes inside strings", () => {
+    const content = `{"id": "esc1", "title": "Fix \\"quoted\\" thing", "status": "done"}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "esc1");
+    assert.equal(result.status, "done");
+  });
+
+  it("handles braces and escapes together", () => {
+    const content = `{"id": "combo", "title": "Deploy {v2} with \\"zero-token\\" mode", "status": "in-progress", "created_at": "2026-01-01T00:00:00Z"}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "combo");
+    assert.equal(result.status, "in-progress");
+  });
+
   it("ignores content after closing brace", () => {
     const content = `{"id": "extra", "status": "open"}
 

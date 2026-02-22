@@ -206,16 +206,34 @@ function parseTodo(content: string): { status?: string; title?: string; created_
     const trimmed = content.trim();
     if (!trimmed.startsWith("{")) return null;
 
-    // Find the closing brace for the top-level JSON object
+    // Find the closing brace for the top-level JSON object,
+    // skipping braces inside string values (handles escaped quotes too)
     let depth = 0;
     let jsonEnd = -1;
+    let inString = false;
+    let escapeNext = false;
     for (let i = 0; i < trimmed.length; i++) {
-      if (trimmed[i] === "{") depth++;
-      else if (trimmed[i] === "}") {
-        depth--;
-        if (depth === 0) {
-          jsonEnd = i + 1;
-          break;
+      const char = trimmed[i];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (char === "\\") {
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === "{") depth++;
+        else if (char === "}") {
+          depth--;
+          if (depth === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
         }
       }
     }
@@ -257,7 +275,7 @@ function checkStuckTodos(): CheckResult[] {
 
         if (!hasAgent) {
           const title = todo.title || todoId;
-          const hoursStuck = Math.round(age / (60 * 60 * 1000) * 10) / 10;
+          const hoursStuck = Math.round((age / (60 * 60 * 1000)) * 10) / 10;
 
           results.push({
             name: `stuck:TODO-${todoId}`,
