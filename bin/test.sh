@@ -79,6 +79,8 @@ run_shell_tests() {
   run "log redaction"       bash bin/redact-logs.test.sh
   run "log pruning"         bash bin/prune-session-logs.test.sh
   run "config flow"         bash bin/config.test.sh
+  run "deploy lib helpers"  bash bin/lib/deploy-common.test.sh
+  run "doctor lib helpers"  bash bin/lib/doctor-common.test.sh
   run "update release flow" bash bin/update-release.test.sh
   run "rollback release"    bash bin/rollback-release.test.sh
   echo ""

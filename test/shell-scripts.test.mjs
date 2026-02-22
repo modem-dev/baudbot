@@ -35,6 +35,14 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/json-common.test.sh")).not.toThrow();
   });
 
+  it("deploy helpers", () => {
+    expect(() => runScript("bin/lib/deploy-common.test.sh")).not.toThrow();
+  });
+
+  it("doctor helpers", () => {
+    expect(() => runScript("bin/lib/doctor-common.test.sh")).not.toThrow();
+  });
+
   it("baudbot cli", () => {
     expect(() => runScript("bin/baudbot.test.sh")).not.toThrow();
   });
