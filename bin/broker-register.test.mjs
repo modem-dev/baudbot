@@ -129,6 +129,9 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
         ok: true,
         broker_pubkey: Buffer.alloc(32, 9).toString("base64"),
         broker_signing_pubkey: Buffer.alloc(32, 8).toString("base64"),
+        broker_access_token: "tok-abc",
+        broker_access_token_expires_at: "2026-02-22T22:00:00.000Z",
+        broker_access_token_scopes: ["slack.send", "inbox.pull"],
       });
     }
 
@@ -148,6 +151,9 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
   assert.match(calls[1].url, /\/api\/register$/);
   assert.equal(result.broker_pubkey, Buffer.alloc(32, 9).toString("base64"));
   assert.equal(result.broker_signing_pubkey, Buffer.alloc(32, 8).toString("base64"));
+  assert.equal(result.broker_access_token, "tok-abc");
+  assert.equal(result.broker_access_token_expires_at, "2026-02-22T22:00:00.000Z");
+  assert.deepEqual(result.broker_access_token_scopes, ["slack.send", "inbox.pull"]);
 });
 
 test("registerWithBroker sends registration_token when provided", async () => {
@@ -201,7 +207,14 @@ test("runRegistration integration path succeeds against live local HTTP server",
       for await (const chunk of req) raw += chunk;
       receivedRegisterPayload = JSON.parse(raw);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, broker_pubkey: brokerPubkey, broker_signing_pubkey: brokerSigningPubkey }));
+      res.end(JSON.stringify({
+        ok: true,
+        broker_pubkey: brokerPubkey,
+        broker_signing_pubkey: brokerSigningPubkey,
+        broker_access_token: "tok-live",
+        broker_access_token_expires_at: "2026-02-22T22:00:00.000Z",
+        broker_access_token_scopes: ["slack.send"],
+      }));
       return;
     }
 
@@ -228,6 +241,9 @@ test("runRegistration integration path succeeds against live local HTTP server",
     assert.ok(result.updates.SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY);
     assert.equal(result.updates.SLACK_BROKER_PUBLIC_KEY, brokerPubkey);
     assert.equal(result.updates.SLACK_BROKER_SIGNING_PUBLIC_KEY, brokerSigningPubkey);
+    assert.equal(result.updates.SLACK_BROKER_ACCESS_TOKEN, "tok-live");
+    assert.equal(result.updates.SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT, "2026-02-22T22:00:00.000Z");
+    assert.equal(result.updates.SLACK_BROKER_ACCESS_TOKEN_SCOPES, "slack.send");
   } finally {
     await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }

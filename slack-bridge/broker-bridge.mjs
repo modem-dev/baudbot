@@ -94,6 +94,7 @@ const directSlackRateLimiter = createRateLimiter({ maxRequests: 1, windowMs: 1_0
 
 const workspaceId = process.env.SLACK_BROKER_WORKSPACE_ID;
 const brokerBaseUrl = String(process.env.SLACK_BROKER_URL || "").replace(/\/$/, "");
+const brokerAccessToken = String(process.env.SLACK_BROKER_ACCESS_TOKEN || "").trim();
 
 // Check if direct Slack API mode is available
 const hasDirectSlackToken = Boolean(process.env.SLACK_BOT_TOKEN);
@@ -387,9 +388,13 @@ function signPullRequest(timestamp, maxMessages, waitSeconds) {
 
 async function brokerFetch(pathname, body) {
   const url = `${brokerBaseUrl}${pathname}`;
+  const headers = { "Content-Type": "application/json" };
+  if (brokerAccessToken) {
+    headers.Authorization = `Bearer ${brokerAccessToken}`;
+  }
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -995,6 +1000,7 @@ async function startPollLoop() {
   logInfo(`   broker: ${brokerBaseUrl}`);
   logInfo(`   workspace: ${workspaceId}`);
   logInfo(`   inbox protocol: ${INBOX_PROTOCOL_VERSION}`);
+  logInfo(`   broker auth token: ${brokerAccessToken ? "configured" : "not configured"}`);
   logInfo(
     `   poll mode: ${BROKER_WAIT_SECONDS > 0 ? `long-poll (${BROKER_WAIT_SECONDS}s)` : "short-poll"}, ` +
     `interval: ${POLL_INTERVAL_MS}ms, max messages: ${MAX_MESSAGES}`,

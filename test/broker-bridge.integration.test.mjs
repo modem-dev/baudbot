@@ -32,6 +32,24 @@ function waitFor(condition, timeoutMs = 10_000, intervalMs = 50, onTimeoutMessag
   });
 }
 
+async function reserveFreePort() {
+  const server = createServer((_req, res) => {
+    res.writeHead(204);
+    res.end();
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise((resolve) => server.close(() => resolve(undefined)));
+    throw new Error("failed to reserve free port");
+  }
+
+  const port = address.port;
+  await new Promise((resolve) => server.close(() => resolve(undefined)));
+  return port;
+}
+
 describe("broker pull bridge semi-integration", () => {
   const children = [];
   const servers = [];
@@ -618,6 +636,94 @@ describe("broker pull bridge semi-integration", () => {
     const sigBytes = new Uint8Array(Buffer.from(pullPayload.signature, "base64"));
     const valid = sodium.crypto_sign_verify_detached(sigBytes, canonical, signKeypair.publicKey);
     expect(valid).toBe(true);
+
+    bridge.kill("SIGTERM");
+  });
+
+  it("sends broker bearer token when configured", async () => {
+    await sodium.ready;
+
+    const workspaceId = "T123BROKER";
+    const bridgeApiPort = await reserveFreePort();
+    let outboundAuthorization = null;
+
+    const broker = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/inbox/pull") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, messages: [] }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/send") {
+        outboundAuthorization = req.headers.authorization || null;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: "1234.5678" }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/inbox/ack") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, acked: 0 }));
+        return;
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "not found" }));
+    });
+
+    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    servers.push(broker);
+
+    const address = broker.address();
+    if (!address || typeof address === "string") {
+      throw new Error("failed to get broker test server address");
+    }
+    const brokerUrl = `http://127.0.0.1:${address.port}`;
+
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    const bridge = spawn("node", [bridgePath], {
+      cwd: bridgeCwd,
+      env: {
+        ...process.env,
+        SLACK_BROKER_URL: brokerUrl,
+        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 24).toString("base64"),
+        SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
+        SLACK_ALLOWED_USERS: "U_ALLOWED",
+        SLACK_BROKER_POLL_INTERVAL_MS: "50",
+        SLACK_BROKER_WAIT_SECONDS: "0",
+        BRIDGE_API_PORT: String(bridgeApiPort),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    children.push(bridge);
+
+    const start = Date.now();
+    // Bridge local API may not be ready immediately after spawn; retry until it accepts /send.
+    while (Date.now() - start < 10_000) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${bridgeApiPort}/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: "C123", text: "hello" }),
+        });
+        if (res.ok) break;
+      } catch {
+        // retry while bridge boots
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await waitFor(() => outboundAuthorization !== null, 10_000, 50, "timeout waiting for broker /api/send call");
+    expect(outboundAuthorization).toBe("Bearer test-broker-token");
 
     bridge.kill("SIGTERM");
   });

@@ -350,6 +350,11 @@ export async function registerWithBroker({
   return {
     broker_pubkey: registerBrokerPubkey || fetchedBrokerKeys.broker_pubkey,
     broker_signing_pubkey: registerBrokerSigningPubkey || fetchedBrokerKeys.broker_signing_pubkey,
+    broker_access_token: body?.broker_access_token,
+    broker_access_token_expires_at: body?.broker_access_token_expires_at,
+    broker_access_token_scopes: Array.isArray(body?.broker_access_token_scopes)
+      ? body.broker_access_token_scopes.filter((scope) => typeof scope === "string")
+      : undefined,
     decrypted_bot_token: decryptedBotToken,
     request_payload: payload,
   };
@@ -572,6 +577,16 @@ export async function runRegistration({
     SLACK_BROKER_PUBLIC_KEY: registration.broker_pubkey,
     SLACK_BROKER_SIGNING_PUBLIC_KEY: registration.broker_signing_pubkey,
   };
+
+  if (registration.broker_access_token) {
+    updates.SLACK_BROKER_ACCESS_TOKEN = registration.broker_access_token;
+  }
+  if (registration.broker_access_token_expires_at) {
+    updates.SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT = registration.broker_access_token_expires_at;
+  }
+  if (registration.broker_access_token_scopes?.length) {
+    updates.SLACK_BROKER_ACCESS_TOKEN_SCOPES = registration.broker_access_token_scopes.join(",");
+  }
 
   // Add the decrypted bot token if available
   if (registration.decrypted_bot_token) {

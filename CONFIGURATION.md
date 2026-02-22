@@ -104,6 +104,9 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Server Ed25519 public signing key (base64) |
 | `SLACK_BROKER_PUBLIC_KEY` | Broker X25519 public key (base64) |
 | `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
+| `SLACK_BROKER_ACCESS_TOKEN` | Optional broker-issued bearer token for broker API auth (used when broker enforces agent tokens) |
+| `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | Optional ISO timestamp for broker token expiry |
+| `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Optional comma-separated broker token scopes |
 | `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
 | `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
 | `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
@@ -189,6 +192,10 @@ SENTRY_CHANNEL_ID=C0987654321
 # Slack broker registration (optional, set by: sudo baudbot broker register)
 SLACK_BROKER_URL=https://broker.example.com
 SLACK_BROKER_WORKSPACE_ID=T0123ABCD
+# Optional broker auth token fields (set by broker register when provided)
+# SLACK_BROKER_ACCESS_TOKEN=...
+# SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT=2026-02-22T22:15:00.000Z
+# SLACK_BROKER_ACCESS_TOKEN_SCOPES=slack.send,inbox.pull,inbox.ack
 SLACK_BROKER_POLL_INTERVAL_MS=3000
 SLACK_BROKER_MAX_MESSAGES=10
 SLACK_BROKER_WAIT_SECONDS=20

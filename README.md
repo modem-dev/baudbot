@@ -99,6 +99,7 @@ sudo baudbot broker register \
 ```
 
 Broker pull mode uses long-polling by default (`SLACK_BROKER_WAIT_SECONDS=20`, max `25`; set `0` for immediate short-poll behavior).
+When broker agent-token auth is enabled server-side, `baudbot broker register` stores broker token fields in env and broker-mode outbound requests include `Authorization: Bearer ...` automatically.
 
 Need to rotate/update a key later?
 
