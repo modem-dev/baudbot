@@ -315,6 +315,16 @@ function hasMatchingTodo(devAgentName: string): boolean {
 function hasMatchingInProgressTodo(worktreeName: string): boolean {
   if (!existsSync(TODOS_DIR)) return false;
 
+  // Worktree dirs are branch names (e.g. "fix/sentry-alert-handling").
+  // Match against full path patterns stored in todo bodies to avoid false
+  // positives from short substrings like "fix" matching any mention of "fix".
+  // We check for:
+  //   1. The worktree name as part of a path (e.g. "worktrees/fix/some-name")
+  //   2. The worktree name preceded by a word boundary (space, quote, backtick, or line start)
+  const pathPattern = `worktrees/${worktreeName}`;
+  const escapedName = worktreeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundaryPattern = new RegExp(`(?:^|[\\s\`"'/])${escapedName}(?:$|[\\s\`"'/])`, "m");
+
   try {
     const files = readdirSync(TODOS_DIR).filter((f) => f.endsWith(".md"));
     for (const file of files) {
@@ -322,8 +332,7 @@ function hasMatchingInProgressTodo(worktreeName: string): boolean {
         const content = readFileSync(join(TODOS_DIR, file), "utf-8");
         const todo = parseTodo(content);
         if (todo?.status === "in-progress") {
-          // Check if the worktree branch name appears in the todo body
-          if (content.includes(worktreeName)) return true;
+          if (content.includes(pathPattern) || boundaryPattern.test(content)) return true;
         }
       } catch {
         continue;

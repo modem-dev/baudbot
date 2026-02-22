@@ -334,6 +334,54 @@ Not part of JSON.`;
   });
 });
 
+describe("heartbeat v2: hasMatchingInProgressTodo logic", () => {
+  // Replicate the matching logic from the extension
+  function matchesWorktree(content, worktreeName) {
+    const pathPattern = `worktrees/${worktreeName}`;
+    const escapedName = worktreeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const boundaryPattern = new RegExp(`(?:^|[\\s\`"'/])${escapedName}(?:$|[\\s\`"'/])`, "m");
+    return content.includes(pathPattern) || boundaryPattern.test(content);
+  }
+
+  it("matches worktree name in path context", () => {
+    const content = `Branch: ~/workspace/worktrees/fix/sentry-alert`;
+    assert.ok(matchesWorktree(content, "fix/sentry-alert"));
+  });
+
+  it("matches worktree name after space boundary", () => {
+    const content = `Working on fix/sentry-alert for the issue`;
+    assert.ok(matchesWorktree(content, "fix/sentry-alert"));
+  });
+
+  it("matches worktree name in backticks", () => {
+    const content = "Branch: `fix/sentry-alert`";
+    assert.ok(matchesWorktree(content, "fix/sentry-alert"));
+  });
+
+  it("does NOT match short substring in unrelated word", () => {
+    // "fix" should NOT match "prefix" or "fixation" or "the fix was applied"
+    // Actually "the fix was" has "fix" after a space — that IS a match.
+    // But "prefix" should NOT match.
+    const content = `{"title": "prefix configuration update", "status": "in-progress"}`;
+    assert.ok(!matchesWorktree(content, "fix"));
+  });
+
+  it("does NOT match partial word in title", () => {
+    const content = `{"title": "Refixing the deployment", "status": "in-progress"}`;
+    assert.ok(!matchesWorktree(content, "fix"));
+  });
+
+  it("matches when worktree name appears at start of line", () => {
+    const content = `fix/sentry-alert is the branch name`;
+    assert.ok(matchesWorktree(content, "fix/sentry-alert"));
+  });
+
+  it("matches when worktree name is in quotes", () => {
+    const content = `Branch is "fix/sentry-alert" on main`;
+    assert.ok(matchesWorktree(content, "fix/sentry-alert"));
+  });
+});
+
 describe("heartbeat v2: stuck todo detection logic", () => {
   it("identifies stuck in-progress todo (over threshold)", () => {
     const now = Date.now();
