@@ -85,13 +85,20 @@ sudo baudbot audit
 
 ```bash
 # Full test suite
-bin/test.sh
+npm test
 
 # JS/TS only
-bin/test.sh js
+npm run test:js
 
-# Shell only
-bin/test.sh shell
+# Shell/security-script suites
+npm run test:shell
+
+# Coverage
+npm run test:coverage
+
+# Lint + typecheck
+npm run lint
+npm run typecheck
 ```
 
 ## Common runbook actions

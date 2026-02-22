@@ -6,90 +6,114 @@
 [![Integration](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml/badge.svg)](https://github.com/modem-dev/baudbot/actions/workflows/integration.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/modem-dev/baudbot)](https://github.com/modem-dev/baudbot/commits/main)
-[![Security Policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
+[![Security](https://img.shields.io/badge/security-model-blue)](SECURITY.md)
 
-**Always-on, multiplayer coding agent infrastructure for engineering teams.**
+**Hardened, always-on multi-agent coding infrastructure for teams.**
 
-Baudbot runs a persistent AI control agent on Linux, connected to Slack, with worker agents that take tasks from request to PR. It works on real repositories with real tools (git, test runners, Docker wrapper, cloud browser automation), keeps persistent memory, and reports progress back in-thread.
+Baudbot runs a persistent control agent on Linux, connected to Slack, that can dispatch task-scoped coding agents in isolated git worktrees. It is designed for autonomous execution with clear operational controls (deploy/update/rollback, health checks, security audits, runtime hardening).
 
-Built for teams that want autonomous execution speed **without giving up operational control**.
+_⚠️ Alpha software: expect sharp edges, validate in non-critical environments first._
 
-_**⚠️ WARNING: Baudbot is in alpha/early testing. If you use this, prepare to fix things. It might burn tokens. Be careful!**_
+---
 
-## What Baudbot does
+## What Baudbot does today
 
-- **Shared Slack interface for the whole team.** Anyone in allowed channels can hand work to the same agent system.
-- **Always-on response and fast handoffs.** The control agent stays live, triages work instantly, and spins up task-scoped coding agents.
-- **End-to-end coding loop.** Branch, code, run tests, open PR, watch CI, push fixes, report status.
-- **Linux-native execution.** Agents can run the same project commands your engineers run (including guarded container workflows).
-- **Persistent team memory.** The system learns repo quirks, recurring fixes, and collaboration preferences across restarts.
-- **Self-improving operations.** Agents can update non-security skills/extensions and propose upstream improvements via PRs.
+- **Shared team interface in Slack** (threaded intake, status updates, closeout)
+- **Persistent orchestration** via `control-agent`
+- **Task-scoped coding workers** (`dev-agent`) that run branch → code → test → PR → CI loops
+- **Release-based runtime ops** (`/opt/baudbot/releases/<sha>` + atomic `current`/`previous` links)
+- **Linux-native execution** (real shell/tools, guarded Docker wrapper, optional cloud browser tooling)
+- **Persistent memory and skills** under `~/.pi/agent/`
+- **Defense-in-depth controls** (tool/shell policy layers + OS boundaries + runtime hardening)
 
-## Team agent, not a personal copilot
+## What Baudbot is not
 
-Baudbot is designed as shared engineering infrastructure, not a single-user desktop assistant:
+- Not a desktop copilot
+- Not a stateless chat bot
+- Not “agents with unrestricted root”
 
-- multiplayer by default (Slack threads, shared todos, multiple sessions)
-- persistent service, not one-shot chat
-- autonomous task execution with humans in review loops
-- admin-managed runtime with deployment + rollback controls
+Baudbot is intended to run as managed infra with explicit trust boundaries.
 
-## How work flows (example)
+---
 
-1. A developer asks in Slack: "Fix flaky auth tests in `myapp`."
-2. Baudbot acknowledges immediately in the same thread.
-3. Control agent creates a todo and spawns a `dev-agent` in a fresh git worktree.
-4. Dev agent fixes code, runs tests, opens a PR, and monitors CI.
-5. If CI fails, the dev agent iterates and pushes fixes automatically.
-6. Baudbot posts the PR link, CI status, and preview URL back to the original Slack thread.
+## Architecture (current)
+
+```text
+Slack (Socket Mode or broker pull mode)
+   ↓
+control-agent (persistent)
+   ├─ todo tracking + routing
+   ├─ dev-agent-* (ephemeral coding workers in worktrees)
+   └─ sentry-agent (persistent/on-demand incident triage)
+   ↓
+PRs, CI outcomes, thread replies
+```
+
+### Source / release / runtime separation
+
+```text
+admin source checkout:   ~/baudbot/
+release snapshots:       /opt/baudbot/releases/<sha>
+active release link:     /opt/baudbot/current
+previous release link:   /opt/baudbot/previous
+agent runtime:           /home/baudbot_agent/{runtime,.pi/agent,workspace}
+```
+
+`baudbot update` publishes a git-free snapshot, deploys runtime files, runs health checks, and atomically flips `current`.
+
+---
 
 ## Requirements
 
 | | Minimum | Recommended |
 |--|---------|-------------|
-| **OS** | Ubuntu 24.04 or Arch Linux | Any systemd-based Linux |
-| **RAM** | 4 GB (3 agents) | 8 GB (6 agents + builds/tests) |
+| **OS** | Ubuntu 24.04 or Arch Linux | systemd-based Linux |
+| **RAM** | 4 GB | 8 GB |
 | **CPU** | 2 vCPU | 4 vCPU |
-| **Disk** | 20 GB | 40 GB+ (repos, dependencies, Docker images) |
+| **Disk** | 20 GB | 40 GB+ |
 
-System package dependencies (installed by `baudbot install`): `git`, `curl`, `tmux`, `iptables`, `docker`, `gh`, `jq`, `sudo`.
+Installer-managed dependencies include: `git`, `curl`, `tmux`, `iptables`, `docker`, `gh`, `jq`, `sudo`.
 
-## Quick Start
+---
+
+## Quick start
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh | bash
 baudbot install
 ```
 
-`baudbot install` includes a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry). Email capabilities are disabled by default and only available in experimental mode (`baudbot setup --experimental` / `install.sh --experimental`). If [`gum`](https://github.com/charmbracelet/gum) is installed, prompts use richer TUI widgets; otherwise installer falls back to standard bash prompts.
+The installer performs setup, guided configuration, initial release deployment, and optional launch.
 
 After install:
 
 ```bash
-# deploy latest source/config to runtime
-sudo baudbot deploy
-
-# start the service
-sudo baudbot start
-
-# check health (includes deployed version + broker connection/health status)
 sudo baudbot status
+sudo baudbot logs
 sudo baudbot doctor
 ```
 
-Upgrade later:
+If the installer skipped launch, start manually:
 
 ```bash
-sudo baudbot update
+sudo baudbot start
 ```
 
-Install with a specific pi version (optional):
+### Optional: pin pi version during install
 
 ```bash
 BAUDBOT_PI_VERSION=0.52.12 baudbot install
 ```
 
-Slack broker registration (after OAuth callback). When `SLACK_BROKER_*` variables are present, the runtime starts broker pull mode (no inbound callback port required):
+---
+
+## Slack integration modes
+
+### 1) Direct Slack Socket Mode
+Use `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN`.
+
+### 2) Broker pull mode (preferred for managed setups)
+Register after OAuth callback:
 
 ```bash
 sudo baudbot broker register \
@@ -98,108 +122,117 @@ sudo baudbot broker register \
   --registration-token <token-from-dashboard-callback>
 ```
 
-Need to rotate/update a key later?
+Then restart:
+
+```bash
+sudo baudbot restart
+```
+
+> `baudbot setup --slack-broker` is deprecated. Use `baudbot broker register`.
+
+---
+
+## Core operations
+
+```bash
+# Lifecycle
+sudo baudbot start
+sudo baudbot stop
+sudo baudbot restart
+sudo baudbot status
+sudo baudbot logs
+
+# Sessions
+sudo baudbot sessions
+sudo baudbot attach
+
+# Deploy / upgrade / rollback
+sudo baudbot deploy
+sudo baudbot update
+sudo baudbot rollback previous
+
+# Health + security
+sudo baudbot doctor
+sudo baudbot audit
+
+# Remove
+sudo baudbot uninstall --dry-run
+sudo baudbot uninstall
+```
+
+---
+
+## Secrets and configuration
+
+- Runtime secrets file: `/home/baudbot_agent/.config/.env`
+- Validation schema: `.env.schema` (validated via Varlock at startup)
+- Manage keys with:
 
 ```bash
 sudo baudbot env set ANTHROPIC_API_KEY
-# or: sudo baudbot env set OPENAI_API_KEY sk-... --restart
-```
-
-Want to move source-of-truth off `~/.baudbot/.env` later?
-
-```bash
+sudo baudbot env set OPENAI_API_KEY sk-... --restart
+sudo baudbot env backend show
 sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
 sudo baudbot env sync --restart
 ```
 
-See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
+Full variable reference: [CONFIGURATION.md](CONFIGURATION.md)
 
-## Core agents
+---
 
-| Role | Purpose |
-|------|---------|
-| **control-agent** | Owns intake, triage, delegation, Slack comms, and lifecycle supervision |
-| **dev-agent** | Ephemeral coding worker that executes branch → code → PR → CI loops |
-| **sentry-agent** | On-demand incident investigator for Sentry alerts and triage support |
+## Development and tests
 
-## Architecture at a glance
+```bash
+# All tests
+npm test
 
-```text
-Slack
-   ↓
-control-agent (always-on)
-   ├─ todo + routing
-   ├─ dev-agent(s) in isolated worktrees
-   └─ sentry-agent for incident triage
-        ↓
-git commits, PRs, CI feedback, thread updates
+# JS/TS only
+npm run test:js
+
+# Shell/security script tests
+npm run test:shell
+
+# Coverage
+npm run test:coverage
+
+# Lint + typecheck
+npm run lint
+npm run typecheck
 ```
 
-Baudbot uses source/runtime separation: admin-managed source and immutable releases are deployed into an unprivileged agent runtime.
+For real distro validation, use ephemeral droplets via `bin/ci/droplet.sh`.
 
-## Security as an enabling layer
+---
 
-Baudbot is built for utility **and** containment:
+## Security model summary
 
-- isolated `baudbot_agent` Unix user (no general sudo)
-- per-UID firewall controls + process isolation
-- source/runtime separation with deploy manifests
-- read-only protection for security-critical files
-- session log hygiene (startup redaction + retention pruning)
-- layered tool and shell guardrails (policy/guidance layer, not sole containment)
+Baudbot uses layered controls:
 
-See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and known risks. In particular: tool/shell guards are defense-in-depth policy layers; hard containment comes from OS/runtime boundaries.
+- unprivileged `baudbot_agent` runtime user
+- firewall egress restrictions by UID
+- source/runtime separation + immutable release snapshots
+- runtime file hardening + read-only protection for security-critical files
+- tool-call and shell deny-list policy layers (`tool-guard`, `baudbot-safe-bash`)
+- startup log pruning and secret redaction
+
+Important: guard layers are policy/defense-in-depth helpers, **not** the primary sandbox boundary. Hard containment is provided by OS/runtime permissions and deployment architecture.
+
+See [SECURITY.md](SECURITY.md) for full threat model and risk notes.
+
+---
 
 ## Documentation
 
-- [docs/team-workflow.md](docs/team-workflow.md) — request lifecycle and orchestration model
-- [docs/agents.md](docs/agents.md) — agent roles, responsibilities, and session model
-- [docs/memory.md](docs/memory.md) — persistent memory design and operating rules
-- [docs/linux-runtime.md](docs/linux-runtime.md) — Linux execution model, tools, and constraints
-- [docs/operations.md](docs/operations.md) — day-2 operations (start/stop/update/rollback/audit)
-- [docs/architecture.md](docs/architecture.md) — source/runtime/release architecture
-- [CONFIGURATION.md](CONFIGURATION.md) — full env var reference
-- [SECURITY.md](SECURITY.md) — deep security model and vulnerability reporting
+- [docs/team-workflow.md](docs/team-workflow.md) — intake → execution → closeout lifecycle
+- [docs/agents.md](docs/agents.md) — control/dev/sentry role contracts
+- [docs/memory.md](docs/memory.md) — memory model and persistence rules
+- [docs/linux-runtime.md](docs/linux-runtime.md) — runtime behavior and constraints
+- [docs/operations.md](docs/operations.md) — day-2 runbook
+- [docs/architecture.md](docs/architecture.md) — release/runtime architecture
+- [CONFIGURATION.md](CONFIGURATION.md) — env vars and setup details
+- [SECURITY.md](SECURITY.md) — security boundaries and known risks
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow
-
-## Shell script architecture
-
-Operational shell scripts under `bin/` follow a shared module pattern to keep command entrypoints thin and behavior consistent:
-
-- shared safety/logging/error helpers in `bin/lib/shell-common.sh`
-- release lifecycle helpers in `bin/lib/release-common.sh`
-- deploy-specific helpers in `bin/lib/deploy-common.sh`
-- doctor output/counter helpers in `bin/lib/doctor-common.sh`
-- JSON parsing helpers in `bin/lib/json-common.sh`
-
-Conventions:
-
-- source shared modules near the top of each script
-- call `bb_enable_strict_mode` (strict bash mode)
-- prefer shared `bb_log`/`bb_die` helpers instead of ad-hoc logging/error code
-- keep heavy logic in `bin/lib/*` and keep CLI-facing scripts focused on orchestration
-
-## Tests
-
-```bash
-# All tests (unified Vitest runner)
-npm test
-
-# JS/TS suites only
-npm run test:js
-
-# Shell/security script suites only
-npm run test:shell
-
-# JS/TS coverage
-npm run test:coverage
-
-# Lint (Biome + ShellCheck) + typecheck
-npm run lint && npm run typecheck
-
-# ShellCheck only
-npm run lint:shell
-```
+- [AGENTS.md](AGENTS.md) — maintainer/agent development conventions
 
 ## License
 

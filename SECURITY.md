@@ -4,29 +4,23 @@ For product overview and team workflow context, start with [README.md](README.md
 
 ## Architecture: Source / Runtime Separation
 
-```
-~/baudbot/                              ← READ-ONLY source repo (admin-managed)
-  ├── pi/extensions/                   ← source of truth for extensions
-  ├── pi/skills/                       ← source of truth for skill templates
-  ├── bin/                             ← admin scripts (deploy.sh, audit, firewall)
-  └── slack-bridge/                    ← source of truth for bridge
+```text
+admin source checkout
+├── ~/baudbot/                         # source of truth (admin-owned)
 
-~/.pi/agent/
-  ├── extensions/                      ← DEPLOYED copies (real dir, not symlink)
-  │   ├── tool-guard.ts               ← security-critical (deployed by admin)
-  │   ├── auto-name.ts                ← agent-modifiable
-  │   └── ...
-  └── skills/                          ← agent-owned (agent updates freely)
+root-managed releases
+├── /opt/baudbot/releases/<sha>/       # immutable, git-free snapshots
+├── /opt/baudbot/current -> <sha>
+└── /opt/baudbot/previous -> <sha>
 
-~/runtime/
-  └── slack-bridge/                    ← DEPLOYED copy (bridge runs from here)
-      ├── bridge.mjs                   ← agent-modifiable
-      ├── security.mjs                 ← security-critical (deployed by admin)
-      └── node_modules/
+agent runtime (baudbot_agent)
+├── ~/runtime/                         # launcher + bridge + runtime scripts
+├── ~/.pi/agent/                       # deployed extensions/skills + memory + manifests
+└── ~/workspace/                       # repos + task worktrees
 ```
 
-The agent runs from deployed copies, never from the source repo directly.
-Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct permissions.
+The agent runs from deployed/runtime copies, never directly from the admin source checkout.
+`baudbot update` publishes a snapshot, deploys runtime files, validates health, then atomically flips `current`.
 
 ## Trust Boundaries
 
@@ -49,7 +43,7 @@ Admin edits source → runs `bin/deploy.sh` → copies to runtime with correct p
 │               BOUNDARY 2: OS User Isolation                      │
 │   baudbot_agent (uid 1001) — separate home, no sudo              │
 │   Cannot read admin home directory (admin home is 700)           │
-│   Source repo ~/baudbot/ is read-only (permissions first, tool-guard backup) │
+│   Source repo ~/baudbot/ is admin-owned/inaccessible to agent (permissions first, tool-guard backup) │
 │   Docker only via wrapper (blocks --privileged, host mounts)     │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
@@ -88,17 +82,14 @@ the admin can re-deploy from the untampered source at any time.
 
 ## Data Flows
 
-```
-Slack @mention
-  → slack-bridge (Socket Mode, admin user)
+```text
+Slack message (Socket Mode or broker pull mode)
+  → bridge process (runs in baudbot_agent runtime)
     → content wrapping (security boundaries added)
-      → Unix socket (~/.pi/session-control/*.sock)
-        → control-agent (pi session, baudbot_agent user)
-          → creates todo
-          → delegates to dev-agent (pi session, baudbot_agent user)
-            → git worktree → code changes → git push
-          → dev-agent reports back
-        → control-agent replies via curl → bridge HTTP API (127.0.0.1:7890)
+      → control-agent (pi session)
+        → creates todo + delegates to dev-agent in worktree
+          → code/test/PR/CI loop
+        → control-agent posts status via bridge local API (127.0.0.1:7890)
       → Slack thread reply
 ```
 
@@ -112,18 +103,21 @@ Slack @mention
 | `KERNEL_API_KEY` | `~/.config/.env` | `600` | Kernel cloud browsers |
 | `BAUDBOT_SECRET` | `~/.config/.env` | `600` | Email authentication shared secret |
 | SSH key | `~/.ssh/id_ed25519` | `600` | Git push (agent GitHub account) |
-| `SLACK_BOT_TOKEN` | Bridge `.env` | `600` | Slack bot OAuth token |
-| `SLACK_APP_TOKEN` | Bridge `.env` | `600` | Slack Socket Mode token |
+| `SLACK_BOT_TOKEN` | `~/.config/.env` | `600` | Slack bot OAuth token |
+| `SLACK_APP_TOKEN` | `~/.config/.env` | `600` | Slack Socket Mode token |
+| `SLACK_BROKER_*` keys | `~/.config/.env` | `600` | Broker pull-mode encryption/signing + workspace linkage |
 
 ## Deploy Workflow
 
 ```bash
-# Admin edits source files in ~/baudbot/
-# Then deploys to runtime:
-~/baudbot/bin/deploy.sh
+# Source-only changes from local checkout
+sudo baudbot deploy
 
-# If bridge is running, restart it:
-sudo -u baudbot_agent bash -c 'cd ~/runtime/slack-bridge && node bridge.mjs'
+# Operational update from git (recommended for live bot)
+sudo baudbot update
+
+# Roll back if needed
+sudo baudbot rollback previous
 ```
 
 ## Known Risks

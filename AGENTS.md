@@ -18,7 +18,7 @@ bin/                        security & operations scripts
   scan-extensions.mjs       extension static analysis
   redact-logs.sh            secret scrubber for session logs
   prune-session-logs.sh     retention cleanup for old pi session logs
-  config.sh                 env var validation helper
+  config.sh                 interactive secrets/config setup
   broker-register.mjs       Slack broker workspace registration CLI
   doctor.sh                 system health checks
   uninstall.sh              clean removal of baudbot
@@ -30,9 +30,12 @@ bin/                        security & operations scripts
     setup-ubuntu.sh         Ubuntu droplet: prereqs + setup + tests
     setup-arch.sh           Arch Linux droplet: prereqs + setup + tests
   lib/                      shared shell helpers sourced by CLI/release scripts
-    baudbot-runtime.sh      runtime/status/session/attach helper module for bin/baudbot
+    shell-common.sh         strict mode + shared logging/error/root-check helpers
     release-common.sh       shared update/rollback helpers
+    deploy-common.sh        deploy/runtime helper functions
+    doctor-common.sh        doctor status/check formatting helpers
     json-common.sh          shared JSON field extraction helper (jq)
+    baudbot-runtime.sh      runtime/status/session/attach helper module for bin/baudbot
 hooks/
   pre-commit                blocks agent from modifying security files in git
 pi/
@@ -42,7 +45,7 @@ pi/
     heartbeat.ts            periodic health check loop
     auto-name.ts            session naming
     control.ts              inter-session communication
-    idle-compact.ts         compact context during idle periods (40% threshold)
+    idle-compact.ts         compact context during idle periods (default 25% threshold)
     ...
   skills/                   source of truth for agent skill templates
     control-agent/          orchestration agent
