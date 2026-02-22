@@ -1,9 +1,17 @@
 #!/bin/bash
 # Shared path constants for baudbot shell scripts.
 
+# shellcheck disable=SC2120 # Optional args are used by callers in other scripts.
 bb_refresh_release_paths() {
-  local release_root="${1:-${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}}"
-  local force="${2:-0}"
+  local release_root="${BAUDBOT_RELEASE_ROOT:-/opt/baudbot}"
+  local force="0"
+
+  if [ "$#" -ge 1 ]; then
+    release_root="$1"
+  fi
+  if [ "$#" -ge 2 ]; then
+    force="$2"
+  fi
 
   BAUDBOT_RELEASE_ROOT="$release_root"
 
