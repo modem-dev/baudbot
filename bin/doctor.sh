@@ -4,7 +4,12 @@
 #
 # Usage: baudbot doctor [--fix]
 
-set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+# shellcheck source=bin/lib/doctor-common.sh
+source "$SCRIPT_DIR/lib/doctor-common.sh"
+bb_enable_strict_mode
 
 for arg in "$@"; do
   case "$arg" in
@@ -16,17 +21,15 @@ for arg in "$@"; do
 done
 
 BAUDBOT_HOME="/home/baudbot_agent"
-PASS=0
-FAIL=0
-WARN=0
+doctor_init_counters
 IS_ROOT=0
 if [ "$(id -u)" -eq 0 ]; then
   IS_ROOT=1
 fi
 
-pass() { echo "  ✓ $1"; PASS=$((PASS + 1)); }
-fail() { echo "  ✗ $1"; FAIL=$((FAIL + 1)); }
-warn() { echo "  ⚠ $1"; WARN=$((WARN + 1)); }
+pass() { doctor_pass "$1"; }
+fail() { doctor_fail "$1"; }
+warn() { doctor_warn "$1"; }
 
 echo "Baudbot Doctor"
 echo ""
@@ -103,10 +106,10 @@ echo "Admin config:"
 
 # Check for admin config/env source
 ADMIN_USER="${SUDO_USER:-$(whoami)}"
-ADMIN_HOME=$(getent passwd "$ADMIN_USER" | cut -d: -f6 2>/dev/null || echo "")
+ADMIN_HOME="$(bb_resolve_user_home "$ADMIN_USER" || true)"
 ADMIN_CONFIG="$ADMIN_HOME/.baudbot/.env"
 BACKEND_CONF="$ADMIN_HOME/.baudbot/env-store.conf"
-RENDER_ENV_SCRIPT="${BAUDBOT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}/bin/render-env.sh"
+RENDER_ENV_SCRIPT="${BAUDBOT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}/bin/render-env.sh"
 
 ADMIN_BACKEND="file"
 if [ -f "$BACKEND_CONF" ]; then
@@ -139,21 +142,10 @@ if [ -f "$ENV_FILE" ]; then
     fail ".env owned by $OWNER (should be baudbot_agent)"
   fi
 
-  env_value() {
-    local key="$1"
-    local line
-    line=$(grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)
-    if [ -z "$line" ]; then
-      echo ""
-      return 0
-    fi
-    echo "${line#*=}"
-  }
-
   # LLM key validation: require at least one valid key, and flag malformed configured keys.
   VALID_LLM_COUNT=0
 
-  ANTHROPIC_VALUE="$(env_value ANTHROPIC_API_KEY)"
+  ANTHROPIC_VALUE="$(bb_read_env_value "$ENV_FILE" ANTHROPIC_API_KEY)"
   if [ -n "$ANTHROPIC_VALUE" ]; then
     if [[ "$ANTHROPIC_VALUE" == sk-ant-* ]]; then
       VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
@@ -162,7 +154,7 @@ if [ -f "$ENV_FILE" ]; then
     fi
   fi
 
-  OPENAI_VALUE="$(env_value OPENAI_API_KEY)"
+  OPENAI_VALUE="$(bb_read_env_value "$ENV_FILE" OPENAI_API_KEY)"
   if [ -n "$OPENAI_VALUE" ]; then
     if [[ "$OPENAI_VALUE" == sk-* ]]; then
       VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
@@ -171,12 +163,12 @@ if [ -f "$ENV_FILE" ]; then
     fi
   fi
 
-  GEMINI_VALUE="$(env_value GEMINI_API_KEY)"
+  GEMINI_VALUE="$(bb_read_env_value "$ENV_FILE" GEMINI_API_KEY)"
   if [ -n "$GEMINI_VALUE" ]; then
     VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
   fi
 
-  OPENCODE_VALUE="$(env_value OPENCODE_ZEN_API_KEY)"
+  OPENCODE_VALUE="$(bb_read_env_value "$ENV_FILE" OPENCODE_ZEN_API_KEY)"
   if [ -n "$OPENCODE_VALUE" ]; then
     VALID_LLM_COUNT=$((VALID_LLM_COUNT + 1))
   fi
@@ -199,7 +191,7 @@ if [ -f "$ENV_FILE" ]; then
 
   BROKER_MODE_READY=true
   for key in "${BROKER_REQUIRED_KEYS[@]}"; do
-    if [ -z "$(env_value "$key")" ]; then
+    if [ -z "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
       BROKER_MODE_READY=false
       break
     fi
@@ -207,7 +199,7 @@ if [ -f "$ENV_FILE" ]; then
 
   SOCKET_MODE_READY=true
   for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-    if [ -z "$(env_value "$key")" ]; then
+    if [ -z "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
       SOCKET_MODE_READY=false
       break
     fi
@@ -216,7 +208,7 @@ if [ -f "$ENV_FILE" ]; then
   if [ "$BROKER_MODE_READY" = true ]; then
     pass "broker mode configured (SLACK_BROKER_*)"
     for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-      if [ -n "$(env_value "$key")" ]; then
+      if [ -n "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
         pass "$key is set"
       else
         pass "$key not required in broker mode"
@@ -224,7 +216,7 @@ if [ -f "$ENV_FILE" ]; then
     done
   else
     for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-      if [ -n "$(env_value "$key")" ]; then
+      if [ -n "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
         pass "$key is set"
       else
         warn "$key is not set"
@@ -357,7 +349,7 @@ fi
 echo ""
 echo "Agent:"
 
-if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
+if bb_has_systemd; then
   enabled_state=$(systemctl is-enabled baudbot 2>&1 || true)
   if [ "$enabled_state" = "enabled" ]; then
     pass "systemd unit enabled"
@@ -432,20 +424,4 @@ fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
-echo ""
-echo "────────────────────────────"
-echo "  $PASS passed, $FAIL failed, $WARN warnings"
-
-if [ "$FAIL" -gt 0 ]; then
-  echo ""
-  echo "Fix failures before starting the agent."
-  exit 1
-elif [ "$WARN" -gt 0 ]; then
-  echo ""
-  echo "Warnings are non-blocking but should be reviewed."
-  exit 0
-else
-  echo ""
-  echo "All checks passed."
-  exit 0
-fi
+doctor_summary_and_exit

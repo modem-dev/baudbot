@@ -9,12 +9,14 @@
 # --deep: Run the Node.js extension scanner for cross-pattern analysis
 # --fix:  Auto-remediate findings where possible
 
-set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+bb_enable_strict_mode
 
 BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
 # Source repo — auto-detect from this script's location, or use env override
-BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BAUDBOT_SRC="${BAUDBOT_SRC:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"

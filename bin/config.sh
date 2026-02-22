@@ -7,7 +7,10 @@
 #
 # Can be re-run to update existing config. Existing values shown as defaults.
 
-set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+bb_enable_strict_mode
 
 # ── Formatting ───────────────────────────────────────────────────────────────
 

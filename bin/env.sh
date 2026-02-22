@@ -8,9 +8,11 @@
 #   baudbot env sync [--restart]
 #   baudbot env backend show|set-file|set-command "<command>"
 
-set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/shell-common.sh
+source "$SCRIPT_DIR/lib/shell-common.sh"
+bb_enable_strict_mode
+
 RENDER_SCRIPT="$SCRIPT_DIR/render-env.sh"
 
 usage() {
@@ -29,26 +31,6 @@ Notes:
   - backend set-command lets you source env from an external command
   - sync writes rendered source env to agent runtime (~/.config/.env)
 EOF
-}
-
-resolve_user_home() {
-  local user="$1"
-  local passwd_line=""
-
-  [ -n "$user" ] || return 1
-
-  passwd_line="$(getent passwd "$user" 2>/dev/null || true)"
-  if [ -n "$passwd_line" ]; then
-    echo "$passwd_line" | cut -d: -f6
-    return 0
-  fi
-
-  if [ -d "/home/$user" ]; then
-    echo "/home/$user"
-    return 0
-  fi
-
-  return 1
 }
 
 validate_key_name() {
@@ -89,27 +71,11 @@ unset_env_value() {
   mv "$tmp" "$file"
 }
 
-read_env_value() {
-  local file="$1" key="$2" line=""
-  [ -f "$file" ] || return 0
-  line="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1 || true)"
-  [ -n "$line" ] || return 0
-  echo "${line#*=}"
-}
-
 set_secure_perms() {
   local file="$1" owner="$2"
   chmod 600 "$file"
   if [ -n "$owner" ]; then
     chown "$owner:$owner" "$file"
-  fi
-}
-
-require_root() {
-  local cmd="$1"
-  if [ "$(id -u)" -ne 0 ]; then
-    echo "❌ baudbot env $cmd requires root. Run with sudo."
-    exit 1
   fi
 }
 
@@ -120,7 +86,7 @@ else
   ADMIN_USER="$(whoami)"
 fi
 
-ADMIN_HOME="${BAUDBOT_ADMIN_HOME:-$(resolve_user_home "$ADMIN_USER" || true)}"
+ADMIN_HOME="${BAUDBOT_ADMIN_HOME:-$(bb_resolve_user_home "$ADMIN_USER" || true)}"
 if [ -z "$ADMIN_HOME" ]; then
   echo "❌ Could not resolve home directory for admin user '$ADMIN_USER'"
   exit 1
@@ -131,7 +97,7 @@ ADMIN_ENV_FILE="$ADMIN_DIR/.env"
 BACKEND_CONF="$ADMIN_DIR/env-store.conf"
 
 AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-AGENT_HOME="${BAUDBOT_AGENT_HOME:-$(resolve_user_home "$AGENT_USER" || true)}"
+AGENT_HOME="${BAUDBOT_AGENT_HOME:-$(bb_resolve_user_home "$AGENT_USER" || true)}"
 RUNTIME_ENV_FILE=""
 if [ -n "$AGENT_HOME" ]; then
   RUNTIME_ENV_FILE="$AGENT_HOME/.config/.env"
@@ -181,7 +147,7 @@ render_get_admin() {
 
 sync_runtime() {
   local restart="$1"
-  require_root "sync"
+  bb_require_root "baudbot env sync"
 
   [ -x "$RENDER_SCRIPT" ] || { echo "❌ Missing renderer: $RENDER_SCRIPT"; exit 1; }
   [ -n "$RUNTIME_ENV_FILE" ] || { echo "❌ Could not resolve runtime env path"; exit 1; }
@@ -194,13 +160,8 @@ sync_runtime() {
   echo "✓ synced runtime env to $RUNTIME_ENV_FILE"
 
   if [ "$restart" = "true" ]; then
-    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-      systemctl restart baudbot
-      echo "✓ restarted baudbot service"
-    else
-      echo "❌ systemd not available; restart manually"
-      exit 1
-    fi
+    bb_restart_systemd_service_or_die baudbot
+    echo "✓ restarted baudbot service"
   else
     echo "Next step: sudo baudbot restart"
   fi
@@ -264,14 +225,9 @@ case "$cmd" in
     fi
 
     if [ "$RESTART" = "true" ]; then
-      require_root "set --restart"
-      if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-        systemctl restart baudbot
-        echo "✓ restarted baudbot service"
-      else
-        echo "❌ systemd not available; restart manually"
-        exit 1
-      fi
+      bb_require_root "baudbot env set --restart"
+      bb_restart_systemd_service_or_die baudbot
+      echo "✓ restarted baudbot service"
     else
       echo "Next step: sudo baudbot restart"
     fi
@@ -306,14 +262,9 @@ case "$cmd" in
     fi
 
     if [ "$RESTART" = "--restart" ]; then
-      require_root "unset --restart"
-      if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-        systemctl restart baudbot
-        echo "✓ restarted baudbot service"
-      else
-        echo "❌ systemd not available; restart manually"
-        exit 1
-      fi
+      bb_require_root "baudbot env unset --restart"
+      bb_restart_systemd_service_or_die baudbot
+      echo "✓ restarted baudbot service"
     else
       echo "Next step: sudo baudbot restart"
     fi
@@ -332,7 +283,7 @@ case "$cmd" in
         ;;
       --runtime)
         [ -n "$RUNTIME_ENV_FILE" ] || exit 0
-        read_env_value "$RUNTIME_ENV_FILE" "$KEY"
+        bb_read_env_value "$RUNTIME_ENV_FILE" "$KEY"
         ;;
       *)
         echo "❌ Unknown target: $TARGET"
