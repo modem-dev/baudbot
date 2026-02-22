@@ -1,9 +1,9 @@
 /**
- * Tests for heartbeat.ts logic.
+ * Tests for heartbeat.ts v2 logic (programmatic health checks).
  *
  * We can't test the pi extension hooks directly (they need the pi runtime),
- * but we can extract and test the pure functions: file reading, config
- * resolution, backoff computation, and env var handling.
+ * but we can extract and test the pure functions: config resolution, backoff
+ * computation, env var handling, todo parsing, and check logic.
  *
  * Run: npx vitest run pi/extensions/heartbeat.test.mjs
  */
@@ -14,12 +14,13 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-// ── Replicate pure functions from heartbeat.ts ──────────────────────────────
+// ── Replicate pure functions from heartbeat.ts v2 ───────────────────────────
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 min
 const MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 min
 const BACKOFF_MULTIPLIER = 2;
 const MAX_BACKOFF_MS = 60 * 60 * 1000; // 1 hour
+const STUCK_TODO_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function isDisabledByEnv(envValue) {
   if (envValue == null) return false;
@@ -27,41 +28,44 @@ function isDisabledByEnv(envValue) {
   return val === "0" || val === "false" || val === "no";
 }
 
-function resolveConfig(env = {}) {
-  const envInterval = parseInt(env.HEARTBEAT_INTERVAL_MS || "", 10);
-  const intervalMs = Math.max(
-    MIN_INTERVAL_MS,
-    Number.isFinite(envInterval) ? envInterval : DEFAULT_INTERVAL_MS
-  );
-  const heartbeatFile =
-    env.HEARTBEAT_FILE?.trim() ||
-    path.join(os.homedir(), ".pi", "agent", "HEARTBEAT.md");
-  const enabled = !isDisabledByEnv(env.HEARTBEAT_ENABLED);
-  return { intervalMs, heartbeatFile, enabled };
+function clampInt(value, min, max, fallback) {
+  const parsed = parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
-function readHeartbeatFile(filepath) {
-  try {
-    if (!fs.existsSync(filepath)) return null;
-    const content = fs.readFileSync(filepath, "utf-8").trim();
-    const meaningful = content
-      .split("\n")
-      .filter((line) => {
-        const trimmed = line.trim();
-        return trimmed.length > 0 && !trimmed.startsWith("#");
-      })
-      .join("\n")
-      .trim();
-    return meaningful.length > 0 ? content : null;
-  } catch {
-    return null;
-  }
+function getExpectedSessions(envValue) {
+  if (envValue) return envValue.split(",").map((s) => s.trim()).filter(Boolean);
+  return ["sentry-agent"];
 }
 
 function computeBackoffMs(consecutiveErrors, baseInterval) {
   if (consecutiveErrors <= 0) return baseInterval;
   const backoff = baseInterval * BACKOFF_MULTIPLIER ** consecutiveErrors;
   return Math.min(backoff, MAX_BACKOFF_MS);
+}
+
+function parseTodo(content) {
+  try {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith("{")) return null;
+    let depth = 0,
+      jsonEnd = -1;
+    for (let i = 0; i < trimmed.length; i++) {
+      if (trimmed[i] === "{") depth++;
+      else if (trimmed[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          jsonEnd = i + 1;
+          break;
+        }
+      }
+    }
+    if (jsonEnd === -1) return null;
+    return JSON.parse(trimmed.substring(0, jsonEnd));
+  } catch {
+    return null;
+  }
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -78,143 +82,23 @@ function teardown() {
 
 function writeFile(name, content) {
   const p = path.join(tmpDir, name);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, content, "utf-8");
   return p;
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-describe("heartbeat: readHeartbeatFile", () => {
-  beforeEach(setup);
-  afterEach(teardown);
-
-  it("returns null for missing file", () => {
-    assert.equal(readHeartbeatFile("/nonexistent/HEARTBEAT.md"), null);
-  });
-
-  it("returns null for empty file", () => {
-    const p = writeFile("HEARTBEAT.md", "");
-    assert.equal(readHeartbeatFile(p), null);
-  });
-
-  it("returns null for whitespace-only file", () => {
-    const p = writeFile("HEARTBEAT.md", "   \n  \n   ");
-    assert.equal(readHeartbeatFile(p), null);
-  });
-
-  it("returns null for comment-only file", () => {
-    const p = writeFile("HEARTBEAT.md", "# Heartbeat Checklist\n# Just comments\n");
-    assert.equal(readHeartbeatFile(p), null);
-  });
-
-  it("returns null for heading-only file (no actionable items)", () => {
-    const p = writeFile(
-      "HEARTBEAT.md",
-      "# Heartbeat Checklist\n\n## Section\n\n### Subsection\n"
-    );
-    assert.equal(readHeartbeatFile(p), null);
-  });
-
-  it("returns content when checklist items exist", () => {
-    const content = "# Checklist\n- Check agents are alive\n- Check bridge\n";
-    const p = writeFile("HEARTBEAT.md", content);
-    const result = readHeartbeatFile(p);
-    assert.notEqual(result, null);
-    assert.ok(result.includes("Check agents are alive"));
-    assert.ok(result.includes("Check bridge"));
-  });
-
-  it("returns content with mixed headings and items", () => {
-    const content =
-      "# Heartbeat\n\n- [ ] Check sessions\n\n## Optional\n\n- [ ] Check disk\n";
-    const p = writeFile("HEARTBEAT.md", content);
-    const result = readHeartbeatFile(p);
-    assert.notEqual(result, null);
-    assert.ok(result.includes("Check sessions"));
-    assert.ok(result.includes("Check disk"));
-  });
-
-  it("returns full content including headings when items exist", () => {
-    const content = "# Title\n- item\n";
-    const p = writeFile("HEARTBEAT.md", content);
-    const result = readHeartbeatFile(p);
-    // Should return the full content (including the heading), not just the items
-    assert.ok(result.includes("# Title"));
-    assert.ok(result.includes("- item"));
-  });
-
-  it("handles file with only a plain text line", () => {
-    const p = writeFile("HEARTBEAT.md", "Check everything\n");
-    const result = readHeartbeatFile(p);
-    assert.notEqual(result, null);
-    assert.ok(result.includes("Check everything"));
-  });
-});
-
-describe("heartbeat: resolveConfig", () => {
-  it("returns defaults with no env vars", () => {
-    const config = resolveConfig({});
-    assert.equal(config.intervalMs, DEFAULT_INTERVAL_MS);
-    assert.equal(config.enabled, true);
-    assert.ok(config.heartbeatFile.endsWith("HEARTBEAT.md"));
-  });
-
-  it("respects HEARTBEAT_INTERVAL_MS", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "300000" });
-    assert.equal(config.intervalMs, 300_000);
-  });
-
-  it("enforces minimum interval", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "1000" }); // 1 second
-    assert.equal(config.intervalMs, MIN_INTERVAL_MS);
-  });
-
-  it("enforces minimum for zero", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "0" });
-    assert.equal(config.intervalMs, MIN_INTERVAL_MS);
-  });
-
-  it("enforces minimum for negative", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "-5000" });
-    assert.equal(config.intervalMs, MIN_INTERVAL_MS);
-  });
-
-  it("handles non-numeric HEARTBEAT_INTERVAL_MS", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "not-a-number" });
-    assert.equal(config.intervalMs, DEFAULT_INTERVAL_MS);
-  });
-
-  it("handles empty HEARTBEAT_INTERVAL_MS", () => {
-    const config = resolveConfig({ HEARTBEAT_INTERVAL_MS: "" });
-    assert.equal(config.intervalMs, DEFAULT_INTERVAL_MS);
-  });
-
-  it("respects HEARTBEAT_FILE", () => {
-    const config = resolveConfig({ HEARTBEAT_FILE: "/custom/path/HB.md" });
-    assert.equal(config.heartbeatFile, "/custom/path/HB.md");
-  });
-
-  it("trims HEARTBEAT_FILE whitespace", () => {
-    const config = resolveConfig({ HEARTBEAT_FILE: "  /custom/HB.md  " });
-    assert.equal(config.heartbeatFile, "/custom/HB.md");
-  });
-
-  it("uses default when HEARTBEAT_FILE is empty", () => {
-    const config = resolveConfig({ HEARTBEAT_FILE: "   " });
-    assert.ok(config.heartbeatFile.endsWith("HEARTBEAT.md"));
-  });
-});
-
-describe("heartbeat: isDisabledByEnv", () => {
-  it('returns false for undefined', () => {
+describe("heartbeat v2: isDisabledByEnv", () => {
+  it("returns false for undefined", () => {
     assert.equal(isDisabledByEnv(undefined), false);
   });
 
-  it('returns false for null', () => {
+  it("returns false for null", () => {
     assert.equal(isDisabledByEnv(null), false);
   });
 
-  it('returns false for empty string', () => {
+  it("returns false for empty string", () => {
     assert.equal(isDisabledByEnv(""), false);
   });
 
@@ -253,34 +137,66 @@ describe("heartbeat: isDisabledByEnv", () => {
   it('returns true for "No" (mixed case)', () => {
     assert.equal(isDisabledByEnv("No"), true);
   });
+});
 
-  it("enabled=false when HEARTBEAT_ENABLED=0", () => {
-    const config = resolveConfig({ HEARTBEAT_ENABLED: "0" });
-    assert.equal(config.enabled, false);
+describe("heartbeat v2: clampInt", () => {
+  it("returns fallback for undefined", () => {
+    assert.equal(clampInt(undefined, 100, 1000, 500), 500);
   });
 
-  it("enabled=false when HEARTBEAT_ENABLED=false", () => {
-    const config = resolveConfig({ HEARTBEAT_ENABLED: "false" });
-    assert.equal(config.enabled, false);
+  it("returns fallback for empty string", () => {
+    assert.equal(clampInt("", 100, 1000, 500), 500);
   });
 
-  it("enabled=false when HEARTBEAT_ENABLED=no", () => {
-    const config = resolveConfig({ HEARTBEAT_ENABLED: "no" });
-    assert.equal(config.enabled, false);
+  it("returns fallback for non-numeric", () => {
+    assert.equal(clampInt("abc", 100, 1000, 500), 500);
   });
 
-  it("enabled=true when HEARTBEAT_ENABLED=1", () => {
-    const config = resolveConfig({ HEARTBEAT_ENABLED: "1" });
-    assert.equal(config.enabled, true);
+  it("clamps to min", () => {
+    assert.equal(clampInt("50", 100, 1000, 500), 100);
   });
 
-  it("enabled=true when HEARTBEAT_ENABLED unset", () => {
-    const config = resolveConfig({});
-    assert.equal(config.enabled, true);
+  it("clamps to max", () => {
+    assert.equal(clampInt("2000", 100, 1000, 500), 1000);
+  });
+
+  it("returns value when in range", () => {
+    assert.equal(clampInt("750", 100, 1000, 500), 750);
+  });
+
+  it("handles negative values", () => {
+    assert.equal(clampInt("-5", 0, 100, 50), 0);
   });
 });
 
-describe("heartbeat: computeBackoffMs", () => {
+describe("heartbeat v2: getExpectedSessions", () => {
+  it("returns default sentry-agent when no env", () => {
+    const result = getExpectedSessions(undefined);
+    assert.deepEqual(result, ["sentry-agent"]);
+  });
+
+  it("returns default for empty string", () => {
+    const result = getExpectedSessions("");
+    assert.deepEqual(result, ["sentry-agent"]);
+  });
+
+  it("parses comma-separated list", () => {
+    const result = getExpectedSessions("sentry-agent,dev-agent-foo");
+    assert.deepEqual(result, ["sentry-agent", "dev-agent-foo"]);
+  });
+
+  it("trims whitespace", () => {
+    const result = getExpectedSessions(" sentry-agent , monitor ");
+    assert.deepEqual(result, ["sentry-agent", "monitor"]);
+  });
+
+  it("filters empty entries", () => {
+    const result = getExpectedSessions("sentry-agent,,monitor,");
+    assert.deepEqual(result, ["sentry-agent", "monitor"]);
+  });
+});
+
+describe("heartbeat v2: computeBackoffMs", () => {
   const base = 600_000; // 10 min
 
   it("returns base interval with 0 errors", () => {
@@ -299,27 +215,22 @@ describe("heartbeat: computeBackoffMs", () => {
     assert.equal(computeBackoffMs(2, base), base * 4);
   });
 
-  it("8x on 3 errors (capped)", () => {
-    // 600_000 * 8 = 4_800_000 > MAX_BACKOFF (3_600_000), so capped
+  it("caps at MAX_BACKOFF_MS on 3 errors (with 10min base)", () => {
+    // 600_000 * 8 = 4_800_000 > MAX_BACKOFF (3_600_000)
     assert.equal(computeBackoffMs(3, base), MAX_BACKOFF_MS);
   });
 
   it("8x on 3 errors (small base, uncapped)", () => {
-    // 60_000 * 8 = 480_000 < MAX_BACKOFF, so not capped
     assert.equal(computeBackoffMs(3, 60_000), 60_000 * 8);
   });
 
-  it("caps at MAX_BACKOFF_MS", () => {
-    // 10 errors with 10 min base = 10 * 2^10 = 10240 min — way past 60 min max
+  it("caps at MAX_BACKOFF_MS for large error counts", () => {
     assert.equal(computeBackoffMs(10, base), MAX_BACKOFF_MS);
-  });
-
-  it("caps at MAX_BACKOFF_MS for very large error counts", () => {
     assert.equal(computeBackoffMs(100, base), MAX_BACKOFF_MS);
   });
 
   it("works with smaller base interval", () => {
-    assert.equal(computeBackoffMs(1, 120_000), 240_000); // 2 min → 4 min
+    assert.equal(computeBackoffMs(1, 120_000), 240_000);
   });
 
   it("backoff progression is monotonically increasing", () => {
@@ -332,20 +243,137 @@ describe("heartbeat: computeBackoffMs", () => {
   });
 });
 
-describe("heartbeat: fireHeartbeat error handling", () => {
-  // Simulate the try/catch/finally pattern from fireHeartbeat to verify
-  // that the error counter and re-arm behavior work correctly.
+describe("heartbeat v2: parseTodo", () => {
+  it("parses valid JSON front matter", () => {
+    const content = `{
+  "id": "abc123",
+  "title": "Fix the bug",
+  "status": "in-progress",
+  "created_at": "2026-02-22T10:00:00.000Z"
+}
 
-  function simulateFireHeartbeat(state, sendThrows, saveThrows) {
+## Notes
+Some markdown body here.`;
+
+    const result = parseTodo(content);
+    assert.equal(result.id, "abc123");
+    assert.equal(result.title, "Fix the bug");
+    assert.equal(result.status, "in-progress");
+    assert.equal(result.created_at, "2026-02-22T10:00:00.000Z");
+  });
+
+  it("parses JSON-only todo (no body)", () => {
+    const content = `{"id": "def456", "status": "done", "title": "Ship it"}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "def456");
+    assert.equal(result.status, "done");
+  });
+
+  it("handles nested objects in JSON", () => {
+    const content = `{
+  "id": "nested",
+  "title": "Nested test",
+  "tags": ["a", "b"],
+  "meta": {"key": "value"}
+}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "nested");
+    assert.deepEqual(result.tags, ["a", "b"]);
+    assert.deepEqual(result.meta, { key: "value" });
+  });
+
+  it("returns null for non-JSON content", () => {
+    const result = parseTodo("# Just a markdown heading\n\nSome text.");
+    assert.equal(result, null);
+  });
+
+  it("returns null for empty content", () => {
+    assert.equal(parseTodo(""), null);
+  });
+
+  it("returns null for malformed JSON", () => {
+    assert.equal(parseTodo("{ broken json"), null);
+  });
+
+  it("handles whitespace before JSON", () => {
+    const content = `  \n  {"id": "ws", "status": "open"}`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "ws");
+  });
+
+  it("ignores content after closing brace", () => {
+    const content = `{"id": "extra", "status": "open"}
+
+## This is the body
+Not part of JSON.`;
+    const result = parseTodo(content);
+    assert.equal(result.id, "extra");
+    assert.equal(result.status, "open");
+  });
+});
+
+describe("heartbeat v2: stuck todo detection logic", () => {
+  it("identifies stuck in-progress todo (over threshold)", () => {
+    const now = Date.now();
+    const threeHoursAgo = new Date(now - 3 * 60 * 60 * 1000).toISOString();
+    const todo = parseTodo(
+      `{"id": "stuck1", "status": "in-progress", "title": "Stuck task", "created_at": "${threeHoursAgo}"}`
+    );
+
+    assert.equal(todo.status, "in-progress");
+    const age = now - new Date(todo.created_at).getTime();
+    assert.ok(age > STUCK_TODO_THRESHOLD_MS, "should be over threshold");
+  });
+
+  it("does not flag recent in-progress todo", () => {
+    const now = Date.now();
+    const thirtyMinAgo = new Date(now - 30 * 60 * 1000).toISOString();
+    const todo = parseTodo(
+      `{"id": "recent1", "status": "in-progress", "title": "Active task", "created_at": "${thirtyMinAgo}"}`
+    );
+
+    const age = now - new Date(todo.created_at).getTime();
+    assert.ok(age < STUCK_TODO_THRESHOLD_MS, "should be under threshold");
+  });
+
+  it("ignores non-in-progress todos", () => {
+    const now = Date.now();
+    const dayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const todo = parseTodo(
+      `{"id": "done1", "status": "done", "title": "Old done task", "created_at": "${dayAgo}"}`
+    );
+
+    assert.equal(todo.status, "done");
+    // Even though it's old, it's done — should not be flagged
+  });
+
+  it("ignores blocked todos", () => {
+    const now = Date.now();
+    const dayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const todo = parseTodo(
+      `{"id": "blocked1", "status": "blocked", "title": "Blocked task", "created_at": "${dayAgo}"}`
+    );
+
+    assert.notEqual(todo.status, "in-progress");
+  });
+});
+
+describe("heartbeat v2: fireHeartbeat error handling", () => {
+  // Simulate the try/catch/finally pattern from fireHeartbeat
+  function simulateFireHeartbeat(state, checkFails, saveThrows) {
     let timerArmed = false;
 
     try {
       state.totalRuns += 1;
+      const failures = checkFails ? [{ name: "bridge", detail: "unreachable" }] : [];
 
-      if (sendThrows) throw new Error("sendMessage failed");
+      if (failures.length > 0) {
+        // Would inject prompt — simulate sendMessage
+        if (saveThrows) throw new Error("sendMessage failed");
+      }
 
-      // Success — reset error counter
       state.consecutiveErrors = 0;
+      state.lastFailures = failures.map((f) => `${f.name}: ${f.detail}`);
 
       if (saveThrows) throw new Error("saveState failed");
     } catch {
@@ -353,7 +381,7 @@ describe("heartbeat: fireHeartbeat error handling", () => {
       try {
         if (saveThrows) throw new Error("saveState failed in catch");
       } catch {
-        // Best-effort — don't prevent re-arm
+        // Best-effort
       }
     } finally {
       timerArmed = true;
@@ -362,87 +390,39 @@ describe("heartbeat: fireHeartbeat error handling", () => {
     return { timerArmed, state };
   }
 
-  it("resets consecutiveErrors on success", () => {
-    const state = { consecutiveErrors: 3, totalRuns: 5 };
+  it("resets consecutiveErrors on all-healthy check", () => {
+    const state = { consecutiveErrors: 3, totalRuns: 5, lastFailures: [] };
     const result = simulateFireHeartbeat(state, false, false);
     assert.equal(result.state.consecutiveErrors, 0);
     assert.equal(result.state.totalRuns, 6);
     assert.equal(result.timerArmed, true);
   });
 
-  it("increments consecutiveErrors on sendMessage failure", () => {
-    const state = { consecutiveErrors: 0, totalRuns: 5 };
+  it("still resets errors when failures are found (prompt injected successfully)", () => {
+    const state = { consecutiveErrors: 0, totalRuns: 5, lastFailures: [] };
     const result = simulateFireHeartbeat(state, true, false);
+    assert.equal(result.state.consecutiveErrors, 0);
+    assert.equal(result.state.lastFailures.length, 1);
+    assert.equal(result.timerArmed, true);
+  });
+
+  it("increments errors when sendMessage throws", () => {
+    const state = { consecutiveErrors: 0, totalRuns: 5, lastFailures: [] };
+    const result = simulateFireHeartbeat(state, true, true);
     assert.equal(result.state.consecutiveErrors, 1);
     assert.equal(result.timerArmed, true, "timer should always re-arm");
   });
 
-  it("accumulates errors across multiple failures", () => {
-    const state = { consecutiveErrors: 4, totalRuns: 10 };
-    const result = simulateFireHeartbeat(state, true, false);
-    assert.equal(result.state.consecutiveErrors, 5);
-    assert.equal(result.timerArmed, true, "timer should always re-arm");
-  });
-
-  it("re-arms timer even when both send and save throw", () => {
-    const state = { consecutiveErrors: 0, totalRuns: 0 };
+  it("re-arms timer even when everything throws", () => {
+    const state = { consecutiveErrors: 0, totalRuns: 0, lastFailures: [] };
     const result = simulateFireHeartbeat(state, true, true);
     assert.equal(result.timerArmed, true, "timer must re-arm regardless of errors");
-    assert.equal(result.state.consecutiveErrors, 1);
-  });
-
-  it("consecutive errors increase backoff delay", () => {
-    const base = 600_000;
-    // After 1 error: 2x
-    assert.equal(computeBackoffMs(1, base), 1_200_000);
-    // After 2 errors: 4x (capped at max)
-    assert.equal(computeBackoffMs(2, base), 2_400_000);
-    // After 3 errors: would be 8x = 4.8M but capped at 3.6M
-    assert.equal(computeBackoffMs(3, base), MAX_BACKOFF_MS);
   });
 
   it("success after errors resets to base interval", () => {
-    const state = { consecutiveErrors: 5, totalRuns: 10 };
+    const state = { consecutiveErrors: 5, totalRuns: 10, lastFailures: [] };
     const result = simulateFireHeartbeat(state, false, false);
     assert.equal(result.state.consecutiveErrors, 0);
-    // With 0 errors, backoff returns base interval
     assert.equal(computeBackoffMs(result.state.consecutiveErrors, 600_000), 600_000);
-  });
-});
-
-describe("heartbeat: deploy checklist file", () => {
-  beforeEach(setup);
-  afterEach(teardown);
-
-  it("default HEARTBEAT.md has actionable checklist items", () => {
-    // Read the actual shipped HEARTBEAT.md
-    const heartbeatPath = path.join(
-      path.dirname(new URL(import.meta.url).pathname),
-      "..",
-      "skills",
-      "control-agent",
-      "HEARTBEAT.md"
-    );
-    const result = readHeartbeatFile(heartbeatPath);
-    assert.notEqual(result, null, "HEARTBEAT.md should have actionable content");
-    assert.ok(
-      result.includes("list_sessions"),
-      "should check agent sessions"
-    );
-    assert.ok(
-      result.includes("email monitor") || result.includes("email_monitor"),
-      "should check email monitor"
-    );
-  });
-
-  it("HEARTBEAT.md file exists in skills directory", () => {
-    const heartbeatPath = path.join(
-      path.dirname(new URL(import.meta.url).pathname),
-      "..",
-      "skills",
-      "control-agent",
-      "HEARTBEAT.md"
-    );
-    assert.ok(fs.existsSync(heartbeatPath), "HEARTBEAT.md should exist");
   });
 });

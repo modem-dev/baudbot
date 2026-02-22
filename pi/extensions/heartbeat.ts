@@ -1,47 +1,56 @@
 /**
- * Heartbeat Extension
+ * Heartbeat Extension (v2 — programmatic health checks)
  *
- * Periodically injects a heartbeat prompt into the agent's conversation so it
- * can perform health checks, clean up stale resources, and act proactively
- * without waiting for external events.
+ * Performs health checks in pure Node.js without consuming LLM tokens.
+ * Only injects a prompt to the control-agent when something is actually wrong.
  *
- * The heartbeat reads a configurable checklist file (HEARTBEAT.md) and sends
- * it as a follow-up message. If the file is empty or missing, no heartbeat
- * fires (saves tokens).
+ * Checks performed:
+ *   1. Session liveness — expected aliases exist in ~/.pi/session-control/
+ *   2. Slack bridge — HTTP POST to localhost:7890/send returns 400
+ *   3. Stale worktrees — ~/workspace/worktrees/ has dirs with no matching in-progress todo
+ *   4. Stuck todos — in-progress for >2 hours with no matching dev-agent session
  *
  * Configuration (env vars):
  *   HEARTBEAT_INTERVAL_MS   — interval between heartbeats (default: 600000 = 10 min)
- *   HEARTBEAT_FILE           — path to checklist file (default: ~/.pi/agent/HEARTBEAT.md)
  *   HEARTBEAT_ENABLED        — set to "0" or "false" to disable (default: enabled)
+ *   HEARTBEAT_EXPECTED_SESSIONS — comma-separated session aliases to check (default: "sentry-agent")
  *
- * Inspired by OpenClaw's HEARTBEAT.md pattern — a user-configurable Markdown
- * checklist that the agent evaluates on each tick.
+ * When all checks pass, zero LLM tokens are consumed. When something fails,
+ * a targeted prompt is injected describing only the failures so the control-agent
+ * can take action.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const DEFAULT_HEARTBEAT_FILE = join(homedir(), ".pi", "agent", "HEARTBEAT.md");
-
-// Minimum interval to prevent accidental token burn (2 minutes)
-const MIN_INTERVAL_MS = 2 * 60 * 1000;
-
-// Exponential backoff after errors
+const MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 const BACKOFF_MULTIPLIER = 2;
 const MAX_BACKOFF_MS = 60 * 60 * 1000; // 1 hour
+const STUCK_TODO_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+const SOCKET_DIR = join(homedir(), ".pi", "session-control");
+const WORKTREES_DIR = join(homedir(), "workspace", "worktrees");
+const TODOS_DIR = join(homedir(), ".pi", "todos");
+const BRIDGE_URL = "http://127.0.0.1:7890/send";
 
 type HeartbeatState = {
   enabled: boolean;
   intervalMs: number;
-  heartbeatFile: string;
   lastRunAt: number | null;
   consecutiveErrors: number;
   totalRuns: number;
+  lastFailures: string[];
+};
+
+type CheckResult = {
+  name: string;
+  ok: boolean;
+  detail?: string;
 };
 
 const HEARTBEAT_STATE_ENTRY = "heartbeat-state";
@@ -51,51 +60,285 @@ function isDisabledByEnv(): boolean {
   return val === "0" || val === "false" || val === "no";
 }
 
-function resolveConfig(): { intervalMs: number; heartbeatFile: string; enabled: boolean } {
-  const envInterval = parseInt(process.env.HEARTBEAT_INTERVAL_MS || "", 10);
-  const intervalMs = Math.max(
-    MIN_INTERVAL_MS,
-    Number.isFinite(envInterval) ? envInterval : DEFAULT_INTERVAL_MS
-  );
-  const heartbeatFile = process.env.HEARTBEAT_FILE?.trim() || DEFAULT_HEARTBEAT_FILE;
-  const enabled = !isDisabledByEnv();
-  return { intervalMs, heartbeatFile, enabled };
+function clampInt(value: string | undefined, min: number, max: number, fallback: number): number {
+  const parsed = parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
-function readHeartbeatFile(filepath: string): string | null {
+function getExpectedSessions(): string[] {
+  const env = process.env.HEARTBEAT_EXPECTED_SESSIONS?.trim();
+  if (env) return env.split(",").map((s) => s.trim()).filter(Boolean);
+  return ["sentry-agent"];
+}
+
+// ── Health Check Functions ──────────────────────────────────────────────────
+
+function checkSessions(): CheckResult[] {
+  const results: CheckResult[] = [];
+  const expected = getExpectedSessions();
+
+  for (const alias of expected) {
+    const aliasPath = join(SOCKET_DIR, `${alias}.alias`);
+    if (!existsSync(aliasPath)) {
+      results.push({
+        name: `session:${alias}`,
+        ok: false,
+        detail: `Session "${alias}" alias not found in ${SOCKET_DIR}`,
+      });
+      continue;
+    }
+
+    // Check that the symlink target (.sock file) exists
+    try {
+      const { readlinkSync } = require("node:fs");
+      const target = readlinkSync(aliasPath);
+      const sockPath = join(SOCKET_DIR, target);
+      if (!existsSync(sockPath)) {
+        results.push({
+          name: `session:${alias}`,
+          ok: false,
+          detail: `Session "${alias}" alias points to missing socket: ${target}`,
+        });
+      } else {
+        results.push({ name: `session:${alias}`, ok: true });
+      }
+    } catch {
+      // Can't read symlink — just check alias existence (already confirmed above)
+      results.push({ name: `session:${alias}`, ok: true });
+    }
+  }
+
+  // Check for orphaned dev-agent sessions
   try {
-    if (!existsSync(filepath)) return null;
-    const content = readFileSync(filepath, "utf-8").trim();
-    // Skip if empty or only comments/whitespace
-    const meaningful = content
-      .split("\n")
-      .filter((line) => {
-        const trimmed = line.trim();
-        return trimmed.length > 0 && !trimmed.startsWith("#");
-      })
-      .join("\n")
-      .trim();
-    return meaningful.length > 0 ? content : null;
+    const files = readdirSync(SOCKET_DIR);
+    const aliases = files.filter((f) => f.endsWith(".alias"));
+    for (const alias of aliases) {
+      const name = alias.replace(".alias", "");
+      if (name.startsWith("dev-agent-")) {
+        const hasTodo = hasMatchingTodo(name);
+        if (!hasTodo) {
+          results.push({
+            name: `orphan:${name}`,
+            ok: false,
+            detail: `Dev agent session "${name}" has no matching in-progress todo — may be orphaned`,
+          });
+        }
+      }
+    }
+  } catch {
+    // Socket dir read failure — non-fatal
+  }
+
+  return results;
+}
+
+async function checkBridge(): Promise<CheckResult> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(BRIDGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (response.status === 400) {
+      return { name: "bridge", ok: true };
+    }
+    return {
+      name: "bridge",
+      ok: false,
+      detail: `Slack bridge returned HTTP ${response.status} (expected 400)`,
+    };
+  } catch (err: any) {
+    return {
+      name: "bridge",
+      ok: false,
+      detail: `Slack bridge unreachable: ${err.message || err}`,
+    };
+  }
+}
+
+function checkWorktrees(): CheckResult[] {
+  const results: CheckResult[] = [];
+
+  if (!existsSync(WORKTREES_DIR)) return results;
+
+  try {
+    const entries = readdirSync(WORKTREES_DIR);
+    for (const entry of entries) {
+      const fullPath = join(WORKTREES_DIR, entry);
+      try {
+        if (!statSync(fullPath).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+
+      // Check if there's a matching in-progress todo
+      const hasMatch = hasMatchingInProgressTodo(entry);
+      if (!hasMatch) {
+        results.push({
+          name: `worktree:${entry}`,
+          ok: false,
+          detail: `Stale worktree "${entry}" in ~/workspace/worktrees/ — no matching in-progress todo`,
+        });
+      }
+    }
+  } catch {
+    // Read failure — non-fatal
+  }
+
+  return results;
+}
+
+/**
+ * Parse a todo file. Todos have JSON front matter (a JSON object at the top of the file)
+ * optionally followed by markdown body.
+ */
+function parseTodo(content: string): { status?: string; title?: string; created_at?: string } | null {
+  try {
+    // The JSON block is at the start of the file
+    const trimmed = content.trim();
+    if (!trimmed.startsWith("{")) return null;
+
+    // Find the closing brace for the top-level JSON object
+    let depth = 0;
+    let jsonEnd = -1;
+    for (let i = 0; i < trimmed.length; i++) {
+      if (trimmed[i] === "{") depth++;
+      else if (trimmed[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          jsonEnd = i + 1;
+          break;
+        }
+      }
+    }
+    if (jsonEnd === -1) return null;
+
+    return JSON.parse(trimmed.substring(0, jsonEnd));
   } catch {
     return null;
   }
 }
 
-function computeBackoffMs(consecutiveErrors: number, baseInterval: number): number {
-  if (consecutiveErrors <= 0) return baseInterval;
-  const backoff = baseInterval * BACKOFF_MULTIPLIER ** consecutiveErrors;
-  return Math.min(backoff, MAX_BACKOFF_MS);
+function checkStuckTodos(): CheckResult[] {
+  const results: CheckResult[] = [];
+  const now = Date.now();
+
+  if (!existsSync(TODOS_DIR)) return results;
+
+  try {
+    const files = readdirSync(TODOS_DIR).filter((f) => f.endsWith(".md"));
+
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(TODOS_DIR, file), "utf-8");
+        const todo = parseTodo(content);
+        if (!todo || todo.status !== "in-progress") continue;
+
+        const createdAt = todo.created_at;
+        if (!createdAt) continue;
+
+        const createdTime = new Date(createdAt).getTime();
+        if (isNaN(createdTime)) continue;
+
+        const age = now - createdTime;
+        if (age < STUCK_TODO_THRESHOLD_MS) continue;
+
+        // Check if there's a corresponding dev-agent session
+        const todoId = file.replace(".md", "");
+        const hasAgent = hasDevAgentForTodo(todoId);
+
+        if (!hasAgent) {
+          const title = todo.title || todoId;
+          const hoursStuck = Math.round(age / (60 * 60 * 1000) * 10) / 10;
+
+          results.push({
+            name: `stuck:TODO-${todoId}`,
+            ok: false,
+            detail: `Todo "TODO-${todoId}" (${title}) has been in-progress for ${hoursStuck}h with no dev-agent session`,
+          });
+        }
+      } catch {
+        // Individual file read failure — skip
+      }
+    }
+  } catch {
+    // Dir read failure — non-fatal
+  }
+
+  return results;
 }
+
+// ── Helper Functions ────────────────────────────────────────────────────────
+
+function hasMatchingTodo(devAgentName: string): boolean {
+  // dev-agent-<repo>-<todo-short> → extract todo short ID
+  const parts = devAgentName.split("-");
+  if (parts.length < 4) return false;
+  const todoShort = parts[parts.length - 1];
+
+  if (!existsSync(TODOS_DIR)) return false;
+
+  try {
+    const files = readdirSync(TODOS_DIR);
+    return files.some((f) => f.startsWith(todoShort));
+  } catch {
+    return false;
+  }
+}
+
+function hasMatchingInProgressTodo(worktreeName: string): boolean {
+  if (!existsSync(TODOS_DIR)) return false;
+
+  try {
+    const files = readdirSync(TODOS_DIR).filter((f) => f.endsWith(".md"));
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(TODOS_DIR, file), "utf-8");
+        const todo = parseTodo(content);
+        if (todo?.status === "in-progress") {
+          // Check if the worktree branch name appears in the todo body
+          if (content.includes(worktreeName)) return true;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // Dir read failure
+  }
+
+  return false;
+}
+
+function hasDevAgentForTodo(todoId: string): boolean {
+  try {
+    const files = readdirSync(SOCKET_DIR);
+    const aliases = files.filter((f) => f.endsWith(".alias") && f.startsWith("dev-agent-"));
+    return aliases.some((a) => a.includes(todoId.substring(0, 8)));
+  } catch {
+    return false;
+  }
+}
+
+// ── Extension ───────────────────────────────────────────────────────────────
 
 export default function heartbeatExtension(pi: ExtensionAPI): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const state: HeartbeatState = {
     enabled: true,
     intervalMs: DEFAULT_INTERVAL_MS,
-    heartbeatFile: DEFAULT_HEARTBEAT_FILE,
     lastRunAt: null,
     consecutiveErrors: 0,
     totalRuns: 0,
+    lastFailures: [],
   };
 
   function saveState() {
@@ -103,7 +346,14 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
       lastRunAt: state.lastRunAt,
       consecutiveErrors: state.consecutiveErrors,
       totalRuns: state.totalRuns,
+      lastFailures: state.lastFailures,
     });
+  }
+
+  function computeBackoffMs(consecutiveErrors: number, baseInterval: number): number {
+    if (consecutiveErrors <= 0) return baseInterval;
+    const backoff = baseInterval * BACKOFF_MULTIPLIER ** consecutiveErrors;
+    return Math.min(backoff, MAX_BACKOFF_MS);
   }
 
   function armTimer() {
@@ -118,30 +368,49 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
     }, delay);
   }
 
-  function fireHeartbeat() {
+  async function fireHeartbeat() {
     try {
-      const content = readHeartbeatFile(state.heartbeatFile);
-      if (!content) {
-        // No checklist — skip silently, re-arm for next interval
-        armTimer();
-        return;
-      }
-
       const now = Date.now();
       state.lastRunAt = now;
       state.totalRuns += 1;
 
+      // Run all checks
+      const sessionResults = checkSessions();
+      const bridgeResult = await checkBridge();
+      const worktreeResults = checkWorktrees();
+      const stuckTodoResults = checkStuckTodos();
+
+      const allResults: CheckResult[] = [
+        ...sessionResults,
+        bridgeResult,
+        ...worktreeResults,
+        ...stuckTodoResults,
+      ];
+
+      const failures = allResults.filter((r) => !r.ok);
+      state.lastFailures = failures.map((f) => `${f.name}: ${f.detail}`);
+
+      if (failures.length === 0) {
+        // Everything healthy — NO LLM tokens consumed!
+        state.consecutiveErrors = 0;
+        saveState();
+        armTimer();
+        return;
+      }
+
+      // Something is wrong — inject a prompt so the control-agent can fix it
+      const failureList = failures
+        .map((f) => `- **${f.name}**: ${f.detail}`)
+        .join("\n");
+
       const prompt = [
         `🫀 **Heartbeat** (run #${state.totalRuns}, ${new Date(now).toISOString()})`,
         ``,
-        `Review the following checklist and take action on any items that need attention.`,
-        `If everything is healthy, respond briefly with what you checked. Do NOT take action unless something is wrong.`,
+        `**${failures.length} health check failure(s) detected** — take action:`,
         ``,
-        `---`,
-        content,
-        `---`,
+        failureList,
         ``,
-        `If you find issues, fix them. If everything looks good, say so briefly and move on.`,
+        `All other checks passed. Fix the issues above and report what you did.`,
       ].join("\n");
 
       pi.sendMessage(
@@ -156,19 +425,16 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
         }
       );
 
-      // Success — reset error counter
       state.consecutiveErrors = 0;
       saveState();
-    } catch {
-      // Increment error counter for backoff — never let the heartbeat die
+    } catch (err) {
       state.consecutiveErrors += 1;
       try {
         saveState();
       } catch {
-        // Best-effort state persistence — don't let a save failure prevent re-arm
+        // Best-effort
       }
     } finally {
-      // Always re-arm the timer, even after errors (with backoff)
       armTimer();
     }
   }
@@ -198,6 +464,9 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
           const nextIn = timer
             ? `~${Math.round(computeBackoffMs(state.consecutiveErrors, state.intervalMs) / 1000)}s`
             : "paused";
+          const failureInfo = state.lastFailures.length > 0
+            ? `\n  Last failures:\n${state.lastFailures.map(f => `    - ${f}`).join("\n")}`
+            : "\n  Last check: all healthy ✅";
           return {
             content: [
               {
@@ -205,12 +474,13 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
                 text: [
                   `Heartbeat Status:`,
                   `  Enabled: ${state.enabled ? "✅" : "⏹"}`,
+                  `  Mode: programmatic (zero-token when healthy)`,
                   `  Interval: ${state.intervalMs / 1000}s`,
                   `  Next fire: ${nextIn}`,
                   `  Total runs: ${state.totalRuns}`,
                   `  Consecutive errors: ${state.consecutiveErrors}`,
                   `  Last run: ${state.lastRunAt ? new Date(state.lastRunAt).toISOString() : "never"}`,
-                  `  Checklist: ${state.heartbeatFile}`,
+                  failureInfo,
                 ].join("\n"),
               },
             ],
@@ -235,36 +505,77 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
             content: [
               {
                 type: "text" as const,
-                text: `✅ Heartbeat resumed (every ${state.intervalMs / 1000}s).`,
+                text: `✅ Heartbeat resumed (every ${state.intervalMs / 1000}s, zero-token when healthy).`,
               },
             ],
           };
         }
 
         case "trigger": {
+          // Run checks immediately and report results
+          const sessionResults = checkSessions();
+          const bridgeResult = await checkBridge();
+          const worktreeResults = checkWorktrees();
+          const stuckTodoResults = checkStuckTodos();
+
+          const allResults: CheckResult[] = [
+            ...sessionResults,
+            bridgeResult,
+            ...worktreeResults,
+            ...stuckTodoResults,
+          ];
+
+          const failures = allResults.filter((r) => !r.ok);
+          const passes = allResults.filter((r) => r.ok);
+
+          if (failures.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `🫀 All ${allResults.length} checks passed: ${passes.map(r => r.name).join(", ")}`,
+                },
+              ],
+            };
+          }
+
+          // If there are failures, also fire the normal heartbeat flow
+          // (which will inject the prompt for the agent to act on)
           fireHeartbeat();
+
           return {
-            content: [{ type: "text" as const, text: "🫀 Heartbeat triggered." }],
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `🫀 ${failures.length} failure(s) detected — heartbeat prompt injected for action:`,
+                  ...failures.map((f) => `  ❌ ${f.name}: ${f.detail}`),
+                  ...passes.map((r) => `  ✅ ${r.name}`),
+                ].join("\n"),
+              },
+            ],
           };
         }
 
         case "config": {
-          const content = readHeartbeatFile(state.heartbeatFile);
+          const expected = getExpectedSessions();
           return {
             content: [
               {
                 type: "text" as const,
                 text: [
                   `Heartbeat Configuration:`,
-                  `  File: ${state.heartbeatFile}`,
-                  `  File exists: ${existsSync(state.heartbeatFile) ? "yes" : "no"}`,
-                  `  Has content: ${content ? "yes" : "no (empty or comments only)"}`,
+                  `  Mode: programmatic (v2 — zero-token when healthy)`,
                   `  Interval: ${state.intervalMs / 1000}s (env: HEARTBEAT_INTERVAL_MS)`,
                   `  Min interval: ${MIN_INTERVAL_MS / 1000}s`,
                   `  Backoff multiplier: ${BACKOFF_MULTIPLIER}x per error`,
                   `  Max backoff: ${MAX_BACKOFF_MS / 1000}s`,
-                  ``,
-                  content ? `Current checklist:\n${content}` : `(no checklist loaded)`,
+                  `  Expected sessions: ${expected.join(", ")} (env: HEARTBEAT_EXPECTED_SESSIONS)`,
+                  `  Stuck todo threshold: ${STUCK_TODO_THRESHOLD_MS / (60 * 60 * 1000)}h`,
+                  `  Bridge URL: ${BRIDGE_URL}`,
+                  `  Socket dir: ${SOCKET_DIR}`,
+                  `  Worktrees dir: ${WORKTREES_DIR}`,
+                  `  Todos dir: ${TODOS_DIR}`,
                 ].join("\n"),
               },
             ],
@@ -290,14 +601,14 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
           state.consecutiveErrors = e.data.consecutiveErrors;
         if (typeof e.data.totalRuns === "number") state.totalRuns = e.data.totalRuns;
         if (typeof e.data.lastRunAt === "number") state.lastRunAt = e.data.lastRunAt;
+        if (Array.isArray(e.data.lastFailures)) state.lastFailures = e.data.lastFailures;
       }
     }
 
     // Apply env config
-    const config = resolveConfig();
-    state.intervalMs = config.intervalMs;
-    state.heartbeatFile = config.heartbeatFile;
-    state.enabled = config.enabled;
+    const envInterval = process.env.HEARTBEAT_INTERVAL_MS;
+    state.intervalMs = clampInt(envInterval, MIN_INTERVAL_MS, MAX_BACKOFF_MS, DEFAULT_INTERVAL_MS);
+    state.enabled = !isDisabledByEnv();
 
     if (state.enabled) {
       armTimer();
