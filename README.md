@@ -83,6 +83,9 @@ Upgrade later:
 sudo baudbot update
 ```
 
+`baudbot update` already deploys runtime files and restarts the service. `baudbot restart` alone does not deploy code changes.
+For local, unmerged edits, run deploy from that checkout (for example `sudo ~/baudbot/bin/deploy.sh`).
+
 Install with a specific pi version (optional):
 
 ```bash

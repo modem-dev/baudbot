@@ -22,15 +22,21 @@ sudo baudbot sessions
 ## Deployment and upgrades
 
 ```bash
-# Deploy source + config to runtime
-sudo baudbot deploy
+# Deploy source + config to runtime (for local source edits)
+sudo /path/to/your/checkout/bin/deploy.sh
 
 # Update from upstream with preflight checks and release publishing
+# (includes deploy + restart + health check)
 sudo baudbot update
 
 # Roll back to previous or specified release snapshot
 sudo baudbot rollback previous
 ```
+
+Notes:
+- `baudbot restart` only restarts the service; it does not copy source files into runtime.
+- Use `deploy.sh` when testing local, unmerged source edits.
+- Use `baudbot update` for release-based upgrades from git refs/branches.
 
 Provision with a pinned pi version (optional):
 
