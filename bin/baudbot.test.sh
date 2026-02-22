@@ -130,6 +130,67 @@ EOF
   )
 }
 
+test_restart_restarts_systemd_and_kills_bridge_tmux() {
+  (
+    set -euo pipefail
+    local tmp fakebin log_file
+    tmp="$(mktemp -d /tmp/baudbot-cli-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    mkdir -p "$tmp/fakebin" "$tmp/bin/lib"
+    fakebin="$tmp/fakebin"
+    log_file="$tmp/calls.log"
+
+    printf '{"version":"1.2.3"}\n' > "$tmp/package.json"
+    cat > "$tmp/bin/lib/baudbot-runtime.sh" <<'EOF'
+#!/bin/bash
+has_systemd() { return 0; }
+cmd_status() { :; }
+cmd_logs() { :; }
+cmd_sessions() { :; }
+cmd_attach() { :; }
+EOF
+
+    cat > "$fakebin/id" <<'EOF'
+#!/bin/bash
+if [ "${1:-}" = "-u" ]; then
+  echo 0
+else
+  /usr/bin/id "$@"
+fi
+EOF
+
+    cat > "$fakebin/sudo" <<'EOF'
+#!/bin/bash
+if [ "${1:-}" = "-u" ]; then
+  user="$2"
+  shift 2
+fi
+echo "sudo $*" >> "${BAUDBOT_TEST_LOG}"
+exec "$@"
+EOF
+
+    cat > "$fakebin/tmux" <<'EOF'
+#!/bin/bash
+echo "tmux $*" >> "${BAUDBOT_TEST_LOG}"
+exit 0
+EOF
+
+    cat > "$fakebin/systemctl" <<'EOF'
+#!/bin/bash
+echo "systemctl $*" >> "${BAUDBOT_TEST_LOG}"
+exit 0
+EOF
+
+    chmod +x "$fakebin/id" "$fakebin/sudo" "$fakebin/tmux" "$fakebin/systemctl"
+
+    PATH="$fakebin:$PATH" BAUDBOT_TEST_LOG="$log_file" BAUDBOT_ROOT="$tmp" bash "$CLI" restart
+
+    grep -q '^tmux kill-session -t slack-bridge$' "$log_file"
+    grep -q '^systemctl restart baudbot$' "$log_file"
+  )
+}
+
 echo "=== baudbot cli tests ==="
 echo ""
 
@@ -137,6 +198,7 @@ run_test "version reads package.json" test_version_uses_package_json
 run_test "status dispatches via runtime module" test_status_dispatches_via_runtime_module
 run_test "attach requires root" test_attach_requires_root
 run_test "broker register requires root" test_broker_register_requires_root
+run_test "restart kills bridge tmux then restarts systemd" test_restart_restarts_systemd_and_kills_bridge_tmux
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="
