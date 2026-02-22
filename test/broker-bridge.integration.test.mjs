@@ -727,4 +727,51 @@ describe("broker pull bridge semi-integration", () => {
 
     bridge.kill("SIGTERM");
   });
+
+  it("exits when broker access token is expired", async () => {
+    await sodium.ready;
+
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    let bridgeStdout = "";
+    let bridgeStderr = "";
+
+    const bridge = spawn("node", [bridgePath], {
+      cwd: bridgeCwd,
+      env: {
+        ...process.env,
+        SLACK_BROKER_URL: "http://127.0.0.1:65535",
+        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 25).toString("base64"),
+        SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "expired-token",
+        SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT: "2000-01-01T00:00:00.000Z",
+        SLACK_ALLOWED_USERS: "U_ALLOWED",
+        BRIDGE_API_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    bridge.stdout.on("data", (chunk) => {
+      bridgeStdout += chunk.toString();
+    });
+    bridge.stderr.on("data", (chunk) => {
+      bridgeStderr += chunk.toString();
+    });
+
+    children.push(bridge);
+
+    const exited = await new Promise((resolve) => {
+      bridge.on("exit", (code, signal) => resolve({ code, signal }));
+    });
+
+    expect(exited.code).toBe(1);
+    expect(`${bridgeStdout}\n${bridgeStderr}`).toContain("broker access token is expired");
+  });
 });

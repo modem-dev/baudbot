@@ -95,6 +95,7 @@ const directSlackRateLimiter = createRateLimiter({ maxRequests: 1, windowMs: 1_0
 const workspaceId = process.env.SLACK_BROKER_WORKSPACE_ID;
 const brokerBaseUrl = String(process.env.SLACK_BROKER_URL || "").replace(/\/$/, "");
 const brokerAccessToken = String(process.env.SLACK_BROKER_ACCESS_TOKEN || "").trim();
+const brokerAccessTokenExpiresAt = String(process.env.SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT || "").trim();
 
 // Check if direct Slack API mode is available
 const hasDirectSlackToken = Boolean(process.env.SLACK_BOT_TOKEN);
@@ -110,6 +111,7 @@ let socketPath = null;
 let cryptoState = null;
 
 const dedupe = new Map();
+let brokerTokenExpiryFormatWarned = false;
 
 const brokerHealth = {
   started_at: new Date().toISOString(),
@@ -386,7 +388,29 @@ function signPullRequest(timestamp, maxMessages, waitSeconds) {
   });
 }
 
+function isBrokerAccessTokenExpired() {
+  if (!brokerAccessToken || !brokerAccessTokenExpiresAt) return false;
+  const ts = Date.parse(brokerAccessTokenExpiresAt);
+  if (!Number.isFinite(ts)) {
+    if (!brokerTokenExpiryFormatWarned) {
+      logWarn("⚠️ invalid SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT format; expected ISO-8601 timestamp");
+      brokerTokenExpiryFormatWarned = true;
+    }
+    return false;
+  }
+  return Date.now() >= ts;
+}
+
+function enforceBrokerTokenFreshnessOrExit() {
+  if (!isBrokerAccessTokenExpired()) return;
+
+  logError("❌ broker access token is expired; broker API auth will fail.");
+  logError("   run: sudo baudbot broker register && sudo baudbot restart");
+  process.exit(1);
+}
+
 async function brokerFetch(pathname, body) {
+  enforceBrokerTokenFreshnessOrExit();
   const url = `${brokerBaseUrl}${pathname}`;
   const headers = { "Content-Type": "application/json" };
   if (brokerAccessToken) {
@@ -991,6 +1015,8 @@ async function startPollLoop() {
     brokerSigningPubkey: fromBase64(process.env.SLACK_BROKER_SIGNING_PUBLIC_KEY),
     serverSignSecretKey: signKeypair.privateKey,
   };
+
+  enforceBrokerTokenFreshnessOrExit();
 
   refreshSocket();
   startApiServer();
