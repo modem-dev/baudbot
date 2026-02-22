@@ -98,6 +98,8 @@ sudo baudbot broker register \
   --registration-token <token-from-dashboard-callback>
 ```
 
+Broker pull mode uses long-polling by default (`SLACK_BROKER_WAIT_SECONDS=20`, max `25`; set `0` for legacy short-poll).
+
 Need to rotate/update a key later?
 
 ```bash

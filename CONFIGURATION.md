@@ -106,6 +106,7 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
 | `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
 | `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
+| `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for legacy short-poll, max `25`) |
 | `SLACK_BROKER_DEDUPE_TTL_MS` | Dedupe cache TTL in milliseconds (default: `1200000`) |
 
 ### Kernel (Cloud Browsers)
@@ -190,6 +191,7 @@ SLACK_BROKER_URL=https://broker.example.com
 SLACK_BROKER_WORKSPACE_ID=T0123ABCD
 SLACK_BROKER_POLL_INTERVAL_MS=3000
 SLACK_BROKER_MAX_MESSAGES=10
+SLACK_BROKER_WAIT_SECONDS=20
 SLACK_BROKER_DEDUPE_TTL_MS=1200000
 
 # Experimental features (required for email)

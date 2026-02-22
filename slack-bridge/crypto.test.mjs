@@ -10,6 +10,7 @@ import {
   stableStringify,
   canonicalizeEnvelope,
   canonicalizeOutbound,
+  canonicalizeOutboundV2,
   canonicalizeSendRequest,
 } from "./crypto.mjs";
 
@@ -147,6 +148,31 @@ describe("canonicalizeOutbound", () => {
 
   it("returns Uint8Array", () => {
     const result = canonicalizeOutbound("T123", "inbox.pull", 1700000000, "10");
+    assert.ok(result instanceof Uint8Array);
+  });
+});
+
+// ── canonicalizeOutboundV2 ──────────────────────────────────────────────────
+
+describe("canonicalizeOutboundV2", () => {
+  it("produces stable JSON payload for inbox.pull.v2", () => {
+    const result = decode(
+      canonicalizeOutboundV2("T123", "inbox.pull.v2", 1700000000, {
+        max_messages: 10,
+        wait_seconds: 20,
+      }),
+    );
+    assert.equal(
+      result,
+      '{"action":"inbox.pull.v2","payload":{"max_messages":10,"wait_seconds":20},"timestamp":1700000000,"workspace_id":"T123"}',
+    );
+  });
+
+  it("returns Uint8Array", () => {
+    const result = canonicalizeOutboundV2("T123", "inbox.pull.v2", 1700000000, {
+      max_messages: 10,
+      wait_seconds: 20,
+    });
     assert.ok(result instanceof Uint8Array);
   });
 });
