@@ -107,8 +107,8 @@ The primary way to talk to Baudbot remotely is through Slack.
 
 You have two choices:
 
-1) By creating your own Slack app (more work)
-2) By using our hosted Slack broker + control plane at https://baudbot.ai (easy)
+1. **Create/manage your own Slack app** (hard)
+2. **Use our hosted Slack broker + control plane** at https://baudbot.ai (easy) [ALPHA]
 
 What the Slack broker does:
 - One-click install to connect your Slack workspace to your Baudbot instance
