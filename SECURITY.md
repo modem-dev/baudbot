@@ -67,6 +67,8 @@ Live execution runs from release snapshots under `/opt/baudbot`.
 
 Primary hard boundaries are runtime permissions, user isolation, and release-based deployment. If local source isolation is also enforced, admin can re-deploy from source to restore expected state.
 
+> **Important scope note:** Many controls in this document are defense-in-depth and can be bypassed by a sufficiently capable or compromised rogue agent operating within its allowed user permissions. They are still valuable because they reduce accidental drift, surface tampering quickly, and help a non-compromised agent stay aligned with intended workflows.
+
 ## User Model
 
 | User | Role | Sudo | Groups |
