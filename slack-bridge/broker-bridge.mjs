@@ -655,21 +655,19 @@ function isPoisonMessageError(err) {
   return message.includes("invalid broker envelope signature") || message.includes("failed to decrypt broker envelope");
 }
 
-async function processPulledMessage(message) {
-  if (!verifyBrokerEnvelope(message)) {
-    throw new Error("invalid broker envelope signature");
-  }
+function isGenericEnvelope(payload) {
+  return (
+    payload != null &&
+    typeof payload === "object" &&
+    typeof payload.source === "string" &&
+    typeof payload.type === "string" &&
+    "payload" in payload &&
+    typeof payload.broker_timestamp === "number"
+  );
+}
 
-  let slackEventEnvelopePayload;
-  try {
-    slackEventEnvelopePayload = decryptEnvelope(message);
-    markHealth("inbound_decrypt", true);
-  } catch (err) {
-    markHealth("inbound_decrypt", false, err);
-    throw err;
-  }
-
-  logInfo(`📦 decrypted envelope — type: ${slackEventEnvelopePayload?.type || "unknown"}`);
+async function handleSlackPayload(slackEventEnvelopePayload) {
+  logInfo(`📦 slack payload — type: ${slackEventEnvelopePayload?.type || "unknown"}`);
 
   if (slackEventEnvelopePayload?.type !== "event_callback") {
     logInfo(`   ↳ ignoring non-event_callback type: ${slackEventEnvelopePayload?.type}`);
@@ -710,6 +708,53 @@ async function processPulledMessage(message) {
 
   logInfo(`   ↳ unhandled event type: ${event.type}`);
   return true;
+}
+
+async function handleDashboardEvent(type, payload) {
+  logInfo(`📊 dashboard event: ${type}`, JSON.stringify(payload).slice(0, 200));
+  // TODO: implement dashboard event handling (env updates, config changes)
+  return true;
+}
+
+async function handleSystemEvent(type, payload) {
+  logInfo(`⚙️ system event: ${type}`, JSON.stringify(payload).slice(0, 200));
+  // TODO: implement system event handling
+  return true;
+}
+
+async function processPulledMessage(message) {
+  if (!verifyBrokerEnvelope(message)) {
+    throw new Error("invalid broker envelope signature");
+  }
+
+  let payload;
+  try {
+    payload = decryptEnvelope(message);
+    markHealth("inbound_decrypt", true);
+  } catch (err) {
+    markHealth("inbound_decrypt", false, err);
+    throw err;
+  }
+
+  // Generic envelope dispatch
+  if (isGenericEnvelope(payload)) {
+    logInfo(`📦 generic envelope — source: ${payload.source}, type: ${payload.type}`);
+    switch (payload.source) {
+      case "slack":
+        return handleSlackPayload(payload.payload);
+      case "dashboard":
+        return handleDashboardEvent(payload.type, payload.payload);
+      case "system":
+        return handleSystemEvent(payload.type, payload.payload);
+      default:
+        logWarn(`⚠️ unknown event source: ${payload.source} — acking to avoid blocking queue`);
+        return true;
+    }
+  }
+
+  // Legacy: raw Slack event_callback (backwards compat during rollout)
+  logInfo(`📦 legacy envelope — type: ${payload?.type || "unknown"}`);
+  return handleSlackPayload(payload);
 }
 
 function getLogLinesForResponse(url) {
