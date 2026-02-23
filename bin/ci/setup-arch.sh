@@ -64,6 +64,9 @@ test -x /home/baudbot_agent/.varlock/bin/varlock
 sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
 echo "  ✓ bootstrap + install verification passed"
 
+echo "=== Running CLI smoke checks ==="
+bash /home/baudbot_admin/baudbot/bin/ci/smoke-cli.sh
+
 echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:$PATH"
 cd /home/baudbot_admin/baudbot
