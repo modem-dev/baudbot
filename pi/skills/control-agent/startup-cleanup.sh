@@ -70,14 +70,33 @@ BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
 BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
 
+kill_bridge_supervisor() {
+  local bridge_pid="$1"
+  [ -n "$bridge_pid" ] || return 0
+  if ! kill -0 "$bridge_pid" 2>/dev/null; then
+    return 0
+  fi
+
+  # Best-effort: terminate direct children first so no stale bridge process keeps the port.
+  local bridge_child_pids
+  bridge_child_pids="$(pgrep -P "$bridge_pid" 2>/dev/null || true)"
+  if [ -n "$bridge_child_pids" ]; then
+    kill $bridge_child_pids 2>/dev/null || true
+    sleep 1
+    kill -9 $bridge_child_pids 2>/dev/null || true
+  fi
+
+  kill "$bridge_pid" 2>/dev/null || true
+  sleep 1
+  kill -9 "$bridge_pid" 2>/dev/null || true
+}
+
 # Kill existing slack-bridge process if running
 if [ -f "$BRIDGE_PID_FILE" ]; then
   BRIDGE_PID="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
   if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
     echo "Killing existing slack-bridge process (pid=$BRIDGE_PID)..."
-    kill "$BRIDGE_PID" 2>/dev/null || true
-    sleep 1
-    kill -9 "$BRIDGE_PID" 2>/dev/null || true
+    kill_bridge_supervisor "$BRIDGE_PID"
   fi
   rm -f "$BRIDGE_PID_FILE"
 fi
@@ -109,6 +128,7 @@ if [ -z "$BRIDGE_SCRIPT" ]; then
 fi
 
 # Start fresh slack-bridge
+# Keep a supervisor loop (matching start.sh) so bridge restarts automatically on crash.
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
 mkdir -p "$BRIDGE_LOG_DIR"
 (
@@ -116,8 +136,12 @@ mkdir -p "$BRIDGE_LOG_DIR"
   export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
   export PI_SESSION_ID="$MY_UUID"
   cd /opt/baudbot/current/slack-bridge
-  exec varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
-) >>"$BRIDGE_LOG_FILE" 2>&1 &
+  while true; do
+    varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1
+    echo "[$(date -Is)] ⚠️  Bridge exited ($?), restarting in 5s..." >>"$BRIDGE_LOG_FILE"
+    sleep 5
+  done
+) &
 NEW_BRIDGE_PID=$!
 echo "$NEW_BRIDGE_PID" > "$BRIDGE_PID_FILE"
 chmod 600 "$BRIDGE_PID_FILE"
