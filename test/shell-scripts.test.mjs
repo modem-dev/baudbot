@@ -35,8 +35,16 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/json-common.test.sh")).not.toThrow();
   });
 
+  it("shell helper", () => {
+    expect(() => runScript("bin/lib/shell-common.test.sh")).not.toThrow();
+  });
+
   it("deploy helpers", () => {
     expect(() => runScript("bin/lib/deploy-common.test.sh")).not.toThrow();
+  });
+
+  it("release runtime helpers", () => {
+    expect(() => runScript("bin/lib/release-runtime-common.test.sh")).not.toThrow();
   });
 
   it("bridge restart policy helpers", () => {

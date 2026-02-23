@@ -25,15 +25,17 @@ bb_run_release_restart_and_health() {
   local health_cmd="$3"
   local env_array_name="$4"
 
-  if ! bb_run_release_override_cmd "restart" "$restart_cmd" "$env_array_name"; then
-    if [ "$skip_restart" = "1" ]; then
-      log "skipping restart"
-    else
-      restart_baudbot_service_if_active
-    fi
+  if [ -n "$restart_cmd" ]; then
+    bb_run_release_override_cmd "restart" "$restart_cmd" "$env_array_name"
+  elif [ "$skip_restart" = "1" ]; then
+    log "skipping restart"
+  else
+    restart_baudbot_service_if_active
   fi
 
-  bb_run_release_override_cmd "health" "$health_cmd" "$env_array_name" || true
+  if [ -n "$health_cmd" ]; then
+    bb_run_release_override_cmd "health" "$health_cmd" "$env_array_name"
+  fi
 }
 
 bb_verify_deployed_release_sha() {
