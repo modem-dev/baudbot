@@ -70,6 +70,108 @@ describe("broker pull bridge semi-integration", () => {
     tempDirs.length = 0;
   });
 
+  it("serves in-memory recent logs via GET /logs", async () => {
+    await sodium.ready;
+
+    const apiPort = await reserveFreePort();
+
+    const broker = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/inbox/pull") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, messages: [] }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/inbox/ack") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, acked: 0 }));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/send") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ts: "1234.5678" }));
+        return;
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "not found" }));
+    });
+
+    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    servers.push(broker);
+
+    const brokerAddress = broker.address();
+    if (!brokerAddress || typeof brokerAddress === "string") {
+      throw new Error("failed to get broker test server address");
+    }
+
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    let bridgeStdout = "";
+    let bridgeStderr = "";
+
+    const bridge = spawn("node", [bridgePath], {
+      cwd: bridgeCwd,
+      env: {
+        ...process.env,
+        SLACK_BROKER_URL: `http://127.0.0.1:${brokerAddress.port}`,
+        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
+        SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
+        SLACK_ALLOWED_USERS: "U_ALLOWED",
+        SLACK_BROKER_POLL_INTERVAL_MS: "100",
+        BRIDGE_API_PORT: String(apiPort),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    bridge.stdout.on("data", (chunk) => {
+      bridgeStdout += chunk.toString();
+    });
+    bridge.stderr.on("data", (chunk) => {
+      bridgeStderr += chunk.toString();
+    });
+
+    children.push(bridge);
+
+    await waitFor(
+      () => bridgeStdout.includes("Outbound API listening"),
+      10_000,
+      50,
+      `timeout waiting for startup log; stdout=${bridgeStdout}; stderr=${bridgeStderr}`,
+    );
+
+    const allLogsResponse = await fetch(`http://127.0.0.1:${apiPort}/logs`);
+    expect(allLogsResponse.status).toBe(200);
+    expect(allLogsResponse.headers.get("content-type")).toContain("text/plain");
+    const allLogsText = await allLogsResponse.text();
+    expect(allLogsText).toContain("Outbound API listening");
+
+    const filteredLogsResponse = await fetch(`http://127.0.0.1:${apiPort}/logs?filter=outbound`);
+    expect(filteredLogsResponse.status).toBe(200);
+    const filteredLogsText = await filteredLogsResponse.text();
+    expect(filteredLogsText.toLowerCase()).toContain("outbound api listening");
+
+    const limitedLogsResponse = await fetch(`http://127.0.0.1:${apiPort}/logs?n=1`);
+    expect(limitedLogsResponse.status).toBe(200);
+    const limitedLogsText = await limitedLogsResponse.text();
+    const limitedLines = limitedLogsText.trim() ? limitedLogsText.trim().split("\n") : [];
+    expect(limitedLines.length).toBeLessThanOrEqual(1);
+
+    const invalidNResponse = await fetch(`http://127.0.0.1:${apiPort}/logs?n=0`);
+    expect(invalidNResponse.status).toBe(400);
+    const invalidNBody = await invalidNResponse.json();
+    expect(invalidNBody.error).toContain("positive integer");
+  });
+
   it("acks poison messages from broker to avoid infinite retry loops", async () => {
     await sodium.ready;
 

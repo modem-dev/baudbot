@@ -51,21 +51,64 @@ const DEDUPE_TTL_MS = clampInt(
 const MAX_BACKOFF_MS = 30_000;
 const INBOX_PROTOCOL_VERSION = "2026-02-1";
 const BROKER_HEALTH_PATH = path.join(homedir(), ".pi", "agent", "broker-health.json");
+const LOG_BUFFER_MAX_LINES = 1000;
+
+const logLineBuffer = [];
 
 function ts() {
   return new Date().toISOString();
 }
 
+function formatLogArg(arg) {
+  if (typeof arg === "string") return arg;
+  if (arg instanceof Error) return arg.stack || arg.message;
+  try {
+    return JSON.stringify(arg);
+  } catch {
+    return String(arg);
+  }
+}
+
+function pushLogLine(line) {
+  const lines = String(line).split(/\r?\n/);
+  for (const rawLine of lines) {
+    const normalizedLine = rawLine.trimEnd();
+    if (!normalizedLine) continue;
+    logLineBuffer.push(normalizedLine);
+  }
+
+  const overflow = logLineBuffer.length - LOG_BUFFER_MAX_LINES;
+  if (overflow > 0) {
+    logLineBuffer.splice(0, overflow);
+  }
+}
+
+function logWithLevel(level, ...args) {
+  const timestampPrefix = `[${ts()}]`;
+  const line = [timestampPrefix, ...args.map(formatLogArg)].join(" ");
+  pushLogLine(line);
+
+  if (level === "error") {
+    console.error(timestampPrefix, ...args);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(timestampPrefix, ...args);
+    return;
+  }
+  console.log(timestampPrefix, ...args);
+}
+
 function logInfo(...args) {
-  console.log(`[${ts()}]`, ...args);
+  logWithLevel("info", ...args);
 }
 
 function logError(...args) {
-  console.error(`[${ts()}]`, ...args);
+  logWithLevel("error", ...args);
 }
 
 function logWarn(...args) {
-  console.warn(`[${ts()}]`, ...args);
+  logWithLevel("warn", ...args);
 }
 
 for (const key of [
@@ -669,13 +712,37 @@ async function processPulledMessage(message) {
   return true;
 }
 
+function getLogLinesForResponse(url) {
+  const nParam = url.searchParams.get("n");
+  const filterParam = url.searchParams.get("filter");
+
+  let requestedLineCount = null;
+  if (nParam !== null) {
+    const parsedN = Number.parseInt(nParam, 10);
+    if (!Number.isFinite(parsedN) || parsedN < 1) {
+      throw new Error("n must be a positive integer");
+    }
+    requestedLineCount = Math.min(parsedN, LOG_BUFFER_MAX_LINES);
+  }
+
+  let lines = logLineBuffer;
+
+  const normalizedFilter = filterParam?.trim().toLowerCase();
+  if (normalizedFilter) {
+    lines = lines.filter((line) => line.toLowerCase().includes(normalizedFilter));
+  }
+
+  if (requestedLineCount !== null) {
+    lines = lines.slice(-requestedLineCount);
+  }
+
+  return lines;
+}
+
 function startApiServer() {
   const server = createServer(async (req, res) => {
-    if (req.method !== "POST") {
-      res.writeHead(405, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Method not allowed" }));
-      return;
-    }
+    const url = new URL(req.url, `http://localhost:${API_PORT}`);
+    const pathname = url.pathname;
 
     const remoteAddr = req.socket.remoteAddress;
     if (remoteAddr !== "127.0.0.1" && remoteAddr !== "::1" && remoteAddr !== "::ffff:127.0.0.1") {
@@ -687,6 +754,31 @@ function startApiServer() {
     if (!apiRateLimiter.check("global")) {
       res.writeHead(429, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Too many requests — try again later" }));
+      return;
+    }
+
+    if (pathname === "/logs") {
+      if (req.method !== "GET") {
+        res.writeHead(405, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Method not allowed" }));
+        return;
+      }
+
+      try {
+        const lines = getLogLinesForResponse(url);
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(lines.length > 0 ? `${lines.join("\n")}\n` : "");
+        return;
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : "invalid query params" }));
+        return;
+      }
+    }
+
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
       return;
     }
 
@@ -703,9 +795,6 @@ function startApiServer() {
     }
 
     try {
-      const url = new URL(req.url, `http://localhost:${API_PORT}`);
-      const pathname = url.pathname;
-
       if (pathname === "/send") {
         const validationError = validateSendParams(apiRequestBody);
         if (validationError) {
@@ -715,7 +804,7 @@ function startApiServer() {
         }
 
         const { channel, text, thread_ts } = apiRequestBody;
-        
+
         const result = await sendViaBroker({
           action: "chat.postMessage",
           routing: { channel, ...(thread_ts ? { thread_ts } : {}) },
@@ -767,7 +856,7 @@ function startApiServer() {
         }
 
         const { channel, timestamp, emoji } = apiRequestBody;
-        
+
         await sendViaBroker({
           action: "reactions.add",
           routing: { channel, timestamp, emoji },
@@ -780,7 +869,7 @@ function startApiServer() {
       }
 
       res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Not found. Endpoints: POST /send, POST /reply, POST /react" }));
+      res.end(JSON.stringify({ error: "Not found. Endpoints: POST /send, POST /reply, POST /react, GET /logs" }));
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }));
