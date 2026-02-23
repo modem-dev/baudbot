@@ -304,6 +304,38 @@ else
   fi
 fi
 
+INTEGRITY_STATUS_FILE="$BAUDBOT_INTEGRITY_STATUS_FILE"
+if [ -f "$INTEGRITY_STATUS_FILE" ]; then
+  integrity_status="$(jq -r '.status // "unknown"' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
+  integrity_checked_at="$(jq -r '.checked_at // "unknown"' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
+  integrity_missing="$(jq -r '.missing_files // 0' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+  integrity_mismatches="$(jq -r '.hash_mismatches // 0' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+
+  case "$integrity_status" in
+    pass)
+      pass "startup manifest integrity passed ($integrity_checked_at)"
+      ;;
+    warn)
+      warn "startup manifest integrity reported issues at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
+      ;;
+    fail)
+      fail "startup manifest integrity failed at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
+      ;;
+    skipped)
+      warn "startup manifest integrity check is disabled/skipped"
+      ;;
+    *)
+      warn "startup manifest integrity status unknown (file: $INTEGRITY_STATUS_FILE)"
+      ;;
+  esac
+else
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.pi/agent" ]; then
+    warn "cannot verify startup manifest integrity status as non-root (run: sudo baudbot doctor)"
+  else
+    warn "startup manifest integrity status file missing ($INTEGRITY_STATUS_FILE)"
+  fi
+fi
+
 # ── Security ─────────────────────────────────────────────────────────────────
 
 echo ""

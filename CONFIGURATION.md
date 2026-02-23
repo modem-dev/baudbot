@@ -166,6 +166,18 @@ Set during `setup.sh` / `baudbot install` via env vars:
 | `IDLE_COMPACT_THRESHOLD_PCT` | Context usage % to trigger compaction (10–90) | `25` |
 | `IDLE_COMPACT_ENABLED` | Set to `0`, `false`, or `no` to disable idle compaction | enabled |
 
+### Startup Integrity
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BAUDBOT_STARTUP_INTEGRITY_MODE` | Startup manifest verification mode: `off`, `warn`, `strict` | `warn` |
+
+On startup, Baudbot verifies deployed runtime files against `~/.pi/agent/baudbot-manifest.json` and records the result in `~/.pi/agent/manifest-integrity-status.json`.
+
+- `warn`: log high-severity warnings but continue startup
+- `strict`: fail startup on missing/mismatched files or unreadable manifest
+- `off`: skip verification (not recommended)
+
 ### Bridge
 
 | Variable | Description | Default |

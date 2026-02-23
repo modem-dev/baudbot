@@ -45,6 +45,18 @@ umask 077
 # Redact any secrets that leaked into retained session logs
 ~/runtime/bin/redact-logs.sh 2>/dev/null || true
 
+# Verify deployed runtime integrity against deploy manifest.
+# Modes: off | warn | strict (default: warn)
+INTEGRITY_MODE="${BAUDBOT_STARTUP_INTEGRITY_MODE:-warn}"
+if [ -x "$HOME/runtime/bin/verify-manifest.sh" ]; then
+  if ! BAUDBOT_STARTUP_INTEGRITY_MODE="$INTEGRITY_MODE" "$HOME/runtime/bin/verify-manifest.sh"; then
+    echo "❌ Startup integrity verification failed (mode: $INTEGRITY_MODE). Refusing to start."
+    exit 1
+  fi
+else
+  echo "⚠️  Startup integrity verifier missing at ~/runtime/bin/verify-manifest.sh"
+fi
+
 # Clean stale session sockets from previous runs
 SOCKET_DIR="$HOME/.pi/session-control"
 if [ -d "$SOCKET_DIR" ]; then

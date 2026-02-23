@@ -289,6 +289,36 @@ else
   finding "WARN" "No deploy manifest found — cannot verify integrity" \
     "Run deploy.sh to generate"
 fi
+
+if [ -f "$BAUDBOT_INTEGRITY_STATUS_FILE" ]; then
+  status_value="$(jq -r '.status // "unknown"' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
+  status_checked_at="$(jq -r '.checked_at // "unknown"' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
+  status_missing="$(jq -r '.missing_files // 0' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+  status_mismatches="$(jq -r '.hash_mismatches // 0' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+
+  case "$status_value" in
+    pass)
+      ok "Last startup integrity check passed ($status_checked_at)"
+      ;;
+    warn)
+      finding "WARN" "Last startup integrity check reported issues" \
+        "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
+      ;;
+    fail)
+      finding "CRITICAL" "Last startup integrity check failed" \
+        "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
+      ;;
+    skipped)
+      finding "WARN" "Last startup integrity check was skipped/disabled" "$status_checked_at"
+      ;;
+    *)
+      finding "INFO" "Startup integrity status unknown" "$BAUDBOT_INTEGRITY_STATUS_FILE"
+      ;;
+  esac
+else
+  finding "WARN" "No startup integrity status found" \
+    "Expected: $BAUDBOT_INTEGRITY_STATUS_FILE (restart agent after deploy)"
+fi
 echo ""
 
 # ── Secrets in readable files ────────────────────────────────────────────────

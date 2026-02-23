@@ -83,7 +83,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
   cp --no-preserve=ownership "$BAUDBOT_SRC/start.sh" "$STAGE_DIR/start.sh"
   mkdir -p "$STAGE_DIR/bin"
   mkdir -p "$STAGE_DIR/bin/lib"
-  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
+  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh verify-manifest.sh; do
     [ -f "$BAUDBOT_SRC/bin/$script" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/$script" "$STAGE_DIR/bin/$script"
   done
   [ -f "$BAUDBOT_SRC/bin/lib/runtime-node.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/runtime-node.sh" "$STAGE_DIR/bin/lib/runtime-node.sh"
@@ -249,7 +249,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
   as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin"
   as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin/lib"
 
-  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
+  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh verify-manifest.sh; do
     if [ -f "$STAGE_DIR/bin/$script" ]; then
       as_agent cp "$STAGE_DIR/bin/$script" "$BAUDBOT_HOME/runtime/bin/$script"
       as_agent chmod u+x "$BAUDBOT_HOME/runtime/bin/$script"

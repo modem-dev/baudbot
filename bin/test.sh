@@ -76,6 +76,7 @@ run_shell_tests() {
   run "safe-bash wrapper"   bash bin/baudbot-safe-bash.test.sh
   run "log redaction"       bash bin/redact-logs.test.sh
   run "log pruning"         bash bin/prune-session-logs.test.sh
+  run "manifest integrity"  bash bin/verify-manifest.test.sh
   run "config flow"         bash bin/config.test.sh
   run "deploy lib helpers"  bash bin/lib/deploy-common.test.sh
   run "doctor lib helpers"  bash bin/lib/doctor-common.test.sh
