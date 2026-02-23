@@ -225,48 +225,6 @@ export function mapRegisterError(status, errorText) {
   return `registration failed (${status}) — ${text}`;
 }
 
-let cachedSodium = null;
-
-async function getSodium() {
-  if (cachedSodium) return cachedSodium;
-
-  try {
-    const mod = await import("libsodium-wrappers-sumo");
-    cachedSodium = mod.default ?? mod;
-    await cachedSodium.ready;
-    return cachedSodium;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Decrypt a sealed box encrypted with the server's public key.
- * Returns null if libsodium is unavailable.
- */
-async function decryptSealedBox(encryptedBase64, serverPrivateKeyBase64, serverPublicKeyBase64) {
-  const sodium = await getSodium();
-  if (!sodium) {
-    return null;
-  }
-
-  const ciphertext = Buffer.from(encryptedBase64, "base64");
-  const serverPrivateKey = Buffer.from(serverPrivateKeyBase64, "base64");
-  const serverPublicKey = Buffer.from(serverPublicKeyBase64, "base64");
-
-  const plaintext = sodium.crypto_box_seal_open(
-    ciphertext,
-    serverPublicKey,
-    serverPrivateKey,
-  );
-
-  if (!plaintext) {
-    throw new Error("Failed to decrypt sealed box - invalid keys or corrupted data");
-  }
-
-  return new TextDecoder().decode(plaintext);
-}
-
 export async function registerWithBroker({
   brokerUrl,
   workspaceId,
@@ -327,24 +285,8 @@ export async function registerWithBroker({
     throw new Error("broker signing pubkey mismatch between /api/broker-pubkey and /api/register");
   }
 
-  let decryptedBotToken = null;
   if (registerResponseBody?.encrypted_bot_token) {
-    logger("Decrypting bot token from broker response...");
-    try {
-      decryptedBotToken = await decryptSealedBox(
-        registerResponseBody.encrypted_bot_token,
-        serverKeys.server_private_key,
-        serverKeys.server_pubkey,
-      );
-
-      if (decryptedBotToken) {
-        logger("✅ Bot token decrypted successfully");
-      } else {
-        logger("⚠️ libsodium-wrappers-sumo unavailable; skipping bot token decryption");
-      }
-    } catch (err) {
-      logger(`⚠️ Failed to decrypt bot token, continuing with broker mode only: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    logger("ℹ️ broker returned encrypted_bot_token, but runtime no longer stores direct Slack bot tokens in broker mode");
   }
 
   return {
@@ -355,7 +297,6 @@ export async function registerWithBroker({
     broker_access_token_scopes: Array.isArray(registerResponseBody?.broker_access_token_scopes)
       ? registerResponseBody.broker_access_token_scopes.filter((scope) => typeof scope === "string")
       : undefined,
-    decrypted_bot_token: decryptedBotToken,
     request_payload: registerRequestBody,
   };
 }
@@ -588,11 +529,6 @@ export async function runRegistration({
     updates.SLACK_BROKER_ACCESS_TOKEN_SCOPES = registration.broker_access_token_scopes.join(",");
   }
 
-  // Add the decrypted bot token if available
-  if (registration.decrypted_bot_token) {
-    updates.SLACK_BOT_TOKEN = registration.decrypted_bot_token;
-  }
-
   return {
     updates,
   };
@@ -657,11 +593,7 @@ export async function main(argv = process.argv.slice(2)) {
   for (const target of input.configTargets) {
     console.log(`  - ${target.path}`);
   }
-  
-  if (updates.SLACK_BOT_TOKEN) {
-    console.log("🎯 Bot token received and configured for direct API mode.");
-  }
-  
+
   console.log("Next step: sudo baudbot restart");
 
   return 0;

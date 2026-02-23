@@ -144,6 +144,7 @@ describe("broker pull bridge semi-integration", () => {
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
         SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
         SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         BRIDGE_API_PORT: "0",
@@ -329,6 +330,7 @@ describe("broker pull bridge semi-integration", () => {
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),
         SLACK_BROKER_PUBLIC_KEY: toBase64(brokerBox.publicKey),
         SLACK_BROKER_SIGNING_PUBLIC_KEY: toBase64(brokerSign.publicKey),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         BRIDGE_API_PORT: "0",
@@ -440,6 +442,7 @@ describe("broker pull bridge semi-integration", () => {
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
         SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
         SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         BRIDGE_API_PORT: "0",
@@ -526,6 +529,7 @@ describe("broker pull bridge semi-integration", () => {
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
         SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
         SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         SLACK_BROKER_WAIT_SECONDS: "0",
@@ -613,6 +617,7 @@ describe("broker pull bridge semi-integration", () => {
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
         SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
         SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_BROKER_ACCESS_TOKEN: "test-broker-token",
         SLACK_ALLOWED_USERS: "U_ALLOWED",
         SLACK_BROKER_POLL_INTERVAL_MS: "50",
         SLACK_BROKER_MAX_MESSAGES: "999",
@@ -726,6 +731,54 @@ describe("broker pull bridge semi-integration", () => {
     expect(outboundAuthorization).toBe("Bearer test-broker-token");
 
     bridge.kill("SIGTERM");
+  });
+
+  it("exits when broker access token is missing", async () => {
+    await sodium.ready;
+
+    const testFileDir = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.dirname(testFileDir);
+    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+
+    let bridgeStdout = "";
+    let bridgeStderr = "";
+
+    const envWithoutBrokerToken = { ...process.env };
+    delete envWithoutBrokerToken.SLACK_BROKER_ACCESS_TOKEN;
+
+    const bridge = spawn("node", [bridgePath], {
+      cwd: bridgeCwd,
+      env: {
+        ...envWithoutBrokerToken,
+        SLACK_BROKER_URL: "http://127.0.0.1:65535",
+        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
+        SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
+        SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 26).toString("base64"),
+        SLACK_BROKER_PUBLIC_KEY: b64(32, 14),
+        SLACK_BROKER_SIGNING_PUBLIC_KEY: b64(32, 15),
+        SLACK_ALLOWED_USERS: "U_ALLOWED",
+        BRIDGE_API_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    bridge.stdout.on("data", (chunk) => {
+      bridgeStdout += chunk.toString();
+    });
+    bridge.stderr.on("data", (chunk) => {
+      bridgeStderr += chunk.toString();
+    });
+
+    children.push(bridge);
+
+    const exited = await new Promise((resolve) => {
+      bridge.on("exit", (code, signal) => resolve({ code, signal }));
+    });
+
+    expect(exited.code).toBe(1);
+    expect(`${bridgeStdout}\n${bridgeStderr}`).toContain("Missing required env var for broker mode: SLACK_BROKER_ACCESS_TOKEN");
   });
 
   it("exits when broker access token is expired", async () => {

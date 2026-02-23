@@ -255,13 +255,7 @@ curl -s -X POST http://127.0.0.1:7890/react \
   -d '{"channel":"CHANNEL_ID","timestamp":"msg_ts","emoji":"white_check_mark"}'
 ```
 
-**Fallback — direct Slack Web API** (only if bridge is down and `SLACK_BOT_TOKEN` is available; won't work in broker mode since the bot token lives on the broker):
-```bash
-source ~/.config/.env && curl -s -X POST https://slack.com/api/chat.postMessage \
-  -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"channel":"CHANNEL_ID","text":"your message","thread_ts":"optional"}'
-```
+Broker pull mode does not support direct Slack Web API fallback. If the local bridge is down, restart the runtime/bridge first, then retry via local API.
 
 ### Message Context
 

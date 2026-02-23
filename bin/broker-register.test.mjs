@@ -249,6 +249,38 @@ test("runRegistration integration path succeeds against live local HTTP server",
   }
 });
 
+test("runRegistration does not write SLACK_BOT_TOKEN even when broker returns encrypted_bot_token", async () => {
+  const fetchImpl = async (url) => {
+    if (String(url).endsWith("/api/broker-pubkey")) {
+      return jsonResponse({
+        ok: true,
+        broker_pubkey: Buffer.alloc(32, 9).toString("base64"),
+        broker_signing_pubkey: Buffer.alloc(32, 8).toString("base64"),
+      });
+    }
+
+    if (String(url).endsWith("/api/register")) {
+      return jsonResponse({
+        ok: true,
+        broker_pubkey: Buffer.alloc(32, 9).toString("base64"),
+        broker_signing_pubkey: Buffer.alloc(32, 8).toString("base64"),
+        encrypted_bot_token: "base64-encrypted-token",
+      });
+    }
+
+    return jsonResponse({ ok: false, error: "unexpected endpoint" }, 404);
+  };
+
+  const result = await runRegistration({
+    brokerUrl: "https://broker.example.com",
+    workspaceId: "TABC12345",
+    registrationToken: "token-from-dashboard",
+    fetchImpl,
+  });
+
+  assert.equal(result.updates.SLACK_BOT_TOKEN, undefined);
+});
+
 test("runRegistration requires registration token", async () => {
   await assert.rejects(
     runRegistration({

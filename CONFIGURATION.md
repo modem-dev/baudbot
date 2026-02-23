@@ -37,8 +37,8 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
-| `SLACK_BOT_TOKEN` | Slack bot OAuth token (required for direct Socket Mode, optional in broker mode) | Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps). Under **OAuth & Permissions**, add bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `reactions:write`, `im:history`, `im:read`, `im:write`. Install the app to your workspace and copy the **Bot User OAuth Token**. |
-| `SLACK_APP_TOKEN` | Slack app-level token (required for Socket Mode, optional in broker mode) | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
+| `SLACK_BOT_TOKEN` | Slack bot OAuth token (required for direct Socket Mode; ignored by broker pull mode) | Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps). Under **OAuth & Permissions**, add bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `reactions:write`, `im:history`, `im:read`, `im:write`. Install the app to your workspace and copy the **Bot User OAuth Token**. |
+| `SLACK_APP_TOKEN` | Slack app-level token (required for Socket Mode; not used by broker pull mode) | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
 | `SLACK_ALLOWED_USERS` | Comma-separated Slack user IDs | **Optional** — if not set, all workspace members can interact. Find your Slack user ID: click your profile → "..." → "Copy member ID". Example: `U01ABCDEF,U02GHIJKL` |
 
 If you're using Slack broker mode (`SLACK_BROKER_*` vars), the runtime uses broker pull delivery and does not require Socket Mode callbacks.
@@ -104,9 +104,9 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Server Ed25519 public signing key (base64) |
 | `SLACK_BROKER_PUBLIC_KEY` | Broker X25519 public key (base64) |
 | `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
-| `SLACK_BROKER_ACCESS_TOKEN` | Optional broker-issued bearer token for broker API auth (used when broker enforces agent tokens) |
-| `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | Optional ISO timestamp for broker token expiry |
-| `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Optional comma-separated broker token scopes |
+| `SLACK_BROKER_ACCESS_TOKEN` | Broker-issued bearer token for broker API auth (required for broker pull mode runtime) |
+| `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | ISO timestamp for broker token expiry (recommended; runtime exits if expired) |
+| `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Comma-separated broker token scopes |
 | `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
 | `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
 | `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
