@@ -110,6 +110,8 @@ if [ -n "$BRIDGE_SCRIPT" ]; then
       sleep 5
     done
   ) &
+  # Intentionally track the supervisor subshell PID (not per-restart node child PID)
+  # so a single kill stops the entire bridge restart loop.
   echo $! > "$BRIDGE_PID_FILE"
   chmod 600 "$BRIDGE_PID_FILE"
 fi
