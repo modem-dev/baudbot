@@ -725,7 +725,7 @@ function getLogLinesForResponse(url) {
     requestedLineCount = Math.min(parsedN, LOG_BUFFER_MAX_LINES);
   }
 
-  let lines = logLineBuffer;
+  let lines = logLineBuffer.slice();
 
   const normalizedFilter = filterParam?.trim().toLowerCase();
   if (normalizedFilter) {
