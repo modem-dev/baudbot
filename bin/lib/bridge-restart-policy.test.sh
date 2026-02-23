@@ -86,8 +86,8 @@ test_next_delay_doubles_and_caps() {
 test_jitter_within_range() {
   (
     set -euo pipefail
-    local i val
-    for i in $(seq 1 50); do
+    local n val
+    for ((n = 0; n < 50; n++)); do
       val="$(bb_bridge_policy_random_jitter 2)"
       [ "$val" -ge 0 ]
       [ "$val" -le 2 ]
