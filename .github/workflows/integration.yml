@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   docs-scope:
-    runs-on: &default-runner blacksmith-4vcpu-ubuntu-2404
+    runs-on: &default-runner ubuntu-latest
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
