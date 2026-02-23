@@ -7,7 +7,7 @@
 # Pass the live session UUIDs (from list_sessions) as arguments.
 # Any .sock file whose UUID is NOT in the live set gets removed.
 # Stale .alias symlinks pointing to removed sockets also get cleaned.
-# Then restarts the slack-bridge tmux session with the current control-agent UUID.
+# Then restarts the slack-bridge process with the current control-agent UUID.
 
 set -euo pipefail
 
@@ -66,11 +66,20 @@ else
   exit 1
 fi
 
-# Kill existing slack-bridge tmux session if running
-if tmux has-session -t slack-bridge 2>/dev/null; then
-  echo "Killing existing slack-bridge session..."
-  tmux kill-session -t slack-bridge
-  sleep 1
+BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
+BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
+
+# Kill existing slack-bridge process if running
+if [ -f "$BRIDGE_PID_FILE" ]; then
+  BRIDGE_PID="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    echo "Killing existing slack-bridge process (pid=$BRIDGE_PID)..."
+    kill "$BRIDGE_PID" 2>/dev/null || true
+    sleep 1
+    kill -9 "$BRIDGE_PID" 2>/dev/null || true
+  fi
+  rm -f "$BRIDGE_PID_FILE"
 fi
 
 # Select bridge script: prefer broker pull mode when SLACK_BROKER_* vars are present,
@@ -101,8 +110,19 @@ fi
 
 # Start fresh slack-bridge
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
-tmux new-session -d -s slack-bridge \
-  "unset PKG_EXECPATH; export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_ID=$MY_UUID && cd /opt/baudbot/current/slack-bridge && exec varlock run --path ~/.config/ -- node $BRIDGE_SCRIPT"
+mkdir -p "$BRIDGE_LOG_DIR"
+(
+  unset PKG_EXECPATH
+  export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+  export PI_SESSION_ID="$MY_UUID"
+  cd /opt/baudbot/current/slack-bridge
+  exec varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
+) >>"$BRIDGE_LOG_FILE" 2>&1 &
+NEW_BRIDGE_PID=$!
+echo "$NEW_BRIDGE_PID" > "$BRIDGE_PID_FILE"
+chmod 600 "$BRIDGE_PID_FILE"
+echo "Bridge pid: $NEW_BRIDGE_PID"
+echo "Bridge logs: $BRIDGE_LOG_FILE"
 
 # Wait for bridge to come up
 sleep 3

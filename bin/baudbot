@@ -131,8 +131,8 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status + deployed version + broker connection"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to control-agent by default; supports --pi/--tmux"
-  echo "  sessions       List agent tmux and pi sessions (name → id)"
+  echo "  attach         Attach to a running pi session (defaults to control-agent)"
+  echo "  sessions       List live pi sessions (name → id)"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
@@ -351,16 +351,6 @@ case "${1:-}" in
     shift
     require_root "restart"
     if has_systemd; then
-      # Ensure any pre-existing detached bridge tmux session is torn down so
-      # restart always boots a fresh bridge from currently deployed runtime files.
-      AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-      if command -v tmux >/dev/null 2>&1; then
-        if command -v sudo >/dev/null 2>&1; then
-          sudo -u "$AGENT_USER" tmux kill-session -t slack-bridge 2>/dev/null || true
-        elif command -v runuser >/dev/null 2>&1; then
-          runuser -u "$AGENT_USER" -- tmux kill-session -t slack-bridge 2>/dev/null || true
-        fi
-      fi
       exec systemctl restart baudbot "$@"
     else
       echo "systemd not available."

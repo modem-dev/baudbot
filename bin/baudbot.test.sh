@@ -130,7 +130,7 @@ EOF
   )
 }
 
-test_restart_restarts_systemd_and_kills_bridge_tmux() {
+test_restart_restarts_systemd() {
   (
     set -euo pipefail
     local tmp fakebin log_file
@@ -170,23 +170,16 @@ echo "sudo $*" >> "${BAUDBOT_TEST_LOG}"
 exec "$@"
 EOF
 
-    cat > "$fakebin/tmux" <<'EOF'
-#!/bin/bash
-echo "tmux $*" >> "${BAUDBOT_TEST_LOG}"
-exit 0
-EOF
-
     cat > "$fakebin/systemctl" <<'EOF'
 #!/bin/bash
 echo "systemctl $*" >> "${BAUDBOT_TEST_LOG}"
 exit 0
 EOF
 
-    chmod +x "$fakebin/id" "$fakebin/sudo" "$fakebin/tmux" "$fakebin/systemctl"
+    chmod +x "$fakebin/id" "$fakebin/sudo" "$fakebin/systemctl"
 
     PATH="$fakebin:$PATH" BAUDBOT_TEST_LOG="$log_file" BAUDBOT_ROOT="$tmp" bash "$CLI" restart
 
-    grep -q '^tmux kill-session -t slack-bridge$' "$log_file"
     grep -q '^systemctl restart baudbot$' "$log_file"
   )
 }
@@ -198,7 +191,7 @@ run_test "version reads package.json" test_version_uses_package_json
 run_test "status dispatches via runtime module" test_status_dispatches_via_runtime_module
 run_test "attach requires root" test_attach_requires_root
 run_test "broker register requires root" test_broker_register_requires_root
-run_test "restart kills bridge tmux then restarts systemd" test_restart_restarts_systemd_and_kills_bridge_tmux
+run_test "restart restarts systemd" test_restart_restarts_systemd
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

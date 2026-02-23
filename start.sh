@@ -83,16 +83,35 @@ fi
 
 if [ -n "$BRIDGE_SCRIPT" ]; then
   RELEASE_BRIDGE="/opt/baudbot/current/slack-bridge"
-  tmux kill-session -t slack-bridge 2>/dev/null || true
-  echo "Starting Slack bridge ($BRIDGE_SCRIPT)..."
-  tmux new-session -d -s slack-bridge \
-    "export PATH=$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
-     cd $RELEASE_BRIDGE && \
-     while true; do \
-       varlock run --path ~/.config/ -- node $BRIDGE_SCRIPT; \
-       echo '⚠️  Bridge exited (\$?), restarting in 5s...'; \
-       sleep 5; \
-     done"
+  BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
+  BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
+  BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+
+  mkdir -p "$BRIDGE_LOG_DIR"
+
+  # Stop any previous bridge process tracked by pid file.
+  if [ -f "$BRIDGE_PID_FILE" ]; then
+    old_pid="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      kill "$old_pid" 2>/dev/null || true
+      sleep 1
+      kill -9 "$old_pid" 2>/dev/null || true
+    fi
+    rm -f "$BRIDGE_PID_FILE"
+  fi
+
+  echo "Starting Slack bridge ($BRIDGE_SCRIPT)... logs: $BRIDGE_LOG_FILE"
+  (
+    export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+    cd "$RELEASE_BRIDGE"
+    while true; do
+      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1
+      echo "[$(date -Is)] ⚠️  Bridge exited ($?), restarting in 5s..." >>"$BRIDGE_LOG_FILE"
+      sleep 5
+    done
+  ) &
+  echo $! > "$BRIDGE_PID_FILE"
+  chmod 600 "$BRIDGE_PID_FILE"
 fi
 
 # Set session name (read by auto-name.ts extension)
