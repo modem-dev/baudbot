@@ -16,6 +16,10 @@ Built for teams that want autonomous execution speed **without giving up operati
 
 _**⚠️ WARNING: Baudbot is in alpha/early testing. If you use this, prepare to fix things. It might burn tokens. Be careful!**_
 
+<img width="560" height="688" alt="image" src="https://github.com/user-attachments/assets/1ca9c775-9190-4c64-962a-e124be4096dc" />
+
+
+
 ## What Baudbot does
 
 - **Shared Slack interface for the whole team.** Anyone in allowed channels can hand work to the same agent system.
