@@ -163,7 +163,7 @@ install_prereqs_ubuntu() {
 
   for attempt in $(seq 1 5); do
     if DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update -qq \
-      && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl iptables docker.io gh jq sudo 2>&1 | tail -3; then
+      && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl tmux iptables docker.io gh jq sudo 2>&1 | tail -3; then
       return 0
     fi
 
@@ -179,10 +179,10 @@ install_prereqs_ubuntu() {
 }
 
 install_prereqs_arch() {
-  pacman -Syu --noconfirm --needed git curl iptables docker github-cli jq sudo 2>&1 | tail -5
+  pacman -Syu --noconfirm --needed git curl tmux iptables docker github-cli jq sudo 2>&1 | tail -5
 }
 
-info "Installing: git, curl, iptables, docker, gh, jq, sudo"
+info "Installing: git, curl, tmux, iptables, docker, gh, jq, sudo"
 "install_prereqs_$DISTRO"
 info "Prerequisites installed"
 
@@ -318,15 +318,12 @@ else
         warn "Agent didn't start — check: baudbot logs"
       fi
     else
-      RUNTIME_LOG_DIR="$BAUDBOT_HOME/.pi/agent/logs"
-      RUNTIME_LOG_FILE="$RUNTIME_LOG_DIR/runtime.log"
-      sudo -u baudbot_agent mkdir -p "$RUNTIME_LOG_DIR"
-      sudo -u baudbot_agent bash -lc "nohup '$BAUDBOT_HOME/runtime/start.sh' >> '$RUNTIME_LOG_FILE' 2>&1 &"
+      sudo -u baudbot_agent tmux new-session -d -s baudbot "$BAUDBOT_HOME/runtime/start.sh" 2>/dev/null || true
       sleep 2
-      if pgrep -u baudbot_agent -f "pi --session-control" >/dev/null 2>&1; then
+      if sudo -u baudbot_agent tmux has-session -t baudbot 2>/dev/null; then
         info "Agent is running ✓"
       else
-        warn "Agent didn't start — check: $RUNTIME_LOG_FILE"
+        warn "Agent didn't start — try: baudbot start --direct"
       fi
     fi
   else

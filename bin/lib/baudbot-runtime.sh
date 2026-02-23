@@ -305,9 +305,8 @@ cmd_logs() {
     exec journalctl -u baudbot -f "$@"
   fi
 
-  echo "No systemd unit. Check process + logs:"
-  echo "  pgrep -u baudbot_agent -af 'pi --session-control'"
-  echo "  tail -n 200 /home/baudbot_agent/.pi/agent/logs/runtime.log"
+  echo "No systemd unit. Check tmux sessions:"
+  echo "  sudo -u baudbot_agent tmux ls"
 }
 
 cmd_sessions() {
@@ -317,6 +316,14 @@ cmd_sessions() {
   local found alias alias_name alias_uuid sock sess_id name status
   declare -A ALIASES
 
+  echo -e "${BOLD}tmux sessions:${RESET}"
+  if sudo -u "$AGENT_USER" tmux ls 2>/dev/null; then
+    :
+  else
+    echo "  (none)"
+  fi
+
+  echo ""
   echo -e "${BOLD}pi sessions:${RESET}"
   PI_CONTROL_DIR="$(pi_control_dir "$AGENT_USER")"
   if [ ! -d "$PI_CONTROL_DIR" ]; then
@@ -370,26 +377,28 @@ cmd_attach() {
 
   local AGENT_USER="baudbot_agent"
   local AGENT_HOME="/home/$AGENT_USER"
+  local ATTACH_MODE="auto"
   local TARGET=""
-  local pi_target
+  local tmux_target pi_target
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --pi)
-        # Backward-compatible no-op (pi is the only supported mode now)
+        ATTACH_MODE="pi"
         shift
         ;;
       --tmux)
-        echo "❌ --tmux is no longer supported. Use: sudo baudbot attach [session-name|session-id]"
-        exit 1
+        ATTACH_MODE="tmux"
+        shift
         ;;
       -h|--help)
-        echo "Usage: sudo baudbot attach [session-name|session-id]"
+        echo "Usage: sudo baudbot attach [--pi|--tmux] [session-name|session-id]"
         echo ""
         echo "Examples:"
         echo "  sudo baudbot attach                  # defaults to control-agent"
-        echo "  sudo baudbot attach control-agent"
-        echo "  sudo baudbot attach <uuid>"
+        echo "  sudo baudbot attach --pi control-agent"
+        echo "  sudo baudbot attach --pi <uuid>"
+        echo "  sudo baudbot attach --tmux sentry-agent"
         exit 0
         ;;
       *)
@@ -407,22 +416,82 @@ cmd_attach() {
     TARGET="control-agent"
   fi
 
+  attach_tmux_session() {
+    local tmux_target="$1"
+    echo -e "${BOLD}${CYAN}Attaching to tmux session:${RESET} $tmux_target"
+    echo -e "${GREEN}Safe detach:${RESET} Ctrl+b, d ${DIM}(keeps agent running)${RESET}"
+    echo ""
+    pause_before_attach
+    exec sudo -u "$AGENT_USER" tmux attach-session -t "$tmux_target"
+  }
+
   attach_pi_session() {
-    local target_session="$1"
-    echo -e "${BOLD}${CYAN}Attaching to pi session:${RESET} $target_session"
+    local pi_target="$1"
+    echo -e "${BOLD}${CYAN}Attaching to pi session:${RESET} $pi_target"
     echo -e "${BOLD}${YELLOW}Safe detach (does NOT stop the agent):${RESET}"
     echo -e "  ${YELLOW}1)${RESET} Press Ctrl+C once to clear input/cancel local prompt"
     echo -e "  ${YELLOW}2)${RESET} Press Ctrl+C again to exit this client"
     echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
     echo ""
     pause_before_attach
-    exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$target_session'"
+    exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$pi_target'"
   }
 
-  if pi_target=$(resolve_pi_session_id "$AGENT_USER" "$TARGET"); then
+  choose_tmux_target() {
+    local requested="${1:-}"
+    local first
+
+    if [ -n "$requested" ]; then
+      if sudo -u "$AGENT_USER" tmux has-session -t "$requested" 2>/dev/null; then
+        echo "$requested"
+        return 0
+      fi
+      return 1
+    fi
+
+    first=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
+    [ -n "$first" ] || return 1
+    echo "$first"
+    return 0
+  }
+
+  choose_pi_target() {
+    local requested="${1:-}"
+    local resolved
+
+    if ! resolved=$(resolve_pi_session_id "$AGENT_USER" "$requested"); then
+      return 1
+    fi
+
+    [ -n "$resolved" ] || return 1
+    echo "$resolved"
+    return 0
+  }
+
+  if [ "$ATTACH_MODE" = "tmux" ]; then
+    if tmux_target=$(choose_tmux_target "$TARGET"); then
+      attach_tmux_session "$tmux_target"
+    fi
+    echo "❌ tmux session not found. See: sudo baudbot sessions"
+    exit 1
+  fi
+
+  if [ "$ATTACH_MODE" = "pi" ]; then
+    if pi_target=$(choose_pi_target "$TARGET"); then
+      attach_pi_session "$pi_target"
+    fi
+    echo "❌ pi session not found. See: sudo baudbot sessions"
+    exit 1
+  fi
+
+  if pi_target=$(choose_pi_target "$TARGET"); then
     attach_pi_session "$pi_target"
   fi
 
-  echo "❌ pi session not found. See: sudo baudbot sessions"
+  if tmux_target=$(choose_tmux_target "$TARGET"); then
+    attach_tmux_session "$tmux_target"
+  fi
+
+  echo "❌ No matching tmux/pi session found. See: sudo baudbot sessions"
   exit 1
 }
