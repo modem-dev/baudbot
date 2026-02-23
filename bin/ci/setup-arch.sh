@@ -61,14 +61,14 @@ echo "$HELP_OUT" | grep -q "baudbot"
 # varlock installed for agent user
 test -x /home/baudbot_agent/.varlock/bin/varlock
 # Agent can load env (smoke test — varlock validates schema + .env)
-sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
+sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
 echo "  ✓ bootstrap + install verification passed"
 
 echo "=== Running CLI smoke checks ==="
 bash /home/baudbot_admin/baudbot/bin/ci/smoke-cli.sh
 
 echo "=== Installing test dependencies ==="
-export PATH="/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:$PATH"
+export PATH="/home/baudbot_agent/opt/node/bin:$PATH"
 cd /home/baudbot_admin/baudbot
 npm install --ignore-scripts 2>&1 | tail -1
 cd slack-bridge && npm install 2>&1 | tail -1

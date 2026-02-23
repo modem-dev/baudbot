@@ -29,6 +29,12 @@ if [ -z "${BAUDBOT_ROOT:-}" ]; then
   fi
 fi
 
+RUNTIME_NODE_HELPER="$BAUDBOT_ROOT/bin/lib/runtime-node.sh"
+if [ -f "$RUNTIME_NODE_HELPER" ]; then
+  # shellcheck source=bin/lib/runtime-node.sh
+  source "$RUNTIME_NODE_HELPER"
+fi
+
 json_get_string_or_empty() {
   local file="$1"
   local key="$2"
@@ -193,7 +199,7 @@ resolve_node_bin() {
     return 0
   fi
 
-  # 2) Common user-managed Node installs (sudo secure_path may hide these)
+  # 2) Embedded runtime (sudo secure_path may hide these)
   local user_home=""
   if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
     user_home="$(resolve_user_home "$SUDO_USER" || true)"
@@ -202,20 +208,26 @@ resolve_node_bin() {
     user_home="${HOME:-}"
   fi
 
+  if [ -n "${RUNTIME_NODE_HELPER:-}" ] && [ -f "$RUNTIME_NODE_HELPER" ]; then
+    local embedded_node=""
+    embedded_node="$(bb_resolve_runtime_node_bin "$user_home" || true)"
+    if [ -n "$embedded_node" ] && [ -x "$embedded_node" ]; then
+      echo "$embedded_node"
+      return 0
+    fi
+
+    embedded_node="$(bb_resolve_runtime_node_bin "/home/baudbot_agent" || true)"
+    if [ -n "$embedded_node" ] && [ -x "$embedded_node" ]; then
+      echo "$embedded_node"
+      return 0
+    fi
+  fi
+
+  # 3) Common user-managed Node installs
   local candidate=""
   for candidate in \
     "$user_home/.local/share/mise/shims/node" \
-    "$user_home/.local/bin/node" \
-    "$user_home/opt/node-v22.14.0-linux-x64/bin/node" \
-    /home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin/node \
-    "$user_home"/opt/node-v*-linux-x64/bin/node; do
-    # If the glob didn't expand, skip the literal pattern.
-    case "$candidate" in
-      *\**)
-        continue
-        ;;
-    esac
-
+    "$user_home/.local/bin/node"; do
     if [ -x "$candidate" ]; then
       echo "$candidate"
       return 0
@@ -289,11 +301,14 @@ bootstrap_install() {
 
   echo "Escalating with $escalator for system setup..."
   if [ "$escalator" = "sudo" ]; then
-    sudo --preserve-env=BAUDBOT_PI_VERSION bash "$install_script" "$@"
+    sudo --preserve-env=BAUDBOT_PI_VERSION,BAUDBOT_RUNTIME_NODE_VERSION bash "$install_script" "$@"
   else
     # doas has no portable preserve-env flag; pass explicitly when set.
-    if [ -n "${BAUDBOT_PI_VERSION:-}" ]; then
-      doas env BAUDBOT_PI_VERSION="$BAUDBOT_PI_VERSION" bash "$install_script" "$@"
+    if [ -n "${BAUDBOT_PI_VERSION:-}" ] || [ -n "${BAUDBOT_RUNTIME_NODE_VERSION:-}" ]; then
+      doas env \
+        BAUDBOT_PI_VERSION="${BAUDBOT_PI_VERSION:-}" \
+        BAUDBOT_RUNTIME_NODE_VERSION="${BAUDBOT_RUNTIME_NODE_VERSION:-}" \
+        bash "$install_script" "$@"
     else
       doas bash "$install_script" "$@"
     fi

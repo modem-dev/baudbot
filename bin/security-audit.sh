@@ -14,6 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/shell-common.sh"
 # shellcheck source=bin/lib/paths-common.sh
 source "$SCRIPT_DIR/lib/paths-common.sh"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/lib/runtime-node.sh"
 bb_enable_strict_mode
 bb_init_paths
 
@@ -625,7 +627,7 @@ done
 
 # Deep scan: cross-pattern analysis via Node scanner (deployed copies)
 if [ "$DEEP" -eq 1 ]; then
-  NODE_BIN="$BAUDBOT_HOME/opt/node-v22.14.0-linux-x64/bin/node"
+  NODE_BIN="$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" || true)"
   # Try source scanner first, fall back to deployed copy
   SCANNER=""
   [ -f "$BAUDBOT_SRC/bin/scan-extensions.mjs" ] && [ -r "$BAUDBOT_SRC/bin/scan-extensions.mjs" ] && SCANNER="$BAUDBOT_SRC/bin/scan-extensions.mjs"

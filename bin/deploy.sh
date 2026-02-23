@@ -82,9 +82,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
   cp -r --no-preserve=ownership "$BAUDBOT_SRC/pi/skills" "$STAGE_DIR/skills"
   cp --no-preserve=ownership "$BAUDBOT_SRC/start.sh" "$STAGE_DIR/start.sh"
   mkdir -p "$STAGE_DIR/bin"
+  mkdir -p "$STAGE_DIR/bin/lib"
   for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
     [ -f "$BAUDBOT_SRC/bin/$script" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/$script" "$STAGE_DIR/bin/$script"
   done
+  [ -f "$BAUDBOT_SRC/bin/lib/runtime-node.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/runtime-node.sh" "$STAGE_DIR/bin/lib/runtime-node.sh"
   [ -f "$BAUDBOT_SRC/pi/settings.json" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/pi/settings.json" "$STAGE_DIR/settings.json"
   [ -f "$BAUDBOT_SRC/.env.schema" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/.env.schema" "$STAGE_DIR/.env.schema"
   chmod -R a+rX "$STAGE_DIR"
@@ -245,6 +247,7 @@ echo "Deploying runtime scripts..."
 
 if [ "$DRY_RUN" -eq 0 ]; then
   as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin"
+  as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin/lib"
 
   for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh; do
     if [ -f "$STAGE_DIR/bin/$script" ]; then
@@ -253,6 +256,12 @@ if [ "$DRY_RUN" -eq 0 ]; then
       log "✓ bin/$script"
     fi
   done
+
+  if [ -f "$STAGE_DIR/bin/lib/runtime-node.sh" ]; then
+    as_agent cp "$STAGE_DIR/bin/lib/runtime-node.sh" "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
+    as_agent chmod u+r "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
+    log "✓ bin/lib/runtime-node.sh"
+  fi
 
   as_agent cp "$STAGE_DIR/start.sh" "$BAUDBOT_HOME/runtime/start.sh"
   as_agent chmod u+x "$BAUDBOT_HOME/runtime/start.sh"

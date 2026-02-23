@@ -47,4 +47,8 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/baudbot.test.sh")).not.toThrow();
   });
 
+  it("runtime node path drift check", () => {
+    expect(() => runScript("bin/runtime-node-paths.test.sh")).not.toThrow();
+  });
+
 });

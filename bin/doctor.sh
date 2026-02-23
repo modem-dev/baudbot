@@ -11,8 +11,12 @@ source "$SCRIPT_DIR/lib/shell-common.sh"
 source "$SCRIPT_DIR/lib/paths-common.sh"
 # shellcheck source=bin/lib/doctor-common.sh
 source "$SCRIPT_DIR/lib/doctor-common.sh"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/lib/runtime-node.sh"
 bb_enable_strict_mode
 bb_init_paths
+
+BAUDBOT_ROOT="${BAUDBOT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -55,19 +59,29 @@ fi
 echo ""
 echo "Dependencies:"
 
-NODE_BIN="$BAUDBOT_HOME/opt/node-v22.14.0-linux-x64/bin/node"
-if [ -x "$NODE_BIN" ]; then
+NODE_BIN="$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" || true)"
+if [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then
   NODE_VER=$("$NODE_BIN" --version 2>/dev/null || echo "unknown")
-  pass "Node.js $NODE_VER"
+  pass "Node.js $NODE_VER ($NODE_BIN)"
 else
-  fail "Node.js not found at $NODE_BIN"
+  NODE_BIN="$(bb_runtime_node_bin_dir "$BAUDBOT_HOME")/node"
+  fail "Node.js not found (expected: $NODE_BIN)"
 fi
 
-PI_BIN="$BAUDBOT_HOME/opt/node-v22.14.0-linux-x64/bin/pi"
+PI_BIN="$(bb_resolve_runtime_node_bin_dir "$BAUDBOT_HOME")/pi"
 if [ -x "$PI_BIN" ] || [ -L "$PI_BIN" ]; then
   pass "pi is installed"
 else
   fail "pi not found at $PI_BIN"
+fi
+
+if [ -n "${BAUDBOT_ROOT:-}" ] && command -v rg &>/dev/null; then
+  NODE_PATH_DRIFT="$(rg -n --glob '!node_modules/**' --glob '!.git/**' 'node-v[0-9]+\.[0-9]+\.[0-9]+-linux-x64' "$BAUDBOT_ROOT" || true)"
+  if [ -n "$NODE_PATH_DRIFT" ]; then
+    fail "hardcoded versioned Node paths found (run test: bin/runtime-node-paths.test.sh)"
+  else
+    pass "runtime Node path references are centralized"
+  fi
 fi
 
 if command -v varlock &>/dev/null || [ -x "$BAUDBOT_HOME/.varlock/bin/varlock" ]; then

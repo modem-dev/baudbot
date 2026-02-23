@@ -11,10 +11,15 @@
 # To update, admin edits source and runs deploy.sh.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/bin/lib/runtime-node.sh"
 cd ~
 
+NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
+
 # Set PATH
-export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
 
 # Work around varlock telemetry config crash by opting out at runtime.
 # This avoids loading anonymousId from user config and keeps startup deterministic.
@@ -102,7 +107,7 @@ if [ -n "$BRIDGE_SCRIPT" ]; then
 
   echo "Starting Slack bridge ($BRIDGE_SCRIPT)... logs: $BRIDGE_LOG_FILE"
   (
-    export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+    export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
     cd "$RELEASE_BRIDGE"
     while true; do
       varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1

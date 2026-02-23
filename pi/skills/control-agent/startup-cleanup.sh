@@ -133,7 +133,7 @@ echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
 mkdir -p "$BRIDGE_LOG_DIR"
 (
   unset PKG_EXECPATH
-  export PATH="$HOME/.varlock/bin:$HOME/opt/node-v22.14.0-linux-x64/bin:$PATH"
+  export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH"
   export PI_SESSION_ID="$MY_UUID"
   cd /opt/baudbot/current/slack-bridge
   while true; do

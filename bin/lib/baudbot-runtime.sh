@@ -1,6 +1,10 @@
 #!/bin/bash
 # Runtime/status/session helpers for bin/baudbot.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/runtime-node.sh"
+
 # Detect systemd
 has_systemd() {
   command -v systemctl &>/dev/null && [ -d /run/systemd/system ]
@@ -434,7 +438,9 @@ cmd_attach() {
     echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
     echo ""
     pause_before_attach
-    exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/opt/node-v22.14.0-linux-x64/bin':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$pi_target'"
+    local node_bin_dir=""
+    node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$AGENT_HOME")"
+    exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$node_bin_dir':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$pi_target'"
   }
 
   choose_tmux_target() {

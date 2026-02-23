@@ -146,6 +146,7 @@ Set during `setup.sh` / `baudbot install` via env vars:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `BAUDBOT_PI_VERSION` | pi package version installed for `baudbot_agent` | `0.52.12` |
+| `BAUDBOT_RUNTIME_NODE_VERSION` | embedded Node.js version downloaded to `~/opt/node-v<version>-linux-x64` (with stable symlink `~/opt/node`) | `22.14.0` |
 | `GIT_USER_NAME` | Git commit author name | `baudbot-agent` |
 | `GIT_USER_EMAIL` | Git commit author email | `baudbot-agent@users.noreply.github.com` |
 

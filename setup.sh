@@ -61,8 +61,12 @@ fi
 BAUDBOT_HOME="/home/baudbot_agent"
 # Source repo auto-detected from this script's location (can live anywhere)
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-NODE_VERSION="22.14.0"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$REPO_DIR/bin/lib/runtime-node.sh"
+NODE_VERSION="$(bb_runtime_node_version)"
 PI_VERSION="${BAUDBOT_PI_VERSION:-0.52.12}"
+NODE_VERSIONED_DIR="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64"
+NODE_BIN_DIR="$(bb_runtime_node_bin_dir "$BAUDBOT_HOME")"
 
 # Work from a neutral directory — sudo -u baudbot_agent inherits CWD, and
 # git/find fail if CWD is a directory the agent can't access (e.g. /root).
@@ -110,7 +114,7 @@ else
 fi
 
 echo "=== Installing Node.js $NODE_VERSION ==="
-if [ ! -d "$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64" ]; then
+if [ ! -d "$NODE_VERSIONED_DIR" ]; then
   sudo -u baudbot_agent bash -c "
     mkdir -p ~/opt
     curl -fsSL https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz -o /tmp/node.tar.xz
@@ -121,9 +125,10 @@ else
   echo "Node.js already installed, skipping"
 fi
 
+sudo -u baudbot_agent bash -c "ln -sfn \"node-v$NODE_VERSION-linux-x64\" ~/opt/node"
+
 echo "=== Installing pi $PI_VERSION ==="
-NODE_BIN="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
-sudo -u baudbot_agent env PATH="$NODE_BIN:$PATH" \
+sudo -u baudbot_agent env PATH="$NODE_BIN_DIR:$PATH" \
   npm install -g "@mariozechner/pi-coding-agent@$PI_VERSION"
 
 echo "=== Configuring git identity ==="
@@ -156,8 +161,8 @@ for repo in "$BAUDBOT_HOME"/workspace/*/; do
 done
 
 echo "=== Adding PATH to bashrc ==="
-if ! grep -q "node-v$NODE_VERSION" "$BAUDBOT_HOME/.bashrc"; then
-  sudo -u baudbot_agent bash -c "echo 'export PATH=\$HOME/opt/node-v$NODE_VERSION-linux-x64/bin:\$PATH' >> ~/.bashrc"
+if ! grep -q "\$HOME/opt/node/bin" "$BAUDBOT_HOME/.bashrc"; then
+  sudo -u baudbot_agent bash -c "echo 'export PATH=\$HOME/opt/node/bin:\$PATH' >> ~/.bashrc"
 fi
 
 echo "=== Setting up secrets directory ==="
@@ -229,8 +234,7 @@ sudo -u baudbot_agent bash -c '
 
 echo "=== Installing extension dependencies ==="
 # npm install runs in source (admin-owned) then deploy copies to runtime
-NODE_BIN="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64/bin"
-export PATH="$NODE_BIN:$PATH"
+export PATH="$NODE_BIN_DIR:$PATH"
 while IFS= read -r dir; do
   ext_name="$(basename "$dir")"
   if [ "$EXPERIMENTAL" -ne 1 ] && { [ "$ext_name" = "agentmail" ] || [ "$ext_name" = "email-monitor" ]; }; then

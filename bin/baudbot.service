@@ -22,7 +22,7 @@ Restart=on-failure
 RestartSec=10
 
 # Environment
-Environment=PATH=/home/baudbot_agent/.varlock/bin:/home/baudbot_agent/opt/node-v22.14.0-linux-x64/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/home/baudbot_agent/.varlock/bin:/home/baudbot_agent/opt/node/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=/home/baudbot_agent
 
 # Security hardening

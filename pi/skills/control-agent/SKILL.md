@@ -200,7 +200,7 @@ git worktree add ~/workspace/worktrees/$BRANCH -b $BRANCH origin/main
 # 2. Launch the agent IN the worktree
 tmux new-session -d -s $SESSION_NAME \
   "cd ~/workspace/worktrees/$BRANCH && \
-   export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
+   export PATH=\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH && \
    export PI_SESSION_NAME=$SESSION_NAME && \
    exec varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent --model <MODEL_FROM_TABLE_ABOVE>"
 ```
@@ -330,7 +330,7 @@ The sentry-agent triages Sentry alerts and investigates critical issues via the 
 | `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-haiku-4-5` |
 
 ```bash
-tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model <MODEL_FROM_TABLE_ABOVE>"
+tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model <MODEL_FROM_TABLE_ABOVE>"
 ```
 
 **Model note**: `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
