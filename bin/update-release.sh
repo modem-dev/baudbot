@@ -285,6 +285,7 @@ run_deploy() {
 }
 
 run_restart_and_health() {
+  # shellcheck disable=SC2034  # consumed via nameref in bb_run_release_restart_and_health
   local release_hook_env=(
     "BAUDBOT_UPDATE_RELEASE_DIR=$RELEASE_DIR"
     "BAUDBOT_UPDATE_CHECKOUT_DIR=$CHECKOUT_DIR"

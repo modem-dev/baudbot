@@ -1,9 +1,9 @@
 #!/bin/bash
 # Shared helpers for bin/doctor.sh
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BB_DOCTOR_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/lib/check-report-common.sh
-source "$SCRIPT_DIR/check-report-common.sh"
+source "$BB_DOCTOR_COMMON_DIR/check-report-common.sh"
 
 doctor_init_counters() {
   bb_counter_reset_many PASS FAIL WARN
