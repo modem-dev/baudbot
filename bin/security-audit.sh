@@ -16,6 +16,8 @@ source "$SCRIPT_DIR/lib/shell-common.sh"
 source "$SCRIPT_DIR/lib/paths-common.sh"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/lib/runtime-node.sh"
+# shellcheck source=bin/lib/check-report-common.sh
+source "$SCRIPT_DIR/lib/check-report-common.sh"
 bb_enable_strict_mode
 bb_init_paths
 
@@ -27,21 +29,18 @@ source "$SCRIPT_DIR/lib/json-common.sh"
 
 DEEP=0
 FIX=0
-for arg in "$@"; do
-  case "$arg" in
-    --deep) DEEP=1 ;;
-    --fix)  FIX=1 ;;
-  esac
-done
+bb_has_arg "--deep" "$@" && DEEP=1
+bb_has_arg "--fix" "$@" && FIX=1
 
 # Counters
-critical=0
-warn=0
-info=0
-pass=0
-fixed=0
-skipped=0
-fix_errors=0
+critical=
+warn=
+info=
+pass=
+fixed=
+skipped=
+fix_errors=
+bb_counter_reset_many critical warn info pass fixed skipped fix_errors
 
 finding() {
   local severity="$1"
@@ -49,16 +48,16 @@ finding() {
   local detail="${3:-}"
 
   case "$severity" in
-    CRITICAL) echo "  ❌ CRITICAL: $title"; critical=$((critical + 1)) ;;
-    WARN)     echo "  ⚠️  WARN:     $title"; warn=$((warn + 1)) ;;
-    INFO)     echo "  ℹ️  INFO:     $title"; info=$((info + 1)) ;;
+    CRITICAL) echo "  ❌ CRITICAL: $title"; bb_counter_inc critical ;;
+    WARN)     echo "  ⚠️  WARN:     $title"; bb_counter_inc warn ;;
+    INFO)     echo "  ℹ️  INFO:     $title"; bb_counter_inc info ;;
   esac
   [ -n "$detail" ] && echo "              $detail"
 }
 
 ok() {
   echo "  ✅ PASS:     $1"
-  pass=$((pass + 1))
+  bb_counter_inc pass
 }
 
 # fix_action: attempt a remediation and report result
@@ -71,11 +70,11 @@ fix_action() {
   fi
   if "$@" 2>/dev/null; then
     echo "  🔧 FIXED:    $desc"
-    fixed=$((fixed + 1))
+    bb_counter_inc fixed
     return 0
   else
     echo "  ❌ FIX-ERR:  $desc (command failed)"
-    fix_errors=$((fix_errors + 1))
+    bb_counter_inc fix_errors
     return 1
   fi
 }
@@ -86,7 +85,7 @@ fix_skip() {
   local reason="$2"
   if [ "$FIX" -eq 1 ]; then
     echo "  ⏭️  SKIPPED:  $desc — $reason"
-    skipped=$((skipped + 1))
+    bb_counter_inc skipped
   fi
 }
 
@@ -722,18 +721,17 @@ echo ""
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
-echo "Summary"
-echo "───────"
-echo "  ✅ Pass:     $pass"
-echo "  ❌ Critical: $critical"
-echo "  ⚠️  Warn:     $warn"
-echo "  ℹ️  Info:     $info"
+bb_summary_print_header
+bb_summary_print_item "✅" "Pass" "$pass"
+bb_summary_print_item "❌" "Critical" "$critical"
+bb_summary_print_item "⚠️" "Warn" "$warn"
+bb_summary_print_item "ℹ️" "Info" "$info"
 
 if [ "$FIX" -eq 1 ]; then
   echo ""
-  echo "  🔧 Fixed:    $fixed"
-  echo "  ⏭️  Skipped:  $skipped"
-  echo "  ❌ Errors:   $fix_errors"
+  bb_summary_print_item "🔧" "Fixed" "$fixed"
+  bb_summary_print_item "⏭️" "Skipped" "$skipped"
+  bb_summary_print_item "❌" "Errors" "$fix_errors"
 fi
 echo ""
 

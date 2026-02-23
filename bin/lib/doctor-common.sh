@@ -1,25 +1,27 @@
 #!/bin/bash
 # Shared helpers for bin/doctor.sh
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bin/lib/check-report-common.sh
+source "$SCRIPT_DIR/check-report-common.sh"
+
 doctor_init_counters() {
-  PASS=0
-  FAIL=0
-  WARN=0
+  bb_counter_reset_many PASS FAIL WARN
 }
 
 doctor_pass() {
   echo "  ✓ $1"
-  PASS=$((PASS + 1))
+  bb_counter_inc PASS
 }
 
 doctor_fail() {
   echo "  ✗ $1"
-  FAIL=$((FAIL + 1))
+  bb_counter_inc FAIL
 }
 
 doctor_warn() {
   echo "  ⚠ $1"
-  WARN=$((WARN + 1))
+  bb_counter_inc WARN
 }
 
 doctor_summary_and_exit() {

@@ -48,6 +48,8 @@ die() { bb_die "$1"; }
 
 # shellcheck source=bin/lib/release-common.sh
 source "$SCRIPT_DIR/lib/release-common.sh"
+# shellcheck source=bin/lib/release-runtime-common.sh
+source "$SCRIPT_DIR/lib/release-runtime-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
 
@@ -79,22 +81,22 @@ EOF
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo)
-      [ "$#" -ge 2 ] || die "--repo requires a value"
+      bb_require_option_value "--repo" "$#"
       BAUDBOT_UPDATE_REPO="$2"
       shift 2
       ;;
     --branch)
-      [ "$#" -ge 2 ] || die "--branch requires a value"
+      bb_require_option_value "--branch" "$#"
       BAUDBOT_UPDATE_BRANCH="$2"
       shift 2
       ;;
     --ref)
-      [ "$#" -ge 2 ] || die "--ref requires a value"
+      bb_require_option_value "--ref" "$#"
       BAUDBOT_UPDATE_REF="$2"
       shift 2
       ;;
     --release-root)
-      [ "$#" -ge 2 ] || die "--release-root requires a value"
+      bb_require_option_value "--release-root" "$#"
       BAUDBOT_RELEASE_ROOT="$2"
       shift 2
       ;;
@@ -283,48 +285,18 @@ run_deploy() {
 }
 
 run_restart_and_health() {
-  if [ -n "$BAUDBOT_UPDATE_RESTART_CMD" ]; then
-    log "running restart override"
-    BAUDBOT_UPDATE_RELEASE_DIR="$RELEASE_DIR" BAUDBOT_UPDATE_CHECKOUT_DIR="$CHECKOUT_DIR" bash -lc "$BAUDBOT_UPDATE_RESTART_CMD"
-  elif [ "$BAUDBOT_UPDATE_SKIP_RESTART" = "1" ]; then
-    log "skipping restart"
-  else
-    restart_baudbot_service_if_active
-  fi
+  local release_hook_env=(
+    "BAUDBOT_UPDATE_RELEASE_DIR=$RELEASE_DIR"
+    "BAUDBOT_UPDATE_CHECKOUT_DIR=$CHECKOUT_DIR"
+  )
 
-  if [ -n "$BAUDBOT_UPDATE_HEALTH_CMD" ]; then
-    log "running health override"
-    BAUDBOT_UPDATE_RELEASE_DIR="$RELEASE_DIR" BAUDBOT_UPDATE_CHECKOUT_DIR="$CHECKOUT_DIR" bash -lc "$BAUDBOT_UPDATE_HEALTH_CMD"
-  fi
+  bb_run_release_restart_and_health \
+    "$BAUDBOT_UPDATE_RESTART_CMD" \
+    "$BAUDBOT_UPDATE_SKIP_RESTART" \
+    "$BAUDBOT_UPDATE_HEALTH_CMD" \
+    release_hook_env
 
-  if [ "$BAUDBOT_UPDATE_SKIP_VERSION_CHECK" = "1" ]; then
-    return 0
-  fi
-
-  if [ "$(id -u)" -ne 0 ]; then
-    log "non-root run: skipping deployed version verification"
-    return 0
-  fi
-
-  if ! id "$BAUDBOT_AGENT_USER" >/dev/null 2>&1; then
-    log "agent user '$BAUDBOT_AGENT_USER' missing; skipping deployed version verification"
-    return 0
-  fi
-
-  local version_file="$BAUDBOT_AGENT_HOME/.pi/agent/baudbot-version.json"
-  local deployed_sha
-
-  deployed_sha="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "sha" 2>/dev/null || true)"
-
-  if [ -z "$deployed_sha" ]; then
-    die "deployed version file missing or unreadable: $version_file"
-  fi
-
-  if [ "$deployed_sha" != "$TARGET_SHA" ]; then
-    die "deployed sha mismatch (expected $TARGET_SHA, got $deployed_sha)"
-  fi
-
-  log "deployed version verified: $TARGET_SHORT"
+  bb_verify_deployed_release_sha "$TARGET_SHA" "$BAUDBOT_UPDATE_SKIP_VERSION_CHECK" "$TARGET_SHORT"
 }
 
 install_cli_link() {

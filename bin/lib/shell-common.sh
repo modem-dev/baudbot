@@ -83,3 +83,26 @@ bb_read_env_value() {
   [ -n "$line" ] || return 0
   echo "${line#*=}"
 }
+
+bb_require_option_value() {
+  local option="$1"
+  local argc="$2"
+
+  if [ "$argc" -lt 2 ]; then
+    bb_die "$option requires a value"
+  fi
+}
+
+bb_has_arg() {
+  local needle="$1"
+  shift || true
+
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "$needle" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}

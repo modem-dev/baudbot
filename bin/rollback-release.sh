@@ -34,6 +34,8 @@ EOF
 
 # shellcheck source=bin/lib/release-common.sh
 source "$SCRIPT_DIR/lib/release-common.sh"
+# shellcheck source=bin/lib/release-runtime-common.sh
+source "$SCRIPT_DIR/lib/release-runtime-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
 
@@ -45,7 +47,7 @@ fi
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --release-root)
-      [ "$#" -ge 2 ] || die "--release-root requires a value"
+      bb_require_option_value "--release-root" "$#"
       BAUDBOT_RELEASE_ROOT="$2"
       shift 2
       ;;
@@ -121,50 +123,19 @@ run_deploy() {
 }
 
 run_restart_and_health() {
-  if [ -n "$BAUDBOT_ROLLBACK_RESTART_CMD" ]; then
-    log "running restart override"
-    BAUDBOT_ROLLBACK_TARGET_RELEASE="$TARGET_RELEASE" bash -lc "$BAUDBOT_ROLLBACK_RESTART_CMD"
-  elif [ "$BAUDBOT_ROLLBACK_SKIP_RESTART" = "1" ]; then
-    log "skipping restart"
-  else
-    restart_baudbot_service_if_active
-  fi
-
-  if [ -n "$BAUDBOT_ROLLBACK_HEALTH_CMD" ]; then
-    log "running health override"
-    BAUDBOT_ROLLBACK_TARGET_RELEASE="$TARGET_RELEASE" bash -lc "$BAUDBOT_ROLLBACK_HEALTH_CMD"
-  fi
-
-  if [ "$BAUDBOT_ROLLBACK_SKIP_VERSION_CHECK" = "1" ]; then
-    return 0
-  fi
-
-  if [ "$(id -u)" -ne 0 ]; then
-    log "non-root run: skipping deployed version verification"
-    return 0
-  fi
-
-  if ! id "$BAUDBOT_AGENT_USER" >/dev/null 2>&1; then
-    log "agent user '$BAUDBOT_AGENT_USER' missing; skipping deployed version verification"
-    return 0
-  fi
-
-  local version_file="$BAUDBOT_AGENT_HOME/.pi/agent/baudbot-version.json"
+  local release_hook_env=("BAUDBOT_ROLLBACK_TARGET_RELEASE=$TARGET_RELEASE")
   local expected_sha
-  local deployed_sha
+
+  bb_run_release_restart_and_health \
+    "$BAUDBOT_ROLLBACK_RESTART_CMD" \
+    "$BAUDBOT_ROLLBACK_SKIP_RESTART" \
+    "$BAUDBOT_ROLLBACK_HEALTH_CMD" \
+    release_hook_env
 
   expected_sha="$(json_get_string_or_empty "$TARGET_RELEASE/baudbot-release.json" "sha")"
   [ -n "$expected_sha" ] || expected_sha="$(basename "$TARGET_RELEASE")"
 
-  deployed_sha="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "sha" 2>/dev/null || true)"
-
-  if [ -z "$deployed_sha" ]; then
-    die "deployed version file missing or unreadable: $version_file"
-  fi
-
-  if [ "$deployed_sha" != "$expected_sha" ]; then
-    die "deployed sha mismatch (expected $expected_sha, got $deployed_sha)"
-  fi
+  bb_verify_deployed_release_sha "$expected_sha" "$BAUDBOT_ROLLBACK_SKIP_VERSION_CHECK"
 }
 
 install_cli_link() {

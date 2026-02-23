@@ -18,14 +18,10 @@ bb_init_paths
 
 BAUDBOT_ROOT="${BAUDBOT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
-for arg in "$@"; do
-  case "$arg" in
-    -h|--help)
-      echo "Usage: baudbot doctor"
-      exit 0
-      ;;
-  esac
-done
+if bb_has_arg "--help" "$@" || bb_has_arg "-h" "$@"; then
+  echo "Usage: baudbot doctor"
+  exit 0
+fi
 
 doctor_init_counters
 IS_ROOT=0

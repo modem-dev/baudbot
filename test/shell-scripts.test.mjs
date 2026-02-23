@@ -43,6 +43,10 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/bridge-restart-policy.test.sh")).not.toThrow();
   });
 
+  it("check report helpers", () => {
+    expect(() => runScript("bin/lib/check-report-common.test.sh")).not.toThrow();
+  });
+
   it("doctor helpers", () => {
     expect(() => runScript("bin/lib/doctor-common.test.sh")).not.toThrow();
   });
