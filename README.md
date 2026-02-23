@@ -8,7 +8,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/modem-dev/baudbot)](https://github.com/modem-dev/baudbot/commits/main)
 [![Security Policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 
-**Always-on, multiplayer coding agent infrastructure for engineering teams.**
+**Always-on, multiplayer dev-assistant for eng teams - write code, act on alerts, and more**
 
 Baudbot runs a persistent AI control agent on Linux, connected to Slack, with worker agents that take tasks from request to PR. It works on real repositories with real tools (git, test runners, Docker wrapper, cloud browser automation), keeps persistent memory, and reports progress back in-thread.
 
@@ -34,15 +34,6 @@ Baudbot is designed as shared engineering infrastructure, not a single-user desk
 - autonomous task execution with humans in review loops
 - admin-managed runtime with deployment + rollback controls
 
-## How work flows (example)
-
-1. A developer asks in Slack: "Fix flaky auth tests in `myapp`."
-2. Baudbot acknowledges immediately in the same thread.
-3. Control agent creates a todo and spawns a `dev-agent` in a fresh git worktree.
-4. Dev agent fixes code, runs tests, opens a PR, and monitors CI.
-5. If CI fails, the dev agent iterates and pushes fixes automatically.
-6. Baudbot posts the PR link, CI status, and preview URL back to the original Slack thread.
-
 ## Requirements
 
 | | Minimum | Recommended |
@@ -61,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh
 baudbot install
 ```
 
-`baudbot install` includes a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry). Email capabilities are disabled by default and only available in experimental mode (`baudbot setup --experimental` / `install.sh --experimental`). If [`gum`](https://github.com/charmbracelet/gum) is installed, prompts use richer TUI widgets; otherwise installer falls back to standard bash prompts.
+`baudbot install` has a guided config flow: pick an LLM provider, choose Slack integration mode (managed broker vs custom app), then opt into optional integrations (Kernel/Sentry). 
 
 After install:
 
@@ -89,31 +80,17 @@ Install with a specific pi version (optional):
 BAUDBOT_PI_VERSION=0.52.12 baudbot install
 ```
 
-Slack broker registration (after OAuth callback). When `SLACK_BROKER_*` variables are present, the runtime starts broker pull mode (no inbound callback port required):
+Slack broker registration:
 
 ```bash
-sudo baudbot broker register \
-  --broker-url https://your-broker.example.com \
-  --workspace-id T0123ABCD \
-  --registration-token <token-from-dashboard-callback>
+sudo baudbot broker register
 ```
-
-Broker pull mode uses long-polling by default (`SLACK_BROKER_WAIT_SECONDS=20`, max `25`; set `0` for immediate short-poll behavior).
-`baudbot broker register` stores broker token fields in env and broker-mode requests include `Authorization: Bearer ...` automatically.
-Broker pull mode no longer uses direct Slack Web API fallback and does not require storing `SLACK_BOT_TOKEN`.
 
 Need to rotate/update a key later?
 
 ```bash
 sudo baudbot env set ANTHROPIC_API_KEY
 # or: sudo baudbot env set OPENAI_API_KEY sk-... --restart
-```
-
-Want to move source-of-truth off `~/.baudbot/.env` later?
-
-```bash
-sudo baudbot env backend set-command 'your-secret-tool export baudbot-prod'
-sudo baudbot env sync --restart
 ```
 
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
@@ -166,23 +143,6 @@ See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and know
 - [SECURITY.md](SECURITY.md) — deep security model and vulnerability reporting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow
 
-## Shell script architecture
-
-Operational shell scripts under `bin/` follow a shared module pattern to keep command entrypoints thin and behavior consistent:
-
-- shared safety/logging/error helpers in `bin/lib/shell-common.sh`
-- release lifecycle helpers in `bin/lib/release-common.sh`
-- deploy-specific helpers in `bin/lib/deploy-common.sh`
-- doctor output/counter helpers in `bin/lib/doctor-common.sh`
-- JSON parsing helpers in `bin/lib/json-common.sh`
-
-Conventions:
-
-- source shared modules near the top of each script
-- call `bb_enable_strict_mode` (strict bash mode)
-- prefer shared `bb_log`/`bb_die` helpers instead of ad-hoc logging/error code
-- keep heavy logic in `bin/lib/*` and keep CLI-facing scripts focused on orchestration
-
 ## Tests
 
 ```bash
@@ -208,3 +168,7 @@ npm run lint:shell
 ## License
 
 MIT
+
+## About
+
+Brought to you by the team at Modem, your dev team's auto-triage product manager.
