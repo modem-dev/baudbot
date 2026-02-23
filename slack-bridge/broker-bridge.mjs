@@ -53,6 +53,7 @@ const MAX_BACKOFF_MS = 30_000;
 const INBOX_PROTOCOL_VERSION = "2026-02-1";
 const BROKER_HEALTH_PATH = path.join(homedir(), ".pi", "agent", "broker-health.json");
 const BAUDBOT_VERSION_PATH = path.join(homedir(), ".pi", "agent", "baudbot-version.json");
+const CONTEXT_USAGE_PATH = path.join(homedir(), ".pi", "agent", "context-usage.json");
 const LOG_BUFFER_MAX_LINES = 1000;
 
 const logLineBuffer = [];
@@ -228,10 +229,33 @@ function countActivePiSessions() {
   }
 }
 
+function readContextUsageSnapshot() {
+  try {
+    const raw = fs.readFileSync(CONTEXT_USAGE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+    const readFiniteNumber = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+    const snapshot = {
+      context_window_used_tokens: readFiniteNumber(parsed.context_window_used_tokens),
+      context_window_limit_tokens: readFiniteNumber(parsed.context_window_limit_tokens),
+      context_window_used_pct: readFiniteNumber(parsed.context_window_used_pct),
+      session_total_tokens: readFiniteNumber(parsed.session_total_tokens),
+      session_total_cost_usd: readFiniteNumber(parsed.session_total_cost_usd),
+    };
+
+    const hasAny = Object.values(snapshot).some((value) => value !== null);
+    return hasAny ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildPullMeta(maxMessages, waitSeconds) {
   const { activeSessions, activeDevAgents } = countActivePiSessions();
   const bridgeUptimeHours = Math.max(0, (Date.now() - bridgeStartedAtMs) / (1000 * 60 * 60));
   const systemUptimeHours = Math.max(0, getSystemUptimeSeconds() / (60 * 60));
+  const contextUsage = readContextUsageSnapshot();
 
   return {
     agent_version: agentVersion,
@@ -246,6 +270,7 @@ function buildPullMeta(maxMessages, waitSeconds) {
     poll_count: brokerPollCount + 1,
     max_messages: maxMessages,
     wait_seconds: waitSeconds,
+    ...(contextUsage ? contextUsage : {}),
   };
 }
 

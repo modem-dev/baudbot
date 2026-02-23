@@ -113,6 +113,8 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_DEDUPE_TTL_MS` | Dedupe cache TTL in milliseconds (default: `1200000`) |
 | `BAUDBOT_AGENT_VERSION` | Optional override for broker observability `meta.agent_version` (otherwise read from `~/.pi/agent/baudbot-version.json` when available) |
 
+Broker mode also emits best-effort context usage telemetry in inbox pull `meta` by reading `~/.pi/agent/context-usage.json` (written by the `context` extension on session start/turn end/tool results).
+
 ### Kernel (Cloud Browsers)
 
 | Variable | Description | How to get it |
