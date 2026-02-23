@@ -111,6 +111,7 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
 | `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
 | `SLACK_BROKER_DEDUPE_TTL_MS` | Dedupe cache TTL in milliseconds (default: `1200000`) |
+| `BAUDBOT_AGENT_VERSION` | Optional override for broker observability `meta.agent_version` (otherwise read from `~/.pi/agent/baudbot-version.json` when available) |
 
 ### Kernel (Cloud Browsers)
 

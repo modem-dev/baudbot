@@ -9,7 +9,7 @@
 import * as net from "node:net";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { homedir } from "node:os";
+import { homedir, uptime as getSystemUptimeSeconds } from "node:os";
 import { createServer } from "node:http";
 import sodium from "libsodium-wrappers-sumo";
 import {
@@ -52,6 +52,7 @@ const DEDUPE_TTL_MS = clampInt(
 const MAX_BACKOFF_MS = 30_000;
 const INBOX_PROTOCOL_VERSION = "2026-02-1";
 const BROKER_HEALTH_PATH = path.join(homedir(), ".pi", "agent", "broker-health.json");
+const BAUDBOT_VERSION_PATH = path.join(homedir(), ".pi", "agent", "baudbot-version.json");
 const LOG_BUFFER_MAX_LINES = 1000;
 
 const logLineBuffer = [];
@@ -153,6 +154,8 @@ let cryptoState = null;
 
 const dedupe = new Map();
 let brokerTokenExpiryFormatWarned = false;
+let brokerPollCount = 0;
+const bridgeStartedAtMs = Date.now();
 
 const brokerHealth = {
   started_at: new Date().toISOString(),
@@ -184,6 +187,67 @@ const brokerHealth = {
     last_error: null,
   },
 };
+
+function readAgentVersion() {
+  const explicitVersion = String(process.env.BAUDBOT_AGENT_VERSION || "").trim();
+  if (explicitVersion) return explicitVersion;
+
+  try {
+    const raw = fs.readFileSync(BAUDBOT_VERSION_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.short === "string" && parsed.short.trim()) return parsed.short.trim();
+    if (typeof parsed.sha === "string" && parsed.sha.trim()) return parsed.sha.trim();
+  } catch {
+    // Ignore read/parse failures. Observability metadata falls back to "unknown".
+  }
+
+  return "unknown";
+}
+
+const agentVersion = readAgentVersion();
+
+function countActivePiSessions() {
+  try {
+    const entries = fs.readdirSync(SOCKET_DIR, { withFileTypes: true });
+    let activeSessions = 0;
+    let activeDevAgents = 0;
+
+    for (const entry of entries) {
+      const name = entry.name;
+      if (name.endsWith(".sock")) {
+        activeSessions += 1;
+      }
+      if (/^dev-agent-.+\.alias$/.test(name) && (entry.isFile() || entry.isSymbolicLink())) {
+        activeDevAgents += 1;
+      }
+    }
+
+    return { activeSessions, activeDevAgents };
+  } catch {
+    return { activeSessions: 0, activeDevAgents: 0 };
+  }
+}
+
+function buildPullMeta(maxMessages, waitSeconds) {
+  const { activeSessions, activeDevAgents } = countActivePiSessions();
+  const bridgeUptimeHours = Math.max(0, (Date.now() - bridgeStartedAtMs) / (1000 * 60 * 60));
+  const systemUptimeHours = Math.max(0, getSystemUptimeSeconds() / (60 * 60));
+
+  return {
+    agent_version: agentVersion,
+    bridge_uptime_hours: bridgeUptimeHours,
+    system_uptime_hours: systemUptimeHours,
+    heartbeat_runs: brokerPollCount,
+    heartbeat_consecutive_errors: brokerHealth.poll.consecutive_failures,
+    heartbeat_last_ok_at: brokerHealth.poll.last_ok_at,
+    active_sessions: activeSessions,
+    active_dev_agents: activeDevAgents,
+    outbound_mode: outboundMode,
+    poll_count: brokerPollCount + 1,
+    max_messages: maxMessages,
+    wait_seconds: waitSeconds,
+  };
+}
 
 function trimError(err) {
   const msg = err instanceof Error ? err.message : String(err || "unknown error");
@@ -496,6 +560,7 @@ async function pullInbox() {
     wait_seconds: BROKER_WAIT_SECONDS,
     timestamp,
     signature,
+    meta: buildPullMeta(MAX_MESSAGES, BROKER_WAIT_SECONDS),
   };
 
   const inboxPullResponseBody = await brokerFetch("/api/inbox/pull", inboxPullRequestBody);
@@ -941,7 +1006,6 @@ function startApiServer() {
 
 async function startPollLoop() {
   let backoffMs = POLL_INTERVAL_MS;
-  let pollCount = 0;
   let lastStatusLog = Date.now();
   const STATUS_LOG_INTERVAL_MS = 60_000; // log a status line every 60s even when idle
 
@@ -953,7 +1017,7 @@ async function startPollLoop() {
       const messages = await pullInbox();
       pollSucceeded = true;
       markHealth("poll", true);
-      pollCount++;
+      brokerPollCount++;
       const ackIds = [];
 
       if (messages.length > 0) {
@@ -962,7 +1026,7 @@ async function startPollLoop() {
 
       // Periodic idle status log so you know the bridge is alive
       if (messages.length === 0 && Date.now() - lastStatusLog >= STATUS_LOG_INTERVAL_MS) {
-        logInfo(`💤 idle — ${pollCount} polls since start, dedupe cache: ${dedupe.size} entries`);
+        logInfo(`💤 idle — ${brokerPollCount} polls since start, dedupe cache: ${dedupe.size} entries`);
         lastStatusLog = Date.now();
       }
 

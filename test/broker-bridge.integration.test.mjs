@@ -569,6 +569,18 @@ describe("broker pull bridge semi-integration", () => {
     expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(10);
     expect(pullPayload.wait_seconds).toBe(20);
+    expect(pullPayload.meta).toBeTruthy();
+    expect(pullPayload.meta.outbound_mode).toBe("broker");
+    expect(pullPayload.meta.poll_count).toBeGreaterThanOrEqual(1);
+    expect(pullPayload.meta.max_messages).toBe(10);
+    expect(pullPayload.meta.wait_seconds).toBe(20);
+    expect(typeof pullPayload.meta.bridge_uptime_hours).toBe("number");
+    expect(typeof pullPayload.meta.system_uptime_hours).toBe("number");
+    expect(typeof pullPayload.meta.active_sessions).toBe("number");
+    expect(typeof pullPayload.meta.active_dev_agents).toBe("number");
+    expect(typeof pullPayload.meta.agent_version).toBe("string");
+    expect(pullPayload.meta.heartbeat_runs).toBeGreaterThanOrEqual(0);
+    expect(pullPayload.meta.heartbeat_consecutive_errors).toBeGreaterThanOrEqual(0);
 
     const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 10,
