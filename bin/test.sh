@@ -79,6 +79,10 @@ run_shell_tests() {
   run "config flow"         bash bin/config.test.sh
   run "deploy lib helpers"  bash bin/lib/deploy-common.test.sh
   run "doctor lib helpers"  bash bin/lib/doctor-common.test.sh
+  run "remote common lib"   bash bin/lib/remote-common.test.sh
+  run "remote ssh lib"      bash bin/lib/remote-ssh.test.sh
+  run "remote hetzner lib"  bash bin/lib/remote-hetzner.test.sh
+  run "remote cli"          bash bin/remote.test.sh
   run "update release flow" bash bin/update-release.test.sh
   run "rollback release"    bash bin/rollback-release.test.sh
   echo ""

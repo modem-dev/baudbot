@@ -43,8 +43,28 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/doctor-common.test.sh")).not.toThrow();
   });
 
+  it("remote common helpers", () => {
+    expect(() => runScript("bin/lib/remote-common.test.sh")).not.toThrow();
+  });
+
+  it("remote ssh helpers", () => {
+    expect(() => runScript("bin/lib/remote-ssh.test.sh")).not.toThrow();
+  });
+
+  it("remote hetzner adapter", () => {
+    expect(() => runScript("bin/lib/remote-hetzner.test.sh")).not.toThrow();
+  });
+
   it("baudbot cli", () => {
     expect(() => runScript("bin/baudbot.test.sh")).not.toThrow();
+  });
+
+  it("remote cli", () => {
+    expect(() => runScript("bin/remote.test.sh")).not.toThrow();
+  });
+
+  it("cli agent runner helpers", () => {
+    expect(() => runScript("pi/skills/control-agent/scripts/run-cli-agent.test.sh")).not.toThrow();
   });
 
 });

@@ -83,6 +83,27 @@ Upgrade later:
 sudo baudbot update
 ```
 
+Remote provisioning/install and repair (operator-run from your local machine):
+
+```bash
+# Provision on Hetzner and install Baudbot
+baudbot remote install --mode hetzner --target team-bot
+
+# Install on an existing host
+baudbot remote install --mode host --target team-bot --host 203.0.113.10 --ssh-user root
+
+# Install + connect host to Tailscale
+baudbot remote install --mode host --target team-bot --host 203.0.113.10 --tailscale
+
+# Resume an interrupted run
+baudbot remote resume team-bot
+
+# Guided repair for an existing target
+baudbot remote repair --target team-bot
+```
+
+`baudbot remote` persists checkpoints in `~/.baudbot/remote/targets/*.json`, so interrupted installs can resume from the next incomplete checkpoint.
+
 Install with a specific pi version (optional):
 
 ```bash

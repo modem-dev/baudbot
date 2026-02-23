@@ -68,6 +68,12 @@ Email tooling is disabled by default. To enable it, run setup/install in experim
 
 ## Optional Variables
 
+### Dev Agent Backend
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEV_AGENT_BACKEND` | Default backend for spawning dev agents (`pi`, `claude-code`, `codex`, `auto`) | `pi` |
+
 ### Sentry Integration
 
 | Variable | Description | How to get it |
@@ -148,6 +154,28 @@ Set during `setup.sh` / `baudbot install` via env vars:
 | `BAUDBOT_PI_VERSION` | pi package version installed for `baudbot_agent` | `0.52.12` |
 | `GIT_USER_NAME` | Git commit author name | `baudbot-agent` |
 | `GIT_USER_EMAIL` | Git commit author email | `baudbot-agent@users.noreply.github.com` |
+
+### Remote CLI (operator-local, not runtime)
+
+These apply only to `baudbot remote ...` when run from your local operator machine. They are not part of agent runtime `.env` and should not be written to `/home/baudbot_agent/.config/.env`.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BAUDBOT_REMOTE_DIR` | Local state directory for remote targets/checkpoints/keys | `~/.baudbot/remote` |
+| `HETZNER_API_TOKEN` | Hetzner token fallback for `--hetzner-token` | *(empty)* |
+| `TAILSCALE_AUTHKEY` | Tailscale auth key fallback for `--tailscale-auth-key` | *(empty)* |
+| `REMOTE_BOOTSTRAP_URL` | Bootstrap script URL used by remote install step | `https://raw.githubusercontent.com/modem-dev/baudbot/main/bootstrap.sh` |
+| `REMOTE_TAILSCALE_INSTALL_URL` | Tailscale install script URL used by remote workflow | `https://tailscale.com/install.sh` |
+| `REMOTE_TAILSCALE_WAIT_ATTEMPTS` | Tailscale readiness polling attempts after `tailscale up` | `40` |
+| `REMOTE_TAILSCALE_WAIT_INTERVAL_SEC` | Delay between Tailscale readiness polls | `3` |
+| `REMOTE_CHECKPOINT_MAX_RETRIES` | Retries per install checkpoint before interactive escalation | `3` |
+| `REMOTE_HETZNER_SERVER_TYPE` | Hetzner default server type for remote install | `cpx11` |
+| `REMOTE_HETZNER_IMAGE` | Hetzner default image for remote install | `ubuntu-24.04` |
+| `REMOTE_HETZNER_LOCATION` | Hetzner default location for remote install | `ash` |
+| `REMOTE_HETZNER_WAIT_TIMEOUT_SEC` | Timeout while waiting for server running state | `600` |
+| `REMOTE_HETZNER_WAIT_INTERVAL_SEC` | Poll interval while waiting for server running state | `5` |
+| `REMOTE_SSH_REACHABLE_ATTEMPTS` | SSH readiness attempts per checkpoint | `40` |
+| `REMOTE_SSH_REACHABLE_INTERVAL_SEC` | Delay between SSH readiness attempts | `3` |
 
 ### Heartbeat
 

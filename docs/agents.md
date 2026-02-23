@@ -28,6 +28,9 @@ It should remain lightweight on coding itself and focus on orchestration quality
 ## Dev-agent
 
 The dev-agent is a coding worker launched in a dedicated git worktree for each task.
+Execution backend can be:
+- native `pi`, or
+- CLI (`claude` / `codex`) behind a session-control shim.
 
 Responsibilities:
 
@@ -55,7 +58,7 @@ Responsibilities:
 
 - Control and sentry sessions are long-lived.
 - Dev sessions are ephemeral and tied to todos.
-- Session-control sockets allow inter-agent messaging (`send_to_session`).
+- Session-control sockets allow inter-agent messaging (`send_to_session`) for both native and CLI-backed dev-agents.
 - Naming conventions encode role and task context (for observability and cleanup).
 
 ## Concurrency

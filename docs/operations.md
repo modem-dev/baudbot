@@ -38,6 +38,35 @@ Provision with a pinned pi version (optional):
 BAUDBOT_PI_VERSION=0.52.12 baudbot install
 ```
 
+## Remote install and repair
+
+`baudbot remote` is an opt-in operator workflow for remote provisioning/install/repair. It is local-CLI stateful (checkpoints + resume) and does not change normal runtime behavior unless you invoke it.
+
+```bash
+# New Hetzner host (provision + install)
+baudbot remote install --mode hetzner --target team-bot
+
+# Existing host install
+baudbot remote install --mode host --target team-bot --host 203.0.113.10 --ssh-user root
+
+# Enable Tailscale during install (interactive login unless auth key provided)
+baudbot remote install --mode host --target team-bot --host 203.0.113.10 --tailscale
+# Non-interactive auth-key path:
+baudbot remote install --mode host --target team-bot --host 203.0.113.10 --tailscale --tailscale-auth-key tskey-...
+
+# Checkpoint inspection and resume
+baudbot remote list
+baudbot remote status team-bot
+baudbot remote resume team-bot
+
+# Guided repair
+baudbot remote repair --target team-bot
+# or host-only targeting:
+baudbot remote repair --host 203.0.113.10 --ssh-user root --non-interactive-safe
+```
+
+Install checkpoints are persisted under `~/.baudbot/remote/targets/<target>.json`. SSH host keys are stored in `~/.baudbot/remote/known_hosts` with `StrictHostKeyChecking=accept-new`.
+
 ## Updating API keys after install
 
 ```bash

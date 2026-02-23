@@ -93,6 +93,9 @@ Dev agents are **ephemeral and task-scoped**. Each agent:
 
 - **Maximum 4 dev agents** running simultaneously
 - Before spawning, check `list_sessions` and count sessions matching `dev-agent-*`
+- `list_sessions` is the source of truth for active dev agents. It includes:
+  - Native `pi` dev-agents
+  - CLI-backed dev-agents exposed through the session-control shim
 - If at limit, wait for an agent to finish before spawning a new one
 
 ### Known Repos
@@ -171,6 +174,21 @@ If dev-agent reports repeated failures (e.g. CI failing after 3+ fix attempts, o
 
 ## Spawning a Dev Agent
 
+### Backend Selection
+
+Choose backend per task using `DEV_AGENT_BACKEND` (default: `pi`):
+
+```bash
+BACKEND="${DEV_AGENT_BACKEND:-pi}"   # pi | claude-code | codex | auto
+```
+
+Override backend for a specific task when needed (for example, user requests Claude Code).
+
+If `BACKEND=auto`, select in this order:
+1. `claude-code` if `claude` is available
+2. `codex` if `codex` is available
+3. fallback `pi`
+
 Pick the model based on which API key is available (check env vars in this order):
 
 **Coding / orchestration (top-tier):**
@@ -181,6 +199,8 @@ Pick the model based on which API key is available (check env vars in this order
 | `OPENAI_API_KEY` | `openai/gpt-5.2-codex` |
 | `GEMINI_API_KEY` | `google/gemini-3-pro-preview` |
 | `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-opus-4-6` |
+
+### Spawning a Dev Agent (pi backend)
 
 Full procedure for spinning up a task-scoped dev agent:
 
@@ -215,6 +235,47 @@ tmux new-session -d -s $SESSION_NAME \
 - Do NOT use `--name` (not a real pi CLI flag)
 
 **Model note**: Dev agents use the top-tier model from the table above. For cheaper tasks (e.g. read-only analysis), use the cheap model from the sentry-agent table instead.
+
+### Spawning a Dev Agent (CLI backend via shim)
+
+Use this for `BACKEND=claude-code` or `BACKEND=codex`. The CLI dev-agent is exposed through a session-control shim, so you still use `send_to_session` and `list_sessions` normally.
+
+```bash
+# Variables
+BACKEND="claude-code"                # or codex
+REPO=myapp
+REPO_PATH=~/workspace/$REPO
+TODO_SHORT=a8b7b331
+BRANCH=fix/some-descriptive-name
+SESSION_NAME=dev-agent-${REPO}-${TODO_SHORT}
+
+# 1. Create the worktree
+cd $REPO_PATH
+git fetch origin
+git worktree add ~/workspace/worktrees/$BRANCH -b $BRANCH origin/main
+
+# 2. Launch CLI runner in tmux (runner starts shim + backend CLI)
+tmux new-session -d -s $SESSION_NAME \
+  "cd ~/workspace/worktrees/$BRANCH && \
+   export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH && \
+   exec varlock run --path ~/.config/ -- \
+   bash ~/.pi/agent/skills/control-agent/scripts/run-cli-agent.sh \
+     --backend $BACKEND \
+     --worktree ~/workspace/worktrees/$BRANCH \
+     --session-name $SESSION_NAME \
+     --todo-id $TODO_SHORT \
+     --repo $REPO"
+
+# 3. Wait for shim startup, then send the task via send_to_session (not tmux send-keys)
+sleep 10
+send_to_session sessionName="$SESSION_NAME" action="send" mode="steer" message="Your task: <TASK_DESCRIPTION>"
+```
+
+**CLI backend notes:**
+- Keep using `send_to_session` for initial task + follow-ups
+- Keep using `list_sessions` for health/orphan checks
+- `get_message` / `get_summary` work through the shim for spot checks
+- `abort` works through `send_to_session` (mapped to Ctrl+C on the tmux session)
 
 ## Cleanup
 

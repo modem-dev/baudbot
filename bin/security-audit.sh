@@ -52,6 +52,7 @@ finding() {
     INFO)     echo "  ℹ️  INFO:     $title"; info=$((info + 1)) ;;
   esac
   [ -n "$detail" ] && echo "              $detail"
+  return 0
 }
 
 ok() {
@@ -86,6 +87,61 @@ fix_skip() {
     echo "  ⏭️  SKIPPED:  $desc — $reason"
     skipped=$((skipped + 1))
   fi
+}
+
+get_stat_mode() {
+  local file_path="$1"
+  local mode=""
+  if mode=$(stat -c '%a' "$file_path" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+  if mode=$(stat -f '%Lp' "$file_path" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+  printf '???\n'
+  return 1
+}
+
+get_stat_owner() {
+  local file_path="$1"
+  local owner=""
+  if owner=$(stat -c '%U' "$file_path" 2>/dev/null); then
+    printf '%s\n' "$owner"
+    return 0
+  fi
+  if owner=$(stat -f '%Su' "$file_path" 2>/dev/null); then
+    printf '%s\n' "$owner"
+    return 0
+  fi
+  printf 'unknown\n'
+  return 1
+}
+
+normalize_mode_octal() {
+  local mode="$1"
+  if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+    return 1
+  fi
+  if [ "${#mode}" -eq 4 ]; then
+    mode="${mode:1}"
+  fi
+  printf '%s\n' "$mode"
+}
+
+is_group_or_world_readable() {
+  local normalized
+  normalized="$(normalize_mode_octal "$1")" || return 1
+  local as_octal=$((8#$normalized))
+  [ $((as_octal & 044)) -ne 0 ]
+}
+
+is_world_readable() {
+  local normalized
+  normalized="$(normalize_mode_octal "$1")" || return 1
+  local as_octal=$((8#$normalized))
+  [ $((as_octal & 004)) -ne 0 ]
 }
 
 echo ""
@@ -126,7 +182,7 @@ check_perms() {
   if [ ! -e "$path" ]; then
     return
   fi
-  actual=$(stat -c '%a' "$path" 2>/dev/null || echo "???")
+  actual=$(get_stat_mode "$path")
   if [ "$actual" = "$expected" ]; then
     ok "$desc ($actual)"
   else
@@ -134,7 +190,7 @@ check_perms() {
     # Group/world readable secrets or state = critical
     if [ "$expected" = "600" ] || [ "$expected" = "700" ]; then
       # Check if actually group/world readable
-      if [ $((0$actual & 044)) -ne 0 ]; then
+      if is_group_or_world_readable "$actual"; then
         sev="CRITICAL"
       fi
     fi
@@ -484,12 +540,14 @@ if [ -f "$AUDIT_LOG_PRIMARY" ]; then
     fi
   fi
   # Check permissions
-  log_perms=$(stat -c '%a' "$AUDIT_LOG_PRIMARY" 2>/dev/null || echo "???")
-  if [ $((0$log_perms & 004)) -eq 0 ]; then
-    ok "Audit log is not world-readable ($log_perms)"
-  else
+  log_perms=$(get_stat_mode "$AUDIT_LOG_PRIMARY")
+  if [ "$log_perms" = "???" ]; then
+    finding "WARN" "Could not determine audit log permissions" "$AUDIT_LOG_PRIMARY"
+  elif is_world_readable "$log_perms"; then
     finding "WARN" "Audit log is world-readable ($log_perms)" \
       "Run: sudo chmod 660 $AUDIT_LOG_PRIMARY"
+  else
+    ok "Audit log is not world-readable ($log_perms)"
   fi
 elif [ -f "$AUDIT_LOG_FALLBACK" ]; then
   finding "WARN" "Audit log using fallback location ($AUDIT_LOG_FALLBACK)" \
@@ -517,7 +575,7 @@ if [ -d "$BAUDBOT_SRC/.git" ] && [ -r "$BAUDBOT_SRC/.git/hooks" ]; then
   hook_path="$BAUDBOT_SRC/.git/hooks/pre-commit"
   if [ -f "$hook_path" ]; then
     ok "Pre-commit hook installed"
-    hook_owner=$(stat -c '%U' "$hook_path" 2>/dev/null || echo "unknown")
+    hook_owner=$(get_stat_owner "$hook_path")
     if [ "$hook_owner" = "root" ]; then
       ok "Pre-commit hook is root-owned (tamper-proof)"
     else

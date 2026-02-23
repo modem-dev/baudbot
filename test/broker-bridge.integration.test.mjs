@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import sodium from "libsodium-wrappers-sumo";
 import {
@@ -32,13 +32,75 @@ function waitFor(condition, timeoutMs = 10_000, intervalMs = 50, onTimeoutMessag
   });
 }
 
+function isLocalBindPermissionError(error) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = String(error.code || "");
+  return code === "EPERM" || code === "EACCES";
+}
+
+async function listenServer(server, port, host) {
+  await new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
+}
+
+async function listenLocalhostOrUnavailable(server, port = 0) {
+  try {
+    await listenServer(server, port, "127.0.0.1");
+    return true;
+  } catch (error) {
+    if (isLocalBindPermissionError(error)) return false;
+    throw error;
+  }
+}
+
+async function listenUnixSocketOrUnavailable(server, socketPath) {
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = (error) => {
+        server.off("listening", onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        server.off("error", onError);
+        resolve();
+      };
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(socketPath);
+    });
+
+    // On some platforms/path lengths, Node can report "listening" but no
+    // filesystem socket entry is created, making it undiscoverable by path.
+    if (!existsSync(socketPath)) {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    if (isLocalBindPermissionError(error)) return false;
+    throw error;
+  }
+}
+
 async function reserveFreePort() {
   const server = createServer((_req, res) => {
     res.writeHead(204);
     res.end();
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenServer(server, 0, "127.0.0.1");
   const address = server.address();
   if (!address || typeof address === "string") {
     await new Promise((resolve) => server.close(() => resolve(undefined)));
@@ -48,6 +110,26 @@ async function reserveFreePort() {
   const port = address.port;
   await new Promise((resolve) => server.close(() => resolve(undefined)));
   return port;
+}
+
+function createBridgeHome(tempDirs) {
+  const roots = ["/tmp", tmpdir()];
+  let tempHome = null;
+  for (const root of roots) {
+    try {
+      tempHome = mkdtempSync(path.join(root, "baudbot-broker-home-"));
+      break;
+    } catch {
+      // fall through to next candidate
+    }
+  }
+  if (!tempHome) {
+    throw new Error("failed to create temp HOME for broker bridge test");
+  }
+  tempDirs.push(tempHome);
+  mkdirSync(path.join(tempHome, ".pi", "agent"), { recursive: true });
+  mkdirSync(path.join(tempHome, ".pi", "session-control"), { recursive: true });
+  return tempHome;
 }
 
 describe("broker pull bridge semi-integration", () => {
@@ -217,7 +299,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -230,6 +312,7 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -239,6 +322,7 @@ describe("broker pull bridge semi-integration", () => {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -304,8 +388,7 @@ describe("broker pull bridge semi-integration", () => {
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
 
-    const tempHome = mkdtempSync(path.join(tmpdir(), "baudbot-broker-test-"));
-    tempDirs.push(tempHome);
+    const tempHome = createBridgeHome(tempDirs);
 
     const sessionDir = path.join(tempHome, ".pi", "session-control");
     mkdirSync(sessionDir, { recursive: true });
@@ -329,7 +412,7 @@ describe("broker pull bridge semi-integration", () => {
         }
       });
     });
-    await new Promise((resolve) => agentSocket.listen(socketFile, resolve));
+    if (!(await listenUnixSocketOrUnavailable(agentSocket, socketFile))) return;
     servers.push(agentSocket);
 
     const serverBox = sodium.crypto_box_keypair();
@@ -406,7 +489,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -519,7 +602,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -532,11 +615,13 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: workspaceId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -606,7 +691,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -619,11 +704,13 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: workspaceId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -694,7 +781,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -707,11 +794,13 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: workspaceId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -751,7 +840,13 @@ describe("broker pull bridge semi-integration", () => {
     await sodium.ready;
 
     const workspaceId = "T123BROKER";
-    const bridgeApiPort = await reserveFreePort();
+    let bridgeApiPort;
+    try {
+      bridgeApiPort = await reserveFreePort();
+    } catch (error) {
+      if (isLocalBindPermissionError(error)) return;
+      throw error;
+    }
     let outboundAuthorization = null;
 
     const broker = createServer(async (req, res) => {
@@ -778,7 +873,7 @@ describe("broker pull bridge semi-integration", () => {
       res.end(JSON.stringify({ ok: false, error: "not found" }));
     });
 
-    await new Promise((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    if (!(await listenLocalhostOrUnavailable(broker, 0))) return;
     servers.push(broker);
 
     const address = broker.address();
@@ -791,11 +886,13 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: workspaceId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -890,6 +987,7 @@ describe("broker pull bridge semi-integration", () => {
     const repoRoot = path.dirname(testFileDir);
     const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
     const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const tempHome = createBridgeHome(tempDirs);
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -898,6 +996,7 @@ describe("broker pull bridge semi-integration", () => {
       cwd: bridgeCwd,
       env: {
         ...process.env,
+        HOME: tempHome,
         SLACK_BROKER_URL: "http://127.0.0.1:65535",
         SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),

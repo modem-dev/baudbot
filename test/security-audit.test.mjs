@@ -62,7 +62,7 @@ async function runAuditWithLocalBridge(homeDir, args = []) {
     };
 
     server.on("error", (err) => {
-      if (err && err.code === "EADDRINUSE") {
+      if (err && (err.code === "EADDRINUSE" || err.code === "EPERM" || err.code === "EACCES")) {
         resolve(runAudit(homeDir, args));
         return;
       }

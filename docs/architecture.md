@@ -39,7 +39,11 @@ control-agent (persistent)
 └── dev-agent-* (ephemeral task workers)
 ```
 
-Inter-session communication is handled over pi session-control sockets.
+Dev agents can run on:
+- native `pi` sessions, or
+- CLI backends (`claude`, `codex`) wrapped by a session-control compatibility shim.
+
+Inter-session communication remains socket-based in both cases, so control-agent keeps using the same `send_to_session` / `list_sessions` workflow.
 
 ## Data path summary
 

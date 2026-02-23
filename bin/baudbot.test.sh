@@ -191,6 +191,35 @@ EOF
   )
 }
 
+test_remote_dispatches_to_remote_script() {
+  (
+    set -euo pipefail
+    local tmp out
+    tmp="$(mktemp -d /tmp/baudbot-cli-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    mkdir -p "$tmp/bin/lib"
+    printf '{"version":"1.2.3"}\n' > "$tmp/package.json"
+    cat > "$tmp/bin/lib/baudbot-runtime.sh" <<'EOF'
+#!/bin/bash
+cmd_status() { :; }
+cmd_logs() { :; }
+cmd_sessions() { :; }
+cmd_attach() { :; }
+has_systemd() { return 0; }
+EOF
+
+    cat > "$tmp/bin/remote.sh" <<'EOF'
+#!/bin/bash
+echo "remote-dispatch-ok:$*"
+EOF
+    chmod +x "$tmp/bin/remote.sh"
+
+    out="$(BAUDBOT_ROOT="$tmp" bash "$CLI" remote list)"
+    [ "$out" = "remote-dispatch-ok:list" ]
+  )
+}
+
 echo "=== baudbot cli tests ==="
 echo ""
 
@@ -199,6 +228,7 @@ run_test "status dispatches via runtime module" test_status_dispatches_via_runti
 run_test "attach requires root" test_attach_requires_root
 run_test "broker register requires root" test_broker_register_requires_root
 run_test "restart kills bridge tmux then restarts systemd" test_restart_restarts_systemd_and_kills_bridge_tmux
+run_test "remote command dispatches to remote.sh" test_remote_dispatches_to_remote_script
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

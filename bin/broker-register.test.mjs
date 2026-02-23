@@ -189,7 +189,7 @@ test("registerWithBroker sends registration_token when provided", async () => {
   });
 });
 
-test("runRegistration integration path succeeds against live local HTTP server", async () => {
+test("runRegistration integration path succeeds against live local HTTP server", async (t) => {
   const brokerPubkey = Buffer.alloc(32, 5).toString("base64");
   const brokerSigningPubkey = Buffer.alloc(32, 6).toString("base64");
 
@@ -222,7 +222,21 @@ test("runRegistration integration path succeeds against live local HTTP server",
     res.end(JSON.stringify({ ok: false, error: "not found" }));
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error) {
+      const code = String(error.code || "");
+      if (code === "EPERM" || code === "EACCES") {
+        t.skip("Localhost bind is not permitted in this environment");
+        return;
+      }
+    }
+    throw error;
+  }
   const address = server.address();
   const brokerUrl = `http://127.0.0.1:${address.port}`;
 

@@ -138,6 +138,7 @@ usage() {
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
   echo "  setup          One-time system setup (user, deps, firewall, systemd; --experimental enables risky integrations)"
   echo "  config         Interactive secrets and config setup"
+  echo "  remote         Remote install/repair workflows (Hetzner or existing host)"
   echo "  env            Manage env vars and backend source (set/get/sync/backend)"
   echo "  deploy         Deploy source + config to agent runtime"
   echo "  broker         Slack broker commands (register workspace linkage)"
@@ -409,6 +410,11 @@ case "${1:-}" in
   config)
     shift
     exec "$BAUDBOT_ROOT/bin/config.sh" "$@"
+    ;;
+
+  remote)
+    shift
+    exec "$BAUDBOT_ROOT/bin/remote.sh" "$@"
     ;;
 
   env)
