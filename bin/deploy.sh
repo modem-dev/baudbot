@@ -77,19 +77,46 @@ STAGE_DIR=$(mktemp -d /tmp/baudbot-deploy.XXXXXX)
 chmod 755 "$STAGE_DIR"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 
+STAGE_MANIFEST=(
+  "dir|pi/extensions|extensions|required|always"
+  "dir|pi/skills|skills|required|always"
+  "file|start.sh|start.sh|required|always"
+  "file|bin/harden-permissions.sh|bin/harden-permissions.sh|optional|always"
+  "file|bin/redact-logs.sh|bin/redact-logs.sh|optional|always"
+  "file|bin/prune-session-logs.sh|bin/prune-session-logs.sh|optional|always"
+  "file|bin/verify-manifest.sh|bin/verify-manifest.sh|optional|always"
+  "file|bin/lib/runtime-node.sh|bin/lib/runtime-node.sh|optional|always"
+  "file|bin/lib/bridge-restart-policy.sh|bin/lib/bridge-restart-policy.sh|optional|always"
+  "file|pi/settings.json|settings.json|optional|always"
+  "file|.env.schema|.env.schema|optional|always"
+)
+
+stage_manifest_entry() {
+  local entry="$1"
+  local item_type src_rel stage_rel required gate
+  IFS='|' read -r item_type src_rel stage_rel required gate <<<"$entry"
+
+  bb_feature_gate_enabled "$gate" "$EXPERIMENTAL_MODE" || return 0
+
+  local src_path="$BAUDBOT_SRC/$src_rel"
+  local stage_path="$STAGE_DIR/$stage_rel"
+
+  if [ ! -e "$src_path" ]; then
+    [ "$required" = "required" ] && bb_die "missing required deploy source: $src_rel"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$stage_path")"
+
+  if [ "$item_type" = "dir" ]; then
+    cp -r --no-preserve=ownership "$src_path" "$stage_path"
+  else
+    cp --no-preserve=ownership "$src_path" "$stage_path"
+  fi
+}
+
 if [ "$DRY_RUN" -eq 0 ]; then
-  cp -r --no-preserve=ownership "$BAUDBOT_SRC/pi/extensions" "$STAGE_DIR/extensions"
-  cp -r --no-preserve=ownership "$BAUDBOT_SRC/pi/skills" "$STAGE_DIR/skills"
-  cp --no-preserve=ownership "$BAUDBOT_SRC/start.sh" "$STAGE_DIR/start.sh"
-  mkdir -p "$STAGE_DIR/bin"
-  mkdir -p "$STAGE_DIR/bin/lib"
-  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh verify-manifest.sh; do
-    [ -f "$BAUDBOT_SRC/bin/$script" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/$script" "$STAGE_DIR/bin/$script"
-  done
-  [ -f "$BAUDBOT_SRC/bin/lib/runtime-node.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/runtime-node.sh" "$STAGE_DIR/bin/lib/runtime-node.sh"
-  [ -f "$BAUDBOT_SRC/bin/lib/bridge-restart-policy.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/bridge-restart-policy.sh" "$STAGE_DIR/bin/lib/bridge-restart-policy.sh"
-  [ -f "$BAUDBOT_SRC/pi/settings.json" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/pi/settings.json" "$STAGE_DIR/settings.json"
-  [ -f "$BAUDBOT_SRC/.env.schema" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/.env.schema" "$STAGE_DIR/.env.schema"
+  bb_manifest_for_each STAGE_MANIFEST stage_manifest_entry
   chmod -R a+rX "$STAGE_DIR"
 fi
 
@@ -202,27 +229,69 @@ else
   log "would copy: skills/"
 fi
 
-# ── Heartbeat ────────────────────────────────────────────────────────────────
+# ── Runtime assets (manifest-driven) ────────────────────────────────────────
 
 echo "Deploying heartbeat checklist..."
+echo "Deploying memory seeds..."
+echo "Deploying runtime scripts..."
+echo "Deploying settings..."
+echo "Deploying env schema..."
 
-HEARTBEAT_SRC="$STAGE_DIR/skills/control-agent/HEARTBEAT.md"
-HEARTBEAT_DEST="$BAUDBOT_HOME/.pi/agent/HEARTBEAT.md"
+RUNTIME_ASSET_MANIFEST=(
+  "file|skills/control-agent/HEARTBEAT.md|.pi/agent/HEARTBEAT.md|644|agent|0|always|optional|HEARTBEAT.md"
+  "file|bin/harden-permissions.sh|runtime/bin/harden-permissions.sh|u+x|agent|0|always|optional|bin/harden-permissions.sh"
+  "file|bin/redact-logs.sh|runtime/bin/redact-logs.sh|u+x|agent|0|always|optional|bin/redact-logs.sh"
+  "file|bin/prune-session-logs.sh|runtime/bin/prune-session-logs.sh|u+x|agent|0|always|optional|bin/prune-session-logs.sh"
+  "file|bin/verify-manifest.sh|runtime/bin/verify-manifest.sh|u+x|agent|0|always|optional|bin/verify-manifest.sh"
+  "file|bin/lib/runtime-node.sh|runtime/bin/lib/runtime-node.sh|u+r|agent|0|always|optional|bin/lib/runtime-node.sh"
+  "file|bin/lib/bridge-restart-policy.sh|runtime/bin/lib/bridge-restart-policy.sh|u+r|agent|0|always|optional|bin/lib/bridge-restart-policy.sh"
+  "file|start.sh|runtime/start.sh|u+x|agent|0|always|required|start.sh"
+  "file|settings.json|.pi/agent/settings.json|600|agent|0|always|optional|settings.json"
+  "file|.env.schema|.config/.env.schema|644|agent|0|always|optional|.env.schema → ~/.config/.env.schema"
+)
 
-if [ "$DRY_RUN" -eq 0 ]; then
-  # HEARTBEAT.md — always overwrite (admin-managed checklist)
-  if [ -f "$HEARTBEAT_SRC" ]; then
-    as_agent cp "$HEARTBEAT_SRC" "$HEARTBEAT_DEST"
-    as_agent chmod 644 "$HEARTBEAT_DEST"
-    log "✓ HEARTBEAT.md"
+deploy_runtime_asset_entry() {
+  local entry="$1"
+  local src_rel dest_rel mode owner read_only gate required log_label
+  IFS='|' read -r _ src_rel dest_rel mode owner read_only gate required log_label <<<"$entry"
+
+  bb_feature_gate_enabled "$gate" "$EXPERIMENTAL_MODE" || return 0
+
+  local src_path="$STAGE_DIR/$src_rel"
+  local dest_path="$BAUDBOT_HOME/$dest_rel"
+
+  if [ ! -e "$src_path" ]; then
+    [ "$required" = "required" ] && bb_die "missing required staged file: $src_rel"
+    return 0
   fi
-else
-  log "would copy: HEARTBEAT.md"
-fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    if [ "$read_only" = "1" ]; then
+      log "would copy: $log_label (read-only)"
+    else
+      log "would copy: $log_label"
+    fi
+    return 0
+  fi
+
+  if [ "$owner" = "agent" ]; then
+    as_agent mkdir -p "$(dirname "$dest_path")"
+    as_agent cp "$src_path" "$dest_path"
+    as_agent chmod "$mode" "$dest_path"
+    if [ "$read_only" = "1" ]; then
+      as_agent chmod a-w "$dest_path"
+      log "✓ $log_label (read-only)"
+    else
+      log "✓ $log_label"
+    fi
+  else
+    bb_die "unsupported deploy owner: $owner"
+  fi
+}
+
+bb_manifest_for_each RUNTIME_ASSET_MANIFEST deploy_runtime_asset_entry
 
 # ── Memory Seeds ─────────────────────────────────────────────────────────────
-
-echo "Deploying memory seeds..."
 
 MEMORY_SEED_DIR="$STAGE_DIR/skills/control-agent/memory"
 MEMORY_DEST="$BAUDBOT_HOME/.pi/agent/memory"
@@ -240,68 +309,6 @@ if [ "$DRY_RUN" -eq 0 ]; then
   fi
 else
   log "would seed: memory/*.md (only if missing)"
-fi
-
-# ── Runtime bin (utility scripts + start.sh) ─────────────────────────────────
-
-echo "Deploying runtime scripts..."
-
-if [ "$DRY_RUN" -eq 0 ]; then
-  as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin"
-  as_agent mkdir -p "$BAUDBOT_HOME/runtime/bin/lib"
-
-  for script in harden-permissions.sh redact-logs.sh prune-session-logs.sh verify-manifest.sh; do
-    if [ -f "$STAGE_DIR/bin/$script" ]; then
-      as_agent cp "$STAGE_DIR/bin/$script" "$BAUDBOT_HOME/runtime/bin/$script"
-      as_agent chmod u+x "$BAUDBOT_HOME/runtime/bin/$script"
-      log "✓ bin/$script"
-    fi
-  done
-
-  if [ -f "$STAGE_DIR/bin/lib/runtime-node.sh" ]; then
-    as_agent cp "$STAGE_DIR/bin/lib/runtime-node.sh" "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
-    as_agent chmod u+r "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
-    log "✓ bin/lib/runtime-node.sh"
-  fi
-
-  if [ -f "$STAGE_DIR/bin/lib/bridge-restart-policy.sh" ]; then
-    as_agent cp "$STAGE_DIR/bin/lib/bridge-restart-policy.sh" "$BAUDBOT_HOME/runtime/bin/lib/bridge-restart-policy.sh"
-    as_agent chmod u+r "$BAUDBOT_HOME/runtime/bin/lib/bridge-restart-policy.sh"
-    log "✓ bin/lib/bridge-restart-policy.sh"
-  fi
-
-  as_agent cp "$STAGE_DIR/start.sh" "$BAUDBOT_HOME/runtime/start.sh"
-  as_agent chmod u+x "$BAUDBOT_HOME/runtime/start.sh"
-  log "✓ start.sh"
-else
-  log "would copy: runtime scripts"
-fi
-
-# ── Settings ─────────────────────────────────────────────────────────────────
-
-echo "Deploying settings..."
-
-if [ -f "$STAGE_DIR/settings.json" ]; then
-  if [ "$DRY_RUN" -eq 0 ]; then
-    as_agent bash -c "cp '$STAGE_DIR/settings.json' '$BAUDBOT_HOME/.pi/agent/settings.json' && chmod 600 '$BAUDBOT_HOME/.pi/agent/settings.json'"
-    log "✓ settings.json"
-  else
-    log "would copy: settings.json"
-  fi
-fi
-
-# ── Env schema ───────────────────────────────────────────────────────────────
-
-echo "Deploying env schema..."
-
-if [ -f "$STAGE_DIR/.env.schema" ]; then
-  if [ "$DRY_RUN" -eq 0 ]; then
-    as_agent cp "$STAGE_DIR/.env.schema" "$BAUDBOT_HOME/.config/.env.schema"
-    as_agent chmod 644 "$BAUDBOT_HOME/.config/.env.schema"
-    log "✓ .env.schema → ~/.config/.env.schema"
-  else
-    log "would copy: .env.schema → ~/.config/.env.schema"
-  fi
 fi
 
 # ── Admin config (secrets) ────────────────────────────────────────────────────

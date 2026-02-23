@@ -48,3 +48,26 @@ bb_source_env_value() {
 
   return 0
 }
+
+bb_feature_gate_enabled() {
+  local gate="$1"
+  local experimental_mode="$2"
+
+  case "$gate" in
+    ""|always) return 0 ;;
+    experimental) [ "$experimental_mode" = "1" ] ;;
+    stable) [ "$experimental_mode" != "1" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+bb_manifest_for_each() {
+  local manifest_name="$1"
+  local callback="$2"
+  local -n manifest_ref="$manifest_name"
+
+  local entry
+  for entry in "${manifest_ref[@]}"; do
+    "$callback" "$entry"
+  done
+}

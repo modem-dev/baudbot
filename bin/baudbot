@@ -327,74 +327,122 @@ else
   cmd_attach() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
 fi
 
-case "${1:-}" in
+require_systemd_runtime() {
+  local message="$1"
+  if ! has_systemd; then
+    echo "$message"
+    exit 1
+  fi
+}
+
+cmd_systemctl_start() {
+  require_systemd_runtime "systemd not available. Use: baudbot start --direct"
+  exec systemctl start baudbot "$@"
+}
+
+cmd_systemctl_stop() {
+  require_systemd_runtime "systemd not available. Kill the agent process manually."
+  exec systemctl stop baudbot "$@"
+}
+
+cmd_systemctl_restart() {
+  require_systemd_runtime "systemd not available."
+  exec systemctl restart baudbot "$@"
+}
+
+declare -A CMD_KIND=()
+declare -A CMD_TARGET=()
+declare -A CMD_REQUIRE_ROOT=()
+declare -A CMD_REQUIRE_SYSTEMD=()
+declare -A CMD_RUNTIME_ERROR=()
+
+register_command() {
+  local name="$1"
+  local kind="$2"
+  local target="$3"
+  local require_root_flag="$4"
+  local require_systemd_flag="$5"
+  local runtime_error="$6"
+
+  CMD_KIND["$name"]="$kind"
+  CMD_TARGET["$name"]="$target"
+  CMD_REQUIRE_ROOT["$name"]="$require_root_flag"
+  CMD_REQUIRE_SYSTEMD["$name"]="$require_systemd_flag"
+  CMD_RUNTIME_ERROR["$name"]="$runtime_error"
+}
+
+dispatch_registered_command() {
+  local command_name="$1"
+  shift || true
+
+  local kind="${CMD_KIND[$command_name]:-}"
+  [ -n "$kind" ] || return 1
+
+  local target="${CMD_TARGET[$command_name]}"
+  local require_root_flag="${CMD_REQUIRE_ROOT[$command_name]}"
+  local require_systemd_flag="${CMD_REQUIRE_SYSTEMD[$command_name]}"
+  local runtime_error="${CMD_RUNTIME_ERROR[$command_name]}"
+
+  if [ "$require_root_flag" = "1" ]; then
+    require_root "$command_name"
+  fi
+
+  if [ "$require_systemd_flag" = "1" ]; then
+    require_systemd_runtime "$runtime_error"
+  fi
+
+  case "$kind" in
+    exec)
+      exec "$target" "$@"
+      ;;
+    function)
+      "$target" "$@"
+      ;;
+    *)
+      echo "❌ invalid command registration: $command_name"
+      exit 1
+      ;;
+  esac
+}
+
+register_command "start" "function" "cmd_systemctl_start" "1" "0" ""
+register_command "stop" "function" "cmd_systemctl_stop" "1" "0" ""
+register_command "restart" "function" "cmd_systemctl_restart" "1" "0" ""
+register_command "status" "function" "cmd_status" "0" "0" ""
+register_command "logs" "function" "cmd_logs" "0" "0" ""
+register_command "sessions" "function" "cmd_sessions" "0" "0" ""
+register_command "attach" "function" "cmd_attach" "0" "0" ""
+register_command "config" "exec" "$BAUDBOT_ROOT/bin/config.sh" "0" "0" ""
+register_command "env" "exec" "$BAUDBOT_ROOT/bin/env.sh" "0" "0" ""
+register_command "deploy" "exec" "$BAUDBOT_ROOT/bin/deploy.sh" "1" "0" ""
+register_command "audit" "exec" "$BAUDBOT_ROOT/bin/security-audit.sh" "0" "0" ""
+register_command "test" "exec" "$BAUDBOT_ROOT/bin/test.sh" "0" "0" ""
+register_command "update" "exec" "$BAUDBOT_ROOT/bin/update-release.sh" "1" "0" ""
+register_command "rollback" "exec" "$BAUDBOT_ROOT/bin/rollback-release.sh" "1" "0" ""
+register_command "uninstall" "exec" "$BAUDBOT_ROOT/bin/uninstall.sh" "1" "0" ""
+register_command "doctor" "exec" "$BAUDBOT_ROOT/bin/doctor.sh" "0" "0" ""
+
+COMMAND_NAME="${1:-}"
+if [ -n "$COMMAND_NAME" ]; then
+  shift
+fi
+
+case "$COMMAND_NAME" in
   install)
-    shift
     bootstrap_install "$@"
     ;;
 
   start)
-    shift
     if [ "${1:-}" = "--direct" ]; then
       # Foreground mode: run start.sh directly (for dev/CI/debugging)
       shift
       require_root "start --direct"
       exec sudo -u baudbot_agent "$BAUDBOT_ROOT/start.sh" "$@"
-    else
-      require_root "start"
-      if has_systemd; then
-        exec systemctl start baudbot "$@"
-      else
-        echo "systemd not available. Use: baudbot start --direct"
-        exit 1
-      fi
     fi
-    ;;
-
-  stop)
-    shift
-    require_root "stop"
-    if has_systemd; then
-      exec systemctl stop baudbot "$@"
-    else
-      echo "systemd not available. Kill the agent process manually."
-      exit 1
-    fi
-    ;;
-
-  restart)
-    shift
-    require_root "restart"
-    if has_systemd; then
-      exec systemctl restart baudbot "$@"
-    else
-      echo "systemd not available."
-      exit 1
-    fi
-    ;;
-
-  status)
-    shift
-    cmd_status "$@"
-    ;;
-
-  logs)
-    shift
-    cmd_logs "$@"
-    ;;
-
-  sessions)
-    shift
-    cmd_sessions "$@"
-    ;;
-
-  attach)
-    shift
-    cmd_attach "$@"
+    dispatch_registered_command "start" "$@"
     ;;
 
   setup)
-    shift
     if [ "${1:-}" = "--slack-broker" ]; then
       shift
       require_root "broker register"
@@ -411,18 +459,7 @@ case "${1:-}" in
     exec "$BAUDBOT_ROOT/setup.sh" "$@"
     ;;
 
-  config)
-    shift
-    exec "$BAUDBOT_ROOT/bin/config.sh" "$@"
-    ;;
-
-  env)
-    shift
-    exec "$BAUDBOT_ROOT/bin/env.sh" "$@"
-    ;;
-
   broker)
-    shift
     case "${1:-}" in
       register)
         shift
@@ -446,51 +483,7 @@ case "${1:-}" in
     esac
     ;;
 
-  deploy)
-    shift
-    require_root "deploy"
-    exec "$BAUDBOT_ROOT/bin/deploy.sh" "$@"
-    ;;
-
-  audit)
-    shift
-    exec "$BAUDBOT_ROOT/bin/security-audit.sh" "$@"
-    ;;
-
-  test)
-    shift
-    exec "$BAUDBOT_ROOT/bin/test.sh" "$@"
-    ;;
-
-  update)
-    shift
-    require_root "update"
-    exec "$BAUDBOT_ROOT/bin/update-release.sh" "$@"
-    ;;
-
-  rollback)
-    shift
-    require_root "rollback"
-    exec "$BAUDBOT_ROOT/bin/rollback-release.sh" "$@"
-    ;;
-
-  uninstall)
-    shift
-    require_root "uninstall"
-    exec "$BAUDBOT_ROOT/bin/uninstall.sh" "$@"
-    ;;
-
-  doctor)
-    shift
-    exec "$BAUDBOT_ROOT/bin/doctor.sh" "$@"
-    ;;
-
-  version)
-    shift
-    echo "baudbot $(version_display)"
-    ;;
-
-  --version|-v)
+  version|--version|-v)
     echo "baudbot $(version_display)"
     ;;
 
@@ -499,9 +492,12 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "Unknown command: $1"
-    echo ""
-    usage
-    exit 1
+    if [ -z "${CMD_KIND[$COMMAND_NAME]:-}" ]; then
+      echo "Unknown command: $COMMAND_NAME"
+      echo ""
+      usage
+      exit 1
+    fi
+    dispatch_registered_command "$COMMAND_NAME" "$@"
     ;;
 esac

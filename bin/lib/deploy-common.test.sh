@@ -143,7 +143,47 @@ run_test "resolve: SUDO_USER wins when non-root" test_resolve_prefers_sudo_user_
 run_test "resolve: fallback to owner/whoami" test_resolve_falls_back_to_owner_or_whoami
 run_test "source_env: render script preferred" test_source_env_uses_render_script_when_present
 run_test "source_env: fallback to admin config" test_source_env_falls_back_to_admin_config
+test_feature_gate_enabled_modes() {
+  (
+    set -euo pipefail
+
+    bb_feature_gate_enabled "always" "0"
+    bb_feature_gate_enabled "always" "1"
+    bb_feature_gate_enabled "experimental" "1"
+    bb_feature_gate_enabled "stable" "0"
+
+    if bb_feature_gate_enabled "experimental" "0"; then
+      return 1
+    fi
+    if bb_feature_gate_enabled "stable" "1"; then
+      return 1
+    fi
+    if bb_feature_gate_enabled "unknown" "1"; then
+      return 1
+    fi
+  )
+}
+
+test_manifest_for_each_iterates_entries() {
+  (
+    set -euo pipefail
+    # shellcheck disable=SC2034  # consumed by nameref in bb_manifest_for_each
+    local entries=("one" "two" "three")
+    local visited=""
+
+    visit_entry() {
+      local value="$1"
+      visited+="$value,"
+    }
+
+    bb_manifest_for_each entries visit_entry
+    [ "$visited" = "one,two,three," ]
+  )
+}
+
 run_test "source_env: missing returns empty" test_source_env_returns_empty_when_missing
+run_test "feature gate: always/experimental/stable" test_feature_gate_enabled_modes
+run_test "manifest: iterates all entries" test_manifest_for_each_iterates_entries
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="
