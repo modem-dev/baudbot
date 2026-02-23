@@ -169,7 +169,7 @@ function extractCostTotal(usage: any): number {
 	return 0;
 }
 
-function sumSessionUsage(ctx: ExtensionCommandContext): {
+function sumSessionUsage(ctx: ExtensionContext | ExtensionCommandContext): {
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -204,6 +204,71 @@ function sumSessionUsage(ctx: ExtensionCommandContext): {
 		totalTokens: input + output + cacheRead + cacheWrite,
 		totalCost,
 	};
+}
+
+function estimateToolDefinitionTokens(pi: ExtensionAPI): { toolsTokens: number; activeTools: number } {
+	const TOOL_FUDGE = 1.5;
+	const activeToolNames = pi.getActiveTools();
+	const toolInfoByName = new Map(pi.getAllTools().map((t) => [t.name, t] as const));
+	let toolsTokens = 0;
+	for (const name of activeToolNames) {
+		const info = toolInfoByName.get(name);
+		const blob = `${name}\n${info?.description ?? ""}`;
+		toolsTokens += estimateTokens(blob);
+	}
+	toolsTokens = Math.round(toolsTokens * TOOL_FUDGE);
+	return { toolsTokens, activeTools: activeToolNames.length };
+}
+
+type ContextUsageSnapshot = {
+	generated_at: string;
+	session_id: string;
+	context_window_used_tokens?: number;
+	context_window_limit_tokens?: number;
+	context_window_used_pct?: number;
+	session_total_tokens: number;
+	session_total_cost_usd: number;
+	message_tokens?: number;
+	tools_tokens?: number;
+};
+
+function buildContextUsageSnapshot(pi: ExtensionAPI, ctx: ExtensionContext): ContextUsageSnapshot {
+	const usage = ctx.getContextUsage();
+	const { toolsTokens } = estimateToolDefinitionTokens(pi);
+	const messageTokens = usage?.tokens ?? 0;
+	const contextWindow = usage?.contextWindow ?? 0;
+	const effectiveTokens = Math.max(0, messageTokens + toolsTokens);
+	const percent = contextWindow > 0 ? (effectiveTokens / contextWindow) * 100 : 0;
+	const sessionUsage = sumSessionUsage(ctx);
+
+	const snapshot: ContextUsageSnapshot = {
+		generated_at: new Date().toISOString(),
+		session_id: ctx.sessionManager.getSessionId(),
+		session_total_tokens: Math.max(0, sessionUsage.totalTokens),
+		session_total_cost_usd: Math.max(0, sessionUsage.totalCost),
+	};
+
+	if (contextWindow > 0) {
+		snapshot.context_window_used_tokens = effectiveTokens;
+		snapshot.context_window_limit_tokens = contextWindow;
+		snapshot.context_window_used_pct = percent;
+		snapshot.message_tokens = messageTokens;
+		snapshot.tools_tokens = toolsTokens;
+	}
+
+	return snapshot;
+}
+
+async function persistContextUsageSnapshot(snapshot: ContextUsageSnapshot): Promise<void> {
+	const snapshotPath = path.join(os.homedir(), ".pi", "agent", "context-usage.json");
+	const tmpPath = `${snapshotPath}.tmp`;
+	try {
+		await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
+		await fs.writeFile(tmpPath, `${JSON.stringify(snapshot, null, 2)}\n`, { mode: 0o600 });
+		await fs.rename(tmpPath, snapshotPath);
+	} catch {
+		// Best-effort only. Observability should not disrupt agent runtime.
+	}
 }
 
 function shortenPath(p: string, cwd: string): string {
@@ -449,7 +514,14 @@ export default function contextExtension(pi: ExtensionAPI) {
 		return best?.name ?? null;
 	};
 
+	const persistSnapshotFromContext = async (ctx: ExtensionContext): Promise<void> => {
+		const snapshot = buildContextUsageSnapshot(pi, ctx);
+		await persistContextUsageSnapshot(snapshot);
+	};
+
 	pi.on("tool_result", (event: ToolResultEvent, ctx: ExtensionContext) => {
+		void persistSnapshotFromContext(ctx);
+
 		// Only count successful reads.
 		if ((event as any).toolName !== "read") return;
 		if ((event as any).isError) return;
@@ -467,6 +539,14 @@ export default function contextExtension(pi: ExtensionAPI) {
 			cachedLoadedSkills.add(skillName);
 			pi.appendEntry<SkillLoadedEntryData>(SKILL_LOADED_ENTRY, { name: skillName, path: abs });
 		}
+	});
+
+	pi.on("turn_end", async (_event, ctx: ExtensionContext) => {
+		await persistSnapshotFromContext(ctx);
+	});
+
+	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+		await persistSnapshotFromContext(ctx);
 	});
 
 	pi.registerCommand("context", {
@@ -503,18 +583,8 @@ export default function contextExtension(pi: ExtensionAPI) {
 			const ctxWindow = usage?.contextWindow ?? 0;
 
 			// Tool definitions are not part of ctx.getContextUsage() (it estimates message tokens).
-			// We approximate their token impact from tool name + description, and apply a fudge
-			// factor to account for parameters/schema/formatting.
-			const TOOL_FUDGE = 1.5;
-			const activeToolNames = pi.getActiveTools();
-			const toolInfoByName = new Map(pi.getAllTools().map((t) => [t.name, t] as const));
-			let toolsTokens = 0;
-			for (const name of activeToolNames) {
-				const info = toolInfoByName.get(name);
-				const blob = `${name}\n${info?.description ?? ""}`;
-				toolsTokens += estimateTokens(blob);
-			}
-			toolsTokens = Math.round(toolsTokens * TOOL_FUDGE);
+			// We approximate their token impact from tool name + description.
+			const { toolsTokens, activeTools } = estimateToolDefinitionTokens(pi);
 
 			const effectiveTokens = messageTokens + toolsTokens;
 			const percent = ctxWindow > 0 ? (effectiveTokens / ctxWindow) * 100 : 0;
@@ -533,7 +603,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 					lines.push("Window: (unknown)");
 				}
 				lines.push(`System: ~${systemPromptTokens.toLocaleString()} tok (AGENTS ~${agentTokens.toLocaleString()})`);
-				lines.push(`Tools: ~${toolsTokens.toLocaleString()} tok (${activeToolNames.length} active)`);
+				lines.push(`Tools: ~${toolsTokens.toLocaleString()} tok (${activeTools} active)`);
 				lines.push(`AGENTS: ${agentFilePaths.length ? joinComma(agentFilePaths) : "(none)"}`);
 				lines.push(`Extensions (${extensionFiles.length}): ${extensionFiles.length ? joinComma(extensionFiles) : "(none)"}`);
 				lines.push(`Skills (${skills.length}): ${skills.length ? joinComma(skills) : "(none)"}`);
@@ -559,7 +629,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 						systemPromptTokens,
 						agentTokens,
 						toolsTokens,
-						activeTools: activeToolNames.length,
+						activeTools,
 					}
 					: null,
 				agentFiles: agentFilePaths,

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import sodium from "libsodium-wrappers-sumo";
 import {
@@ -502,6 +502,23 @@ describe("broker pull bridge semi-integration", () => {
     const signKeypair = sodium.crypto_sign_seed_keypair(new Uint8Array(signingSeed));
     let pullPayload = null;
 
+    const tempHome = mkdtempSync(path.join(tmpdir(), "baudbot-broker-test-"));
+    tempDirs.push(tempHome);
+    const contextUsageDir = path.join(tempHome, ".pi", "agent");
+    mkdirSync(contextUsageDir, { recursive: true });
+    writeFileSync(
+      path.join(contextUsageDir, "context-usage.json"),
+      `${JSON.stringify({
+        generated_at: "2026-02-23T00:00:00.000Z",
+        session_id: "session-test",
+        context_window_used_tokens: 12345,
+        context_window_limit_tokens: 200000,
+        context_window_used_pct: 6.1725,
+        session_total_tokens: 54321,
+        session_total_cost_usd: 1.25,
+      }, null, 2)}\n`,
+    );
+
     const broker = createServer(async (req, res) => {
       if (req.method === "POST" && req.url === "/api/inbox/pull") {
         let raw = "";
@@ -547,6 +564,7 @@ describe("broker pull bridge semi-integration", () => {
       cwd: bridgeCwd,
       env: {
         ...cleanEnv(),
+        HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
         SLACK_BROKER_WORKSPACE_ID: workspaceId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
@@ -581,6 +599,11 @@ describe("broker pull bridge semi-integration", () => {
     expect(typeof pullPayload.meta.agent_version).toBe("string");
     expect(pullPayload.meta.heartbeat_runs).toBeGreaterThanOrEqual(0);
     expect(pullPayload.meta.heartbeat_consecutive_errors).toBeGreaterThanOrEqual(0);
+    expect(pullPayload.meta.context_window_used_tokens).toBe(12345);
+    expect(pullPayload.meta.context_window_limit_tokens).toBe(200000);
+    expect(pullPayload.meta.context_window_used_pct).toBe(6.1725);
+    expect(pullPayload.meta.session_total_tokens).toBe(54321);
+    expect(pullPayload.meta.session_total_cost_usd).toBe(1.25);
 
     const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 10,
