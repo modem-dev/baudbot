@@ -172,6 +172,12 @@ Set during `setup.sh` / `baudbot install` via env vars:
 |----------|-------------|---------|
 | `BRIDGE_API_PORT` | Local HTTP API port for outbound Slack messages | `7890` |
 | `PI_SESSION_ID` | Target pi session ID for the bridge | Auto-detects control-agent |
+| `BAUDBOT_BRIDGE_RESTART_POLICY` | Bridge supervisor mode (`legacy` or `adaptive`) | auto (`legacy` unless adaptive knobs are set) |
+| `BAUDBOT_BRIDGE_RESTART_BASE_DELAY_SECONDS` | Adaptive mode base restart delay | `5` |
+| `BAUDBOT_BRIDGE_RESTART_MAX_DELAY_SECONDS` | Adaptive mode max backoff delay | `300` |
+| `BAUDBOT_BRIDGE_RESTART_STABLE_WINDOW_SECONDS` | Runtime window that resets failure/backoff counters | `120` |
+| `BAUDBOT_BRIDGE_RESTART_MAX_CONSECUTIVE_FAILURES` | Threshold that marks supervisor state as degraded (`threshold_exceeded`) | `5` |
+| `BAUDBOT_BRIDGE_RESTART_JITTER_SECONDS` | Random jitter added to each adaptive restart sleep | `2` |
 
 ## Example `.env` File
 

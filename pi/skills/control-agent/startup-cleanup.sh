@@ -11,6 +11,12 @@
 
 set -euo pipefail
 
+BRIDGE_POLICY_HELPER="$HOME/runtime/bin/lib/bridge-restart-policy.sh"
+if [ -r "$BRIDGE_POLICY_HELPER" ]; then
+  # shellcheck source=bin/lib/bridge-restart-policy.sh
+  source "$BRIDGE_POLICY_HELPER"
+fi
+
 SOCKET_DIR="$HOME/.pi/session-control"
 
 if [ $# -eq 0 ]; then
@@ -69,6 +75,7 @@ fi
 BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
 BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
+BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
 
 kill_bridge_supervisor() {
   local bridge_pid="$1"
@@ -136,11 +143,21 @@ mkdir -p "$BRIDGE_LOG_DIR"
   export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH"
   export PI_SESSION_ID="$MY_UUID"
   cd /opt/baudbot/current/slack-bridge
-  while true; do
-    varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1
-    echo "[$(date -Is)] ⚠️  Bridge exited ($?), restarting in 5s..." >>"$BRIDGE_LOG_FILE"
-    sleep 5
-  done
+
+  if command -v bb_bridge_supervise >/dev/null 2>&1; then
+    bb_bridge_supervise "$BRIDGE_LOG_FILE" "$BRIDGE_STATUS_FILE" "$BRIDGE_SCRIPT" \
+      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
+  else
+    while true; do
+      if varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1; then
+        exit_code=0
+      else
+        exit_code=$?
+      fi
+      echo "[$(date -Is)] bridge-supervisor event=restart_scheduled mode=legacy script=$BRIDGE_SCRIPT exit_code=$exit_code delay_seconds=5" >>"$BRIDGE_LOG_FILE"
+      sleep 5
+    done
+  fi
 ) &
 NEW_BRIDGE_PID=$!
 echo "$NEW_BRIDGE_PID" > "$BRIDGE_PID_FILE"

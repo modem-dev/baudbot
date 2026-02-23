@@ -193,6 +193,61 @@ PY
   [ -n "$components_line" ] && echo -e "${BOLD}broker health:${RESET} $components_line"
 }
 
+print_bridge_supervisor_status() {
+  local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+  local status_file="/home/$agent_user/.pi/agent/slack-bridge-supervisor.json"
+  local summary=""
+  local mode=""
+  local state=""
+  local failures=""
+  local threshold=""
+
+  if [ ! -r "$status_file" ]; then
+    return 0
+  fi
+
+  summary="$(python3 - "$status_file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+except Exception:
+    print('')
+    sys.exit(0)
+
+print(data.get('mode', 'unknown'))
+print(data.get('state', 'unknown'))
+print(data.get('consecutive_failures', 0))
+print(data.get('max_consecutive_failures', 0))
+PY
+  )"
+
+  mode="$(printf '%s\n' "$summary" | sed -n '1p')"
+  state="$(printf '%s\n' "$summary" | sed -n '2p')"
+  failures="$(printf '%s\n' "$summary" | sed -n '3p')"
+  threshold="$(printf '%s\n' "$summary" | sed -n '4p')"
+
+  [ -n "$mode" ] || return 0
+
+  case "$state" in
+    threshold_exceeded)
+      echo -e "${BOLD}bridge supervisor:${RESET} degraded (mode=$mode failures=$failures threshold=$threshold)"
+      ;;
+    restarting)
+      echo -e "${BOLD}bridge supervisor:${RESET} restarting (mode=$mode failures=$failures)"
+      ;;
+    running)
+      echo -e "${BOLD}bridge supervisor:${RESET} healthy (mode=$mode)"
+      ;;
+    *)
+      echo -e "${BOLD}bridge supervisor:${RESET} $state (mode=$mode)"
+      ;;
+  esac
+}
+
 pi_control_dir() {
   local agent_user="${1:-baudbot_agent}"
   echo "/home/$agent_user/.pi/session-control"
@@ -290,6 +345,7 @@ cmd_status() {
     echo ""
     print_deployed_version
     print_broker_connection_status
+    print_bridge_supervisor_status
     exit "$status_rc"
   fi
 
@@ -302,6 +358,7 @@ cmd_status() {
   echo ""
   print_deployed_version
   print_broker_connection_status
+  print_bridge_supervisor_status
 }
 
 cmd_logs() {

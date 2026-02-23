@@ -14,6 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/bin/lib/runtime-node.sh"
+# shellcheck source=bin/lib/bridge-restart-policy.sh
+source "$SCRIPT_DIR/bin/lib/bridge-restart-policy.sh"
 cd ~
 
 NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
@@ -90,6 +92,7 @@ if [ -n "$BRIDGE_SCRIPT" ]; then
   RELEASE_BRIDGE="/opt/baudbot/current/slack-bridge"
   BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
   BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
+  BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
   BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
 
   mkdir -p "$BRIDGE_LOG_DIR"
@@ -109,11 +112,8 @@ if [ -n "$BRIDGE_SCRIPT" ]; then
   (
     export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
     cd "$RELEASE_BRIDGE"
-    while true; do
-      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1
-      echo "[$(date -Is)] ⚠️  Bridge exited ($?), restarting in 5s..." >>"$BRIDGE_LOG_FILE"
-      sleep 5
-    done
+    bb_bridge_supervise "$BRIDGE_LOG_FILE" "$BRIDGE_STATUS_FILE" "$BRIDGE_SCRIPT" \
+      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
   ) &
   # Intentionally track the supervisor subshell PID (not per-restart node child PID)
   # so a single kill stops the entire bridge restart loop.

@@ -87,6 +87,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     [ -f "$BAUDBOT_SRC/bin/$script" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/$script" "$STAGE_DIR/bin/$script"
   done
   [ -f "$BAUDBOT_SRC/bin/lib/runtime-node.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/runtime-node.sh" "$STAGE_DIR/bin/lib/runtime-node.sh"
+  [ -f "$BAUDBOT_SRC/bin/lib/bridge-restart-policy.sh" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/bin/lib/bridge-restart-policy.sh" "$STAGE_DIR/bin/lib/bridge-restart-policy.sh"
   [ -f "$BAUDBOT_SRC/pi/settings.json" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/pi/settings.json" "$STAGE_DIR/settings.json"
   [ -f "$BAUDBOT_SRC/.env.schema" ] && cp --no-preserve=ownership "$BAUDBOT_SRC/.env.schema" "$STAGE_DIR/.env.schema"
   chmod -R a+rX "$STAGE_DIR"
@@ -261,6 +262,12 @@ if [ "$DRY_RUN" -eq 0 ]; then
     as_agent cp "$STAGE_DIR/bin/lib/runtime-node.sh" "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
     as_agent chmod u+r "$BAUDBOT_HOME/runtime/bin/lib/runtime-node.sh"
     log "✓ bin/lib/runtime-node.sh"
+  fi
+
+  if [ -f "$STAGE_DIR/bin/lib/bridge-restart-policy.sh" ]; then
+    as_agent cp "$STAGE_DIR/bin/lib/bridge-restart-policy.sh" "$BAUDBOT_HOME/runtime/bin/lib/bridge-restart-policy.sh"
+    as_agent chmod u+r "$BAUDBOT_HOME/runtime/bin/lib/bridge-restart-policy.sh"
+    log "✓ bin/lib/bridge-restart-policy.sh"
   fi
 
   as_agent cp "$STAGE_DIR/start.sh" "$BAUDBOT_HOME/runtime/start.sh"

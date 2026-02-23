@@ -345,6 +345,7 @@ If you need to restart the bridge manually, rerun startup cleanup and then inspe
 ```bash
 bash ~/.pi/agent/skills/control-agent/startup-cleanup.sh UUID1 UUID2 UUID3
 tail -n 200 ~/.pi/agent/logs/slack-bridge.log
+cat ~/.pi/agent/slack-bridge-supervisor.json
 ```
 
 Verify: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}'` → should return `400`.
