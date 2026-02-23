@@ -74,6 +74,12 @@ Upgrade later:
 sudo baudbot update
 ```
 
+Connect/talk to the control agent:
+
+```
+sudo baudbot attach
+```
+
 Install with a specific pi version (optional):
 
 ```bash
@@ -94,6 +100,23 @@ sudo baudbot env set ANTHROPIC_API_KEY
 ```
 
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
+
+## The Slack broker (optional)
+
+The primary way to talk to Baudbot remotely is through Slack.
+
+You have two choices:
+
+1) By creating your own Slack app (more work)
+2) By using our hosted Slack broker + control plane at https://baudbot.ai (easy)
+
+What the Slack broker does:
+- One-click install to connect your Slack workspace to your Baudbot instance
+- Broker forwards messages to your Baudbot instance (encrypted)
+- Broker strips PII and sensitive values
+- Broker tool-restricts access to individual Slack users, channels, etc (COMING SOON)
+
+The broker does not have access to your Baudbot instance. Baudbot is pull-only; it doesn't expose additional ports or host a control plane.
 
 ## Core agents
 
