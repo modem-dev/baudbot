@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+# Prevent varlock SEA binary from misinterpreting argv when called from a
+# session that was itself launched via varlock (PKG_EXECPATH leaks into child
+# processes and causes `varlock run` to treat subcommands as Node module paths).
+unset PKG_EXECPATH 2>/dev/null || true
+
 BRIDGE_POLICY_HELPER="$HOME/runtime/bin/lib/bridge-restart-policy.sh"
 if [ -r "$BRIDGE_POLICY_HELPER" ]; then
   # shellcheck source=bin/lib/bridge-restart-policy.sh
@@ -140,6 +145,16 @@ echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
 mkdir -p "$BRIDGE_LOG_DIR"
 (
   unset PKG_EXECPATH
+  # Clear ALL varlock-managed env vars inherited from the parent session.
+  # varlock run does not override vars already set in the environment, so
+  # stale values (e.g. expired broker tokens) would leak through. By unsetting
+  # every key varlock manages, we guarantee varlock run injects fresh values
+  # from ~/.config/.env on every bridge restart.
+  if command -v varlock >/dev/null 2>&1; then
+    while IFS='=' read -r key _; do
+      [ -n "$key" ] && unset "$key"
+    done < <(varlock load --path "$HOME/.config/" --format env --compact 2>/dev/null)
+  fi
   export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH"
   export PI_SESSION_ID="$MY_UUID"
   cd /opt/baudbot/current/slack-bridge
