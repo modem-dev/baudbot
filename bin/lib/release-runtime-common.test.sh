@@ -61,6 +61,7 @@ test_restart_override_failure_does_not_fallback() {
   (
     set -euo pipefail
     reset_state
+    # shellcheck disable=SC2034  # consumed via nameref in bb_run_release_restart_and_health
     local hook_env=("X_TEST=1")
 
     set +e
@@ -99,6 +100,7 @@ test_health_override_failure_propagates() {
   (
     set -euo pipefail
     reset_state
+    # shellcheck disable=SC2034  # consumed via nameref in bb_run_release_restart_and_health
     local hook_env=("X_TEST=1")
 
     set +e
