@@ -18,6 +18,7 @@ import {
   validateReactParams,
   safeEqualSecret,
   createRateLimiter,
+  sanitizeOutboundText,
 } from "./security.mjs";
 
 // ── detectSuspiciousPatterns ────────────────────────────────────────────────
@@ -312,6 +313,43 @@ describe("formatForSlack", () => {
     assert.equal(formatForSlack(42), "42");
     assert.equal(formatForSlack(null), "null");
     assert.equal(formatForSlack(undefined), "undefined");
+  });
+});
+
+// ── sanitizeOutboundText ────────────────────────────────────────────────────
+
+describe("sanitizeOutboundText", () => {
+  it("passes through clean text", () => {
+    const result = sanitizeOutboundText("All good here.");
+    assert.equal(result.text, "All good here.");
+    assert.equal(result.redacted, false);
+    assert.equal(result.blocked, false);
+    assert.deepEqual(result.reasons, []);
+  });
+
+  it("blocks /proc environ references", () => {
+    const result = sanitizeOutboundText("Saw this in /proc/self/environ just now");
+    assert.equal(result.blocked, true);
+    assert.equal(result.redacted, true);
+    assert.ok(result.text.includes("omitted"));
+    assert.ok(result.reasons.includes("proc-environ-path"));
+  });
+
+  it("redacts sensitive env assignments", () => {
+    const result = sanitizeOutboundText("OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456");
+    assert.equal(result.blocked, false);
+    assert.equal(result.redacted, true);
+    assert.equal(result.text, "OPENAI_API_KEY=[REDACTED_ENV]");
+    assert.ok(result.reasons.includes("sensitive-env-assignment"));
+  });
+
+  it("redacts known token formats", () => {
+    const syntheticSlackToken = `xox${"b"}-123456789012-abcdefghijklmno`;
+    const result = sanitizeOutboundText(`token ${syntheticSlackToken}`);
+    assert.equal(result.blocked, false);
+    assert.equal(result.redacted, true);
+    assert.ok(result.text.includes("[REDACTED_SLACK_TOKEN]"));
+    assert.ok(result.reasons.includes("slack-token"));
   });
 });
 

@@ -161,6 +161,57 @@ export function wrapExternalContent({ text, source, user, channel, threadTs }) {
   ].join("\n");
 }
 
+// ── Outbound Redaction / Leak Prevention ───────────────────────────────────
+
+const OUTBOUND_BLOCK_PATTERNS = [
+  { pattern: /\/proc\/(self|\d+)\/environ\b/i, reason: "proc-environ-path" },
+  { pattern: /\/proc\/(self|\d+)\/cmdline\b/i, reason: "proc-cmdline-path" },
+  { pattern: /\0[A-Za-z_][A-Za-z0-9_]*=[^\0]{0,200}\0/, reason: "nul-delimited-env-dump" },
+];
+
+const OUTBOUND_REDACT_PATTERNS = [
+  { pattern: /\bxox[baprs]-[0-9A-Za-z-]{12,}\b/g, replacement: "[REDACTED_SLACK_TOKEN]", reason: "slack-token" },
+  { pattern: /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g, replacement: "[REDACTED_GITHUB_TOKEN]", reason: "github-token" },
+  { pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, replacement: "[REDACTED_GITHUB_TOKEN]", reason: "github-token" },
+  { pattern: /\bsk-[A-Za-z0-9]{20,}\b/g, replacement: "[REDACTED_API_KEY]", reason: "openai-key" },
+  { pattern: /\bAKIA[A-Z0-9]{16}\b/g, replacement: "[REDACTED_AWS_KEY]", reason: "aws-access-key" },
+  { pattern: /\b((?:SECRET|TOKEN|PASSWORD|PASS|API(?:_|-)?KEY|ACCESS(?:_|-)?KEY|PRIVATE(?:_|-)?KEY|SESSION|COOKIE|BEARER|SLACK|GITHUB|OPENAI|ANTHROPIC|GEMINI|AWS)[A-Z0-9_-]*)=[^\s\n\r\0]{1,400}/gi, replacement: "$1=[REDACTED_ENV]", reason: "sensitive-env-assignment" },
+];
+
+const OUTBOUND_BLOCK_FALLBACK = "I found potentially sensitive runtime data and omitted it. I can still help with the task if you share only the non-sensitive details.";
+
+export function sanitizeOutboundText(input) {
+  let text = typeof input === "string" ? input : String(input);
+  const reasons = [];
+
+  for (const rule of OUTBOUND_BLOCK_PATTERNS) {
+    if (rule.pattern.test(text)) {
+      reasons.push(rule.reason);
+    }
+  }
+
+  if (reasons.length > 0) {
+    return {
+      text: OUTBOUND_BLOCK_FALLBACK,
+      redacted: true,
+      blocked: true,
+      reasons,
+    };
+  }
+
+  let redacted = false;
+  for (const rule of OUTBOUND_REDACT_PATTERNS) {
+    const next = text.replace(rule.pattern, rule.replacement);
+    if (next !== text) {
+      redacted = true;
+      reasons.push(rule.reason);
+      text = next;
+    }
+  }
+
+  return { text, redacted, blocked: false, reasons };
+}
+
 // ── Access Control ──────────────────────────────────────────────────────────
 
 /**

@@ -21,6 +21,7 @@ import {
   validateSendParams,
   validateReactParams,
   createRateLimiter,
+  sanitizeOutboundText,
 } from "./security.mjs";
 import {
   canonicalizeEnvelope,
@@ -575,6 +576,16 @@ async function _react(channel, threadTs, emoji) {
   });
 }
 
+function sanitizeOutboundMessage(text, contextLabel) {
+  const sanitized = sanitizeOutboundText(text);
+  if (sanitized.blocked) {
+    logWarn(`🛡️ outbound message blocked (${contextLabel}): ${sanitized.reasons.join(", ")}`);
+  } else if (sanitized.redacted) {
+    logWarn(`🧼 outbound message redacted (${contextLabel}): ${sanitized.reasons.join(", ")}`);
+  }
+  return sanitized.text;
+}
+
 async function handleUserMessage(userMessage, event) {
   logInfo(`👤 message from <@${event.user}> in ${event.channel} (type: ${event.type}, ts: ${event.ts})`);
 
@@ -849,11 +860,12 @@ function startApiServer() {
         }
 
         const { channel, text, thread_ts } = apiRequestBody;
+        const safeText = sanitizeOutboundMessage(text, "/send");
 
         const result = await sendViaBroker({
           action: "chat.postMessage",
           routing: { channel, ...(thread_ts ? { thread_ts } : {}) },
-          actionRequestBody: { text },
+          actionRequestBody: { text: safeText },
         });
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -881,10 +893,11 @@ function startApiServer() {
           return;
         }
 
+        const safeText = sanitizeOutboundMessage(text, "/reply");
         const result = await sendViaBroker({
           action: "chat.postMessage",
           routing: { channel: thread.channel, thread_ts: thread.thread_ts },
-          actionRequestBody: { text },
+          actionRequestBody: { text: safeText },
         });
 
         res.writeHead(200, { "Content-Type": "application/json" });
