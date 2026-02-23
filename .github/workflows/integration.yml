@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   docs-scope:
-    runs-on: ubuntu-latest
+    runs-on: &default-runner blacksmith-4vcpu-ubuntu-2404
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
@@ -58,7 +58,7 @@ jobs:
   integration:
     needs: [docs-scope]
     if: needs.docs-scope.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: *default-runner
     strategy:
       fail-fast: false
       matrix:
