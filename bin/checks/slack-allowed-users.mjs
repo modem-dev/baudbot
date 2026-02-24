@@ -8,6 +8,7 @@ function countUsers(rawValue) {
   if (!rawValue) return 0;
   return rawValue
     .split(",")
+    .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0).length;
 }
 

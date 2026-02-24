@@ -48,6 +48,19 @@ describe("bin/checks/slack-allowed-users.mjs", () => {
     expect(payload.count).toBe("3");
   });
 
+  it("ignores whitespace-only entries", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baudbot-slack-users-check-"));
+    tmpDirs.push(tmpDir);
+
+    const envPath = path.join(tmpDir, ".env");
+    fs.writeFileSync(envPath, "SLACK_ALLOWED_USERS=U1, , U2\n");
+
+    const payload = runCheck(envPath);
+    expect(payload.defined).toBe("1");
+    expect(payload.raw_non_empty).toBe("1");
+    expect(payload.count).toBe("2");
+  });
+
   it("handles empty allowed users setting", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baudbot-slack-users-check-"));
     tmpDirs.push(tmpDir);
