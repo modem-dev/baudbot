@@ -486,6 +486,12 @@ cmd_debug() {
     fi
   fi
 
+  # Validate MODEL — must be a safe provider/model string (alphanumeric, hyphens, dots, slashes)
+  if [[ ! "$MODEL" =~ ^[a-zA-Z0-9._/-]+$ ]]; then
+    echo "❌ Invalid model name: $MODEL"
+    exit 1
+  fi
+
   local SKILL_DIR="$AGENT_HOME/.pi/agent/skills/debug-agent"
   if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
     # Fall back to deployed location

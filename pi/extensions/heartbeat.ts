@@ -25,7 +25,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
@@ -270,7 +270,7 @@ function checkStuckTodos(): CheckResult[] {
         if (!createdAt) continue;
 
         const createdTime = new Date(createdAt).getTime();
-        if (isNaN(createdTime)) continue;
+        if (Number.isNaN(createdTime)) continue;
 
         const age = now - createdTime;
         if (age < STUCK_TODO_THRESHOLD_MS) continue;
@@ -341,7 +341,7 @@ function hasMatchingInProgressTodo(worktreeName: string): boolean {
           if (content.includes(pathPattern) || boundaryPattern.test(content)) return true;
         }
       } catch {
-        continue;
+        // skip unreadable todo files
       }
     }
   } catch {
@@ -460,7 +460,7 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
 
       state.consecutiveErrors = 0;
       saveState();
-    } catch (err) {
+    } catch {
       state.consecutiveErrors += 1;
       try {
         saveState();

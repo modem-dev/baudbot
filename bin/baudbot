@@ -50,6 +50,7 @@ json_get_string_stdin_or_empty() {
 }
 
 # Colors (disabled if not a terminal)
+# shellcheck disable=SC2034  # YELLOW used by sourced scripts (config.sh)
 if [ -t 1 ]; then
   BOLD='\033[1m'
   DIM='\033[2m'
