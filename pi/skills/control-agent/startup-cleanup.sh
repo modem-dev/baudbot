@@ -22,6 +22,14 @@ if [ -r "$RUNTIME_NODE_HELPER" ]; then
   source "$RUNTIME_NODE_HELPER"
 fi
 
+NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
+if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
+  NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
+fi
+
+BAUDBOT_CURRENT_LINK="${BAUDBOT_CURRENT_LINK:-/opt/baudbot/current}"
+BAUDBOT_ENV_FILE="${BAUDBOT_ENV_FILE:-$HOME/.config/.env}"
+
 SOCKET_DIR="$HOME/.pi/session-control"
 
 if [ $# -eq 0 ]; then
@@ -79,7 +87,7 @@ fi
 
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
 BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-BRIDGE_DIR="/opt/baudbot/current/slack-bridge"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
 BRIDGE_TMUX_SESSION="slack-bridge"
 
 mkdir -p "$BRIDGE_LOG_DIR"
@@ -147,10 +155,6 @@ fi
 # The tmux session stays alive independently of this script (same pattern as
 # sentry-agent). If the bridge crashes, the loop restarts it after 5 seconds.
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
-NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
-if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
-  NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
-fi
 if [ ! -d "$NODE_BIN_DIR" ]; then
   # Fallback: resolve versioned node dir
   NODE_BIN_DIR="$(echo "$HOME"/opt/node-v*-linux-x64/bin | awk '{print $1}')"
@@ -164,7 +168,7 @@ tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   while true; do \
     echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT\" >> $BRIDGE_LOG_FILE; \
     for v in \$(env | grep ^SLACK_BROKER_ | cut -d= -f1 || true); do unset \$v; done; \
-    set -a; source \$HOME/.config/.env; set +a; \
+    set -a; source $BAUDBOT_ENV_FILE; set +a; \
     node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
     exit_code=\$?; \
     echo \"[\$(date -Is)] bridge: exited with code \$exit_code, restarting in 5s\" >> $BRIDGE_LOG_FILE; \
