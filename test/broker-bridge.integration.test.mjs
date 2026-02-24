@@ -69,11 +69,13 @@ describe("broker pull bridge semi-integration", () => {
     for (const child of children) {
       if (!child.killed) child.kill("SIGTERM");
     }
+    // Give child processes a moment to exit so they stop writing to tempDirs
+    await new Promise((resolve) => setTimeout(resolve, 100));
     for (const server of servers) {
       await new Promise((resolve) => server.close(() => resolve(undefined)));
     }
     for (const dir of tempDirs) {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
     children.length = 0;
     servers.length = 0;
