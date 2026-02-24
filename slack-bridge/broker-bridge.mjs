@@ -885,6 +885,36 @@ function getLogLinesForResponse(url) {
   return lines;
 }
 
+/** Reference to the HTTP server so we can close it on shutdown. */
+let apiServer = null;
+let shuttingDown = false;
+
+/**
+ * Graceful shutdown: close the HTTP server (releases the port), then exit.
+ * Called on SIGTERM/SIGINT so restarts don't fight over the port.
+ */
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logInfo(`🛑 received ${signal} — shutting down gracefully`);
+  if (apiServer) {
+    apiServer.close(() => {
+      logInfo("🛑 HTTP server closed, exiting");
+      process.exit(0);
+    });
+    // Force exit after 5s if connections don't drain
+    setTimeout(() => {
+      logWarn("🛑 forceful exit after 5s timeout");
+      process.exit(1);
+    }, 5000).unref();
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 function startApiServer() {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${API_PORT}`);
@@ -1024,9 +1054,32 @@ function startApiServer() {
     }
   });
 
-  server.listen(API_PORT, "127.0.0.1", () => {
+  // Retry with backoff if the port is still held by a dying predecessor.
+  const MAX_BIND_RETRIES = 5;
+  const BIND_RETRY_DELAY_MS = 2000;
+  let bindAttempt = 0;
+
+  function tryListen() {
+    bindAttempt++;
+    server.listen(API_PORT, "127.0.0.1");
+  }
+
+  server.on("listening", () => {
+    apiServer = server;
     logInfo(`📡 Outbound API listening on http://127.0.0.1:${API_PORT}`);
   });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE" && bindAttempt < MAX_BIND_RETRIES) {
+      logWarn(`⚠️ port ${API_PORT} in use, retrying in ${BIND_RETRY_DELAY_MS}ms (attempt ${bindAttempt}/${MAX_BIND_RETRIES})`);
+      setTimeout(tryListen, BIND_RETRY_DELAY_MS);
+    } else {
+      logError(`❌ HTTP server error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+  tryListen();
 }
 
 async function startPollLoop() {
