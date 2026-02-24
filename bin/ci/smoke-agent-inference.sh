@@ -18,9 +18,9 @@ readonly CONTROL_DIR="${AGENT_HOME}/.pi/session-control"
 readonly CONTROL_ALIAS="${CONTROL_DIR}/control-agent.alias"
 readonly START_TIMEOUT_SECONDS=60
 readonly INFERENCE_TIMEOUT_SECONDS=120
-# We ask the agent to run a health check and report status.
+# We ask the agent to run a health check and respond with structured JSON.
 # A successful inference proves: socket → RPC → model API → tool use → response.
-# We look for positive health signals in the response.
+# We parse the JSON and validate the health fields.
 
 started=0
 
@@ -197,38 +197,107 @@ main() {
   fi
   log "control socket ready: ${socket_path}"
 
+  local prompt
+  prompt=$(cat <<'PROMPT'
+Run a quick health check: verify your session is live and check heartbeat status.
+Then respond with ONLY a JSON object (no markdown fences, no other text) matching this schema:
+
+{
+  "status": "healthy" | "degraded" | "unhealthy",
+  "session_alive": true | false,
+  "heartbeat_active": true | false,
+  "message": "<one-line summary>"
+}
+PROMPT
+)
+
   log "sending health check prompt (timeout ${INFERENCE_TIMEOUT_SECONDS}s)"
   local response=""
   if ! response="$(rpc_send_wait_turn_end "$socket_path" \
-    "Run a quick health check: verify your session is live, check heartbeat status, and report whether everything looks healthy. Keep it brief." \
+    "$prompt" \
     "$INFERENCE_TIMEOUT_SECONDS")"; then
     log "inference failed — no response from model"
     dump_diagnostics
     return 1
   fi
 
-  # Normalize to lowercase for matching
-  local lower_response
-  lower_response="$(echo "$response" | tr '[:upper:]' '[:lower:]')"
+  log "raw response: ${response:0:500}"
 
-  # Look for positive health signals in the response
-  local health_ok=0
-  for signal in "healthy" "running" "active" "ok" "good" "operational" "green" "no issues" "everything looks"; do
-    if [[ "$lower_response" == *"$signal"* ]]; then
-      health_ok=1
-      break
-    fi
-  done
+  # Extract JSON object from response (skip any surrounding text)
+  local json=""
+  json="$(echo "$response" | python3 -c "
+import json, sys, re
+text = sys.stdin.read()
+# Try to find a JSON object in the text
+match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+if not match:
+    print('NO_JSON', end='')
+    sys.exit(0)
+try:
+    obj = json.loads(match.group())
+    print(json.dumps(obj), end='')
+except json.JSONDecodeError:
+    print('INVALID_JSON', end='')
+")"
 
-  if [[ $health_ok -eq 1 ]]; then
-    log "health check passed — agent reports healthy"
-    log "  response (first 200 chars): ${response:0:200}"
-  else
-    log "health check failed — no positive health signal in response:"
-    log "  ${response:0:500}"
+  if [[ "$json" == "NO_JSON" ]]; then
+    log "health check failed — no JSON object in response"
     dump_diagnostics
     return 1
   fi
+  if [[ "$json" == "INVALID_JSON" ]]; then
+    log "health check failed — malformed JSON in response"
+    dump_diagnostics
+    return 1
+  fi
+
+  # Validate fields
+  local valid=""
+  valid="$(echo "$json" | python3 -c "
+import json, sys
+obj = json.load(sys.stdin)
+errors = []
+status = obj.get('status')
+if status not in ('healthy', 'degraded', 'unhealthy'):
+    errors.append(f'bad status: {status}')
+if not isinstance(obj.get('session_alive'), bool):
+    errors.append('missing/invalid session_alive')
+if not isinstance(obj.get('heartbeat_active'), bool):
+    errors.append('missing/invalid heartbeat_active')
+if errors:
+    print('FAIL:' + '; '.join(errors), end='')
+else:
+    print(json.dumps(obj), end='')
+")"
+
+  if [[ "$valid" == FAIL:* ]]; then
+    log "health check failed — schema validation: ${valid#FAIL:}"
+    dump_diagnostics
+    return 1
+  fi
+
+  # Check actual health values
+  local status session_alive heartbeat_active message
+  status="$(echo "$valid" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")"
+  session_alive="$(echo "$valid" | python3 -c "import json,sys; print(json.load(sys.stdin)['session_alive'])")"
+  heartbeat_active="$(echo "$valid" | python3 -c "import json,sys; print(json.load(sys.stdin)['heartbeat_active'])")"
+  message="$(echo "$valid" | python3 -c "import json,sys; print(json.load(sys.stdin).get('message',''))")"
+
+  log "status=$status session_alive=$session_alive heartbeat_active=$heartbeat_active"
+  log "message: $message"
+
+  if [[ "$status" != "healthy" ]]; then
+    log "agent reports status=$status (expected healthy)"
+    dump_diagnostics
+    return 1
+  fi
+  if [[ "$session_alive" != "True" ]]; then
+    log "agent reports session not alive"
+    dump_diagnostics
+    return 1
+  fi
+
+  log "health check passed"
 
   log "stopping baudbot"
   sudo baudbot stop
