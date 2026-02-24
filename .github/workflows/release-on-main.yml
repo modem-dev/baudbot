@@ -17,6 +17,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    env:
+      RELEASE_DRY_RUN: ${{ vars.RELEASE_DRY_RUN || 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +29,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Resolve dry-run mode
+        id: dryrun
+        run: |
+          case "${RELEASE_DRY_RUN,,}" in
+            1|true|yes|on) echo "enabled=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "enabled=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Determine last release tag
         id: last_tag
@@ -187,7 +197,7 @@ EOF
           echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
 
       - name: Check tag does not already exist
-        if: steps.bump.outputs.tag != ''
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         env:
           TAG: ${{ steps.bump.outputs.tag }}
         run: |
@@ -197,7 +207,7 @@ EOF
           fi
 
       - name: Commit and tag
-        if: steps.bump.outputs.tag != ''
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true' && steps.dryrun.outputs.enabled != 'true'
         env:
           TAG: ${{ steps.bump.outputs.tag }}
         run: |
@@ -233,7 +243,7 @@ EOF
           echo "notes_path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.bump.outputs.tag != ''
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.bump.outputs.tag }}
@@ -253,3 +263,13 @@ EOF
           echo "Tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run release summary
+        if: steps.bump.outputs.tag != "" && steps.dryrun.outputs.enabled == "true"
+        run: |
+          echo "## Dry run: no release published" >> "$GITHUB_STEP_SUMMARY"
+          echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Current version: ${{ steps.bump.outputs.current }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Would publish tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
