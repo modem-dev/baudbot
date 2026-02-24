@@ -187,8 +187,8 @@ EOF
         run: |
           set -euo pipefail
           CURRENT=$(node -p "require('./package.json').version")
-          NEXT=$(node -e "const v='${CURRENT}'.split('.').map(Number); if('${BUMP}'==='minor'){v[1]++; v[2]=0;} else {v[2]++;} process.stdout.write(v.join('.')); ")
-          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version='${NEXT}'; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n');"
+          NEXT=$(node -e "const v=process.argv[1].split('.').map(Number); if(process.argv[2]==='minor'){v[1]++; v[2]=0;} else {v[2]++;} process.stdout.write(v.join('.'))" -- "${CURRENT}" "${BUMP}")
+          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version=process.argv[1]; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n');" -- "${NEXT}"
           if [ -f package-lock.json ]; then
             npm install --package-lock-only --ignore-scripts
           fi
@@ -197,17 +197,20 @@ EOF
           echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
 
       - name: Check tag does not already exist
+        id: tag_check
         if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         env:
           TAG: ${{ steps.bump.outputs.tag }}
         run: |
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag already exists: $TAG. Skipping to keep idempotent."
-            exit 0
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Commit and tag
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true' && steps.dryrun.outputs.enabled != 'true'
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true' && steps.tag_check.outputs.exists != 'true'
         env:
           TAG: ${{ steps.bump.outputs.tag }}
         run: |
@@ -215,10 +218,9 @@ EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json || true
-          git commit -m "release: ${TAG}"
+          git commit -m "release: ${TAG} [skip release]"
           git tag "$TAG"
-          git push origin main
-          git push origin "$TAG"
+          git push --atomic origin main "$TAG"
 
       - name: Build changelog markdown
         id: changelog
