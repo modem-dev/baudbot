@@ -100,23 +100,22 @@ jobs:
             exit 1
           fi
 
-          PROMPT=$(cat <<'EOF'
-You are a release manager. Analyze merged pull requests since the last release and decide semver bump.
-Allowed outputs:
-- none
-- patch
-- minor
+          read -r -d '' PROMPT <<'PROMPT_EOF' || true
+          You are a release manager. Analyze merged pull requests since the last release and decide semver bump.
+          Allowed outputs:
+          - none
+          - patch
+          - minor
 
-Rules:
-- Never return major. Major releases are manual-only.
-- Use a judicious standard: user-facing features, capability expansion, or notable additive behavior => minor.
-- Bug fixes, refactors, infra/internal changes, docs/tests only => patch or none.
-- If no meaningful published change, choose none.
+          Rules:
+          - Never return major. Major releases are manual-only.
+          - Use a judicious standard: user-facing features, capability expansion, or notable additive behavior => minor.
+          - Bug fixes, refactors, infra/internal changes, docs/tests only => patch or none.
+          - If no meaningful published change, choose none.
 
-Return ONLY strict JSON:
-{"decision":"none|patch|minor","reason":"short reason","highlights":["...","..."]}
-EOF
-)
+          Return ONLY strict JSON:
+          {"decision":"none|patch|minor","reason":"short reason","highlights":["...","..."]}
+          PROMPT_EOF
 
           jq -n \
             --arg model "claude-3-5-sonnet-latest" \
