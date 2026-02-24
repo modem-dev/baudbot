@@ -2,9 +2,9 @@
 *.key
 *.pem
 node_modules/
-# Slack bridge
-slack-bridge/node_modules/
-slack-bridge/.env
+# Broker gateway
+broker-gateway/node_modules/
+broker-gateway/.env
 .pi/
 # Coverage
 coverage/
