@@ -78,20 +78,18 @@ jobs:
 
           if [ "$COUNT" -eq 0 ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "pr_context=[]" >> "$GITHUB_OUTPUT"
+            echo '[]' > /tmp/pr_context.json
             exit 0
           fi
 
-          jq '[.[] | {number, title, body, labels: [.labels[].name], user: .user.login, merged_at, html_url}]' /tmp/merged_prs.json > /tmp/pr_context.json
+          jq '[.[] | {number, title, body: (.body // "" | .[:200]), labels: [.labels[].name], user: .user.login, merged_at, html_url}]' /tmp/merged_prs.json > /tmp/pr_context.json
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          echo "pr_context=$(jq -c . /tmp/pr_context.json)" >> "$GITHUB_OUTPUT"
 
       - name: Decide release bump with Claude Sonnet
         id: decide
         if: steps.prs.outputs.has_changes == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_KEY }}
-          PR_CONTEXT: ${{ steps.prs.outputs.pr_context }}
           LAST_TAG: ${{ steps.last_tag.outputs.last_tag }}
         run: |
           set -euo pipefail
@@ -123,14 +121,14 @@ jobs:
             --arg system "You are precise and must output strict JSON only." \
             --arg prompt "$PROMPT" \
             --arg last_tag "$LAST_TAG" \
-            --argjson prs "$PR_CONTEXT" \
+            --slurpfile prs /tmp/pr_context.json \
             '{
               model: $model,
               max_tokens: 700,
               temperature: 0,
               system: $system,
               messages: [
-                {role: "user", content: ($prompt + "\n\nLast release tag: " + $last_tag + "\n\nPRs:\n" + ($prs|tojson))}
+                {role: "user", content: ($prompt + "\n\nLast release tag: " + $last_tag + "\n\nPRs:\n" + ($prs[0]|tojson))}
               ]
             }' > /tmp/anthropic-payload.json
 
@@ -227,7 +225,6 @@ jobs:
         id: changelog
         if: steps.bump.outputs.tag != ''
         env:
-          PR_CONTEXT: ${{ steps.prs.outputs.pr_context }}
           TAG: ${{ steps.bump.outputs.tag }}
           DECISION: ${{ steps.decide.outputs.decision }}
           REASON: ${{ steps.decide.outputs.reason }}
@@ -241,7 +238,7 @@ jobs:
             echo "Reason: ${REASON}"
             echo
             echo "### Merged PRs"
-            jq -r '.[] | "- #\(.number) \(.title) (@\(.user)) — \(.html_url)"' <<< "$PR_CONTEXT"
+            jq -r '.[] | "- #\(.number) \(.title) (@\(.user)) — \(.html_url)"' /tmp/pr_context.json
           } > /tmp/release-notes.md
           echo "notes_path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
