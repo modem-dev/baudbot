@@ -116,6 +116,7 @@ jobs:
           Return ONLY strict JSON:
           {"decision":"none|patch|minor","reason":"short reason","highlights":["...","..."]}
           PROMPT_EOF
+          PROMPT=$(echo "$PROMPT" | sed 's/^          //')
 
           jq -n \
             --arg model "claude-3-5-sonnet-latest" \
