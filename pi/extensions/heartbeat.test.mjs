@@ -8,16 +8,11 @@
  * Run: npx vitest run pi/extensions/heartbeat.test.mjs
  */
 
-import { describe, it, beforeEach, afterEach } from "vitest";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 
 // ── Replicate pure functions from heartbeat.ts v2 ───────────────────────────
 
-const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 min
-const MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 min
 const BACKOFF_MULTIPLIER = 2;
 const MAX_BACKOFF_MS = 60 * 60 * 1000; // 1 hour
 const STUCK_TODO_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -69,23 +64,6 @@ function parseTodo(content) {
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────────
-
-let tmpDir;
-
-function setup() {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "heartbeat-test-"));
-}
-
-function teardown() {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-}
-
-function writeFile(name, content) {
-  const p = path.join(tmpDir, name);
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, content, "utf-8");
-  return p;
-}
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 

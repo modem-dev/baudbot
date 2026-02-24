@@ -59,7 +59,7 @@ test_status_dispatches_via_runtime_module() {
 cmd_status() { echo "status-dispatch-ok"; }
 cmd_logs() { echo "logs-dispatch-ok"; }
 cmd_sessions() { echo "sessions-dispatch-ok"; }
-cmd_attach() { echo "attach-dispatch-ok"; }
+cmd_debug() { echo "debug-dispatch-ok"; }
 has_systemd() { return 1; }
 EOF
 
@@ -68,7 +68,7 @@ EOF
   )
 }
 
-test_attach_requires_root() {
+test_debug_requires_root() {
   (
     set -euo pipefail
     local tmp fakebin out
@@ -89,12 +89,12 @@ fi
 EOF
     chmod +x "$fakebin/id"
 
-    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" attach >/tmp/baudbot-attach.out 2>&1; then
+    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" debug >/tmp/baudbot-debug.out 2>&1; then
       return 1
     fi
 
-    out="$(cat /tmp/baudbot-attach.out)"
-    rm -f /tmp/baudbot-attach.out
+    out="$(cat /tmp/baudbot-debug.out)"
+    rm -f /tmp/baudbot-debug.out
     printf '%s\n' "$out" | grep -q "requires root"
   )
 }
@@ -148,7 +148,7 @@ has_systemd() { return 0; }
 cmd_status() { :; }
 cmd_logs() { :; }
 cmd_sessions() { :; }
-cmd_attach() { :; }
+cmd_debug() { :; }
 EOF
 
     cat > "$fakebin/id" <<'EOF'
@@ -189,7 +189,7 @@ echo ""
 
 run_test "version reads package.json" test_version_uses_package_json
 run_test "status dispatches via runtime module" test_status_dispatches_via_runtime_module
-run_test "attach requires root" test_attach_requires_root
+run_test "debug requires root" test_debug_requires_root
 run_test "broker register requires root" test_broker_register_requires_root
 run_test "restart restarts systemd" test_restart_restarts_systemd
 

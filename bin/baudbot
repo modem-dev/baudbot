@@ -50,6 +50,7 @@ json_get_string_stdin_or_empty() {
 }
 
 # Colors (disabled if not a terminal)
+# shellcheck disable=SC2034  # YELLOW used by sourced scripts (config.sh)
 if [ -t 1 ]; then
   BOLD='\033[1m'
   DIM='\033[2m'
@@ -137,7 +138,7 @@ usage() {
   echo "  restart        Restart the agent"
   echo "  status         Show agent status + deployed version + broker connection"
   echo "  logs           Tail agent logs"
-  echo "  attach         Attach to control-agent by default; supports --pi/--tmux"
+  echo "  debug          Launch debug agent with live dashboard for system observability"
   echo "  sessions       List agent tmux and pi sessions (name → id)"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
@@ -324,7 +325,7 @@ else
   cmd_status() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
   cmd_logs() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
   cmd_sessions() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
-  cmd_attach() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
+  cmd_debug() { echo "❌ Missing CLI runtime helper. Run: sudo baudbot deploy"; exit 1; }
 fi
 
 require_systemd_runtime() {
@@ -411,7 +412,7 @@ register_command "restart" "function" "cmd_systemctl_restart" "1" "0" ""
 register_command "status" "function" "cmd_status" "0" "0" ""
 register_command "logs" "function" "cmd_logs" "0" "0" ""
 register_command "sessions" "function" "cmd_sessions" "0" "0" ""
-register_command "attach" "function" "cmd_attach" "0" "0" ""
+register_command "debug" "function" "cmd_debug" "1" "0" ""
 register_command "config" "exec" "$BAUDBOT_ROOT/bin/config.sh" "0" "0" ""
 register_command "env" "exec" "$BAUDBOT_ROOT/bin/env.sh" "0" "0" ""
 register_command "deploy" "exec" "$BAUDBOT_ROOT/bin/deploy.sh" "1" "0" ""
