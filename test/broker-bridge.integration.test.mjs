@@ -493,7 +493,13 @@ describe("broker pull bridge semi-integration", () => {
     expect(receivedCommands.some((cmd) => cmd.type === "get_message")).toBe(false);
 
     expect(sendPayloads.some((payload) => payload.action === "chat.postMessage")).toBe(false);
-    expect(sendPayloads.some((payload) => payload.action === "reactions.add")).toBe(false);
+
+    // Bridge now sends an 👀 reaction on inbound messages (fire-and-forget)
+    const reactionPayloads = sendPayloads.filter((payload) => payload.action === "reactions.add");
+    expect(reactionPayloads.length).toBe(1);
+    expect(reactionPayloads[0].routing.channel).toBe("C123");
+    expect(reactionPayloads[0].routing.timestamp).toBe("1730000000.000100");
+    expect(reactionPayloads[0].routing.emoji).toBe("eyes");
   });
 
   it("uses protocol-versioned inbox.pull signatures with wait_seconds by default", async () => {
