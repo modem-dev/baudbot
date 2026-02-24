@@ -87,17 +87,35 @@ mkdir -p "$BRIDGE_LOG_DIR"
 # --- Kill anything holding port 7890, any existing bridge tmux session,
 #     and any leftover old-style PID-file supervisor.
 echo "Cleaning up old bridge..."
+
+# Kill the tmux session first — this stops the restart loop from respawning
+# the bridge while we're trying to clean up the port.
+tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+
+# Now gracefully stop any process on the port. SIGTERM lets the bridge close
+# the HTTP server and release the port cleanly; SIGKILL is the fallback.
 PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
 if [ -n "$PORT_PIDS" ]; then
-  echo "Killing processes on port 7890: $PORT_PIDS"
-  echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
-  sleep 1
+  echo "Stopping processes on port 7890 (SIGTERM): $PORT_PIDS"
+  echo "$PORT_PIDS" | xargs kill 2>/dev/null || true
+  # Wait up to 3s for graceful shutdown
+  for i in 1 2 3; do
+    sleep 1
+    PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
+    [ -z "$PORT_PIDS" ] && break
+  done
+  # Force-kill anything that didn't exit
+  if [ -n "$PORT_PIDS" ]; then
+    echo "Force-killing stubborn processes: $PORT_PIDS"
+    echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
 fi
-tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+
 OLD_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
 if [ -f "$OLD_PID_FILE" ]; then
   OLD_PID="$(cat "$OLD_PID_FILE" 2>/dev/null || true)"
-  [ -n "$OLD_PID" ] && kill -9 "$OLD_PID" 2>/dev/null || true
+  [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null || true
   rm -f "$OLD_PID_FILE"
 fi
 
@@ -151,6 +169,12 @@ tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
     exit_code=\$?; \
     echo \"[\$(date -Is)] bridge: exited with code \$exit_code, restarting in 5s\" >> $BRIDGE_LOG_FILE; \
     sleep 5; \
+    tries=0; \
+    while lsof -ti :7890 >/dev/null 2>&1 && [ \$tries -lt 10 ]; do \
+      echo \"[\$(date -Is)] bridge: port 7890 still in use, waiting...\" >> $BRIDGE_LOG_FILE; \
+      sleep 2; \
+      tries=\$((tries + 1)); \
+    done; \
   done"
 
 echo "Bridge tmux session: $BRIDGE_TMUX_SESSION"
