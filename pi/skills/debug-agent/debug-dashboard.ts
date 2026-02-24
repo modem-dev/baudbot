@@ -1,41 +1,43 @@
 /**
  * Baudbot Dashboard Extension
  *
- * Renders a persistent status widget above the editor so an admin can
- * see system health at a glance WITHOUT querying the agent.
+ * Renders a persistent status widget above the editor showing:
+ *   • System health: versions, bridge, sessions, todos, worktrees, heartbeat
+ *   • Control-agent activity feed: live stream of what the control-agent is doing
  *
- * Displays:
- *   • Pi version (running vs latest from npm)
- *   • Slack bridge status (up/down via HTTP probe)
- *   • Sessions (control-agent, sentry-agent, dev-agents)
- *   • Active todos (in-progress count)
- *   • Worktrees (active count)
- *   • Uptime (how long this session has been running)
- *   • Current model
+ * The activity feed tails the control-agent's JSONL session file and shows
+ * recent assistant text, tool calls, and incoming messages. If this IS the
+ * control-agent session, it hooks events directly instead of file-watching.
  *
- * Refreshes automatically every 30 seconds with zero LLM token cost.
+ * Refreshes health metrics every 30 seconds with zero LLM token cost.
  * Use /dashboard to force an immediate refresh.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import {
+  existsSync, readdirSync, readFileSync, readlinkSync, statSync,
+  watch as fsWatch, openSync, readSync, fstatSync, closeSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 
-const REFRESH_INTERVAL_MS = 30_000; // 30 seconds
+const REFRESH_INTERVAL_MS = 30_000;
 const SOCKET_DIR = join(homedir(), ".pi", "session-control");
+const SESSION_DIR = join(homedir(), ".pi", "agent", "sessions");
 const WORKTREES_DIR = join(homedir(), "workspace", "worktrees");
 const TODOS_DIR = join(homedir(), ".pi", "todos");
 const BRIDGE_URL = "http://127.0.0.1:7890/send";
 const BAUDBOT_DEPLOY = "/opt/baudbot";
 
+const ACTIVITY_BUFFER_SIZE = 8; // max lines in activity feed
+
 // ── Data types ──────────────────────────────────────────────────────────────
 
 interface LastEvent {
-  source: string;   // "slack", "chat", "heartbeat", "sentry", "rpc", etc.
-  summary: string;  // short description
+  source: string;
+  summary: string;
   time: Date;
 }
 
@@ -43,7 +45,14 @@ interface HeartbeatInfo {
   enabled: boolean;
   lastRunAt: number | null;
   totalRuns: number;
-  healthy: boolean;  // last check had no failures
+  healthy: boolean;
+}
+
+interface ActivityLine {
+  time: Date;
+  icon: string;     // "💬" "🔧" "📥" "📝" "🤔" etc (for themed rendering)
+  type: "text" | "tool" | "incoming" | "thinking" | "compaction";
+  text: string;
 }
 
 interface DashboardData {
@@ -72,15 +81,12 @@ function getBaudbotVersion(): { version: string | null; sha: string | null } {
   try {
     const currentLink = join(BAUDBOT_DEPLOY, "current");
     const target = readlinkSync(currentLink);
-    // target is like /opt/baudbot/releases/<sha>
     const sha = target.split("/").pop() ?? null;
-
     let version: string | null = null;
     try {
       const pkg = JSON.parse(readFileSync(join(currentLink, "package.json"), "utf-8"));
       version = pkg.version ?? null;
     } catch {}
-
     return { version, sha: sha ? sha.substring(0, 7) : null };
   } catch {
     return { version: null, sha: null };
@@ -89,8 +95,6 @@ function getBaudbotVersion(): { version: string | null; sha: string | null } {
 
 function getPiVersion(): string {
   try {
-    // process.execPath is the node binary: <prefix>/bin/node
-    // pi is installed at: <prefix>/lib/node_modules/@mariozechner/pi-coding-agent/
     const prefix = join(process.execPath, "..", "..");
     const piPkg = join(prefix, "lib", "node_modules", "@mariozechner", "pi-coding-agent", "package.json");
     const pkg = JSON.parse(readFileSync(piPkg, "utf-8"));
@@ -102,7 +106,7 @@ function getPiVersion(): string {
 
 let cachedLatestVersion: string | null = null;
 let lastVersionCheck = 0;
-const VERSION_CHECK_INTERVAL = 3600_000; // 1 hour
+const VERSION_CHECK_INTERVAL = 3600_000;
 
 async function getPiLatestVersion(): Promise<string | null> {
   const now = Date.now();
@@ -121,9 +125,7 @@ async function getPiLatestVersion(): Promise<string | null> {
       cachedLatestVersion = data.version ?? null;
       lastVersionCheck = now;
     }
-  } catch {
-    // keep cached value
-  }
+  } catch {}
   return cachedLatestVersion;
 }
 
@@ -160,11 +162,9 @@ async function checkBridge(): Promise<boolean> {
 function getSessions(): { name: string; alive: boolean }[] {
   const results: { name: string; alive: boolean }[] = [];
   const expected = ["control-agent", "sentry-agent"];
-
   try {
     const files = readdirSync(SOCKET_DIR);
     const aliases = files.filter((f) => f.endsWith(".alias"));
-
     for (const alias of expected) {
       const aliasFile = `${alias}.alias`;
       if (!aliases.includes(aliasFile)) {
@@ -184,7 +184,6 @@ function getSessions(): { name: string; alive: boolean }[] {
       results.push({ name: alias, alive: false });
     }
   }
-
   return results;
 }
 
@@ -204,9 +203,7 @@ function getTodoStats(): { inProgress: number; done: number; total: number } {
   let inProgress = 0;
   let done = 0;
   let total = 0;
-
   if (!existsSync(TODOS_DIR)) return { inProgress, done, total };
-
   try {
     const files = readdirSync(TODOS_DIR).filter((f) => f.endsWith(".md"));
     total = files.length;
@@ -215,12 +212,9 @@ function getTodoStats(): { inProgress: number; done: number; total: number } {
         const content = readFileSync(join(TODOS_DIR, file), "utf-8");
         if (content.includes('"status": "in-progress"')) inProgress++;
         else if (content.includes('"status": "done"')) done++;
-      } catch {
-        continue;
-      }
+      } catch { continue; }
     }
   } catch {}
-
   return { inProgress, done, total };
 }
 
@@ -238,8 +232,6 @@ function getWorktreeCount(): number {
 
 function readHeartbeatState(ctx: ExtensionContext): HeartbeatInfo {
   const info: HeartbeatInfo = { enabled: true, lastRunAt: null, totalRuns: 0, healthy: true };
-
-  // Read the latest heartbeat-state entry from the session
   for (const entry of ctx.sessionManager.getEntries()) {
     const e = entry as { type: string; customType?: string; data?: any };
     if (e.type === "custom" && e.customType === "heartbeat-state" && e.data) {
@@ -248,12 +240,224 @@ function readHeartbeatState(ctx: ExtensionContext): HeartbeatInfo {
       if (Array.isArray(e.data.lastFailures)) info.healthy = e.data.lastFailures.length === 0;
     }
   }
-
-  // Check env for enabled state
   const env = process.env.HEARTBEAT_ENABLED?.trim().toLowerCase();
   info.enabled = !(env === "0" || env === "false" || env === "no");
-
   return info;
+}
+
+// ── Activity feed: JSONL file tailer ────────────────────────────────────────
+
+/**
+ * Find the control-agent's session UUID from its socket alias.
+ */
+function getControlAgentSessionId(): string | null {
+  try {
+    const aliasPath = join(SOCKET_DIR, "control-agent.alias");
+    const target = readlinkSync(aliasPath);      // "UUID.sock"
+    return basename(target, ".sock");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find the session JSONL file for a given session UUID.
+ * Session files are named: <timestamp>_<uuid>.jsonl
+ */
+function findSessionFile(sessionId: string): string | null {
+  try {
+    // Walk all session subdirs
+    const subdirs = readdirSync(SESSION_DIR);
+    for (const subdir of subdirs) {
+      const dirPath = join(SESSION_DIR, subdir);
+      try {
+        const files = readdirSync(dirPath);
+        const match = files.find((f) => f.includes(sessionId) && f.endsWith(".jsonl"));
+        if (match) return join(dirPath, match);
+      } catch { continue; }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Parse a JSONL entry into an ActivityLine (or null if not interesting).
+ */
+function parseActivityEntry(line: string): ActivityLine | null {
+  try {
+    const entry = JSON.parse(line);
+    const ts = entry.timestamp ? new Date(entry.timestamp) : new Date();
+
+    if (entry.type === "summary") {
+      return { time: ts, icon: "📋", type: "compaction", text: "context compacted" };
+    }
+
+    if (entry.type !== "message") return null;
+
+    const msg = entry.message;
+    if (!msg) return null;
+
+    const content = msg.content;
+
+    if (msg.role === "assistant") {
+      if (!Array.isArray(content)) return null;
+
+      // Show tool calls
+      for (const c of content) {
+        if (c.type === "toolCall") {
+          const name = c.name ?? "?";
+          const args = c.arguments ?? {};
+          let detail = "";
+          if (name === "bash" && args.command) {
+            // Show the command, strip comments
+            detail = String(args.command).split("\n")[0].replace(/^#.*/, "").trim().substring(0, 60);
+          } else if (name === "read" && args.path) {
+            detail = String(args.path).split("/").slice(-2).join("/");
+          } else if (name === "edit" && args.path) {
+            detail = String(args.path).split("/").slice(-2).join("/");
+          } else if (name === "write" && args.path) {
+            detail = String(args.path).split("/").slice(-2).join("/");
+          } else {
+            detail = Object.keys(args).slice(0, 2).join(",");
+          }
+          return { time: ts, icon: "⚡", type: "tool", text: `${name} ${detail}` };
+        }
+      }
+
+      // Show text (abbreviated)
+      for (const c of content) {
+        if (c.type === "text" && c.text) {
+          const text = c.text.replace(/\n/g, " ").substring(0, 80);
+          return { time: ts, icon: "💬", type: "text", text };
+        }
+      }
+
+      // Show thinking
+      for (const c of content) {
+        if (c.type === "thinking" && c.thinking) {
+          const text = c.thinking.replace(/\n/g, " ").substring(0, 60);
+          return { time: ts, icon: "🧠", type: "thinking", text };
+        }
+      }
+    }
+
+    if (msg.role === "user") {
+      const text = typeof content === "string" ? content : "";
+      if (text.includes("EXTERNAL_UNTRUSTED_CONTENT")) {
+        const fromMatch = text.match(/From:\s*(<@[^>]+>|[^\n]+)/);
+        const from = fromMatch ? fromMatch[1].trim() : "user";
+        return { time: ts, icon: "📩", type: "incoming", text: `slack: ${from}` };
+      }
+      if (text.includes("Heartbeat")) {
+        return { time: ts, icon: "♥", type: "incoming", text: "heartbeat check" };
+      }
+      // Skip other user messages (tool results fill the feed otherwise)
+      if (text.length > 0 && text.length < 200) {
+        return { time: ts, icon: "📝", type: "incoming", text: text.replace(/\n/g, " ").substring(0, 60) };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Activity feed manager — tails a JSONL file and maintains a ring buffer.
+ */
+class ActivityFeed {
+  private buffer: ActivityLine[] = [];
+  private fileOffset = 0;
+  private sessionFile: string | null = null;
+  private watcher: ReturnType<typeof fsWatch> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Start tailing a session file */
+  start(sessionFile: string) {
+    this.sessionFile = sessionFile;
+
+    // Seed with last N entries from the existing file
+    this.seedFromFile(sessionFile);
+
+    // Watch for changes via fs.watch + fallback poll
+    try {
+      this.watcher = fsWatch(sessionFile, { persistent: false }, () => {
+        this.readNewEntries();
+      });
+    } catch {
+      // fs.watch may not work on all systems
+    }
+
+    // Poll every 2 seconds as fallback (fs.watch can miss events)
+    this.pollTimer = setInterval(() => this.readNewEntries(), 2000);
+  }
+
+  /** Seed buffer from end of existing file */
+  private seedFromFile(filePath: string) {
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim().length > 0);
+      this.fileOffset = Buffer.byteLength(content, "utf-8");
+
+      // Parse last ~50 entries to find interesting ones
+      const tail = lines.slice(-50);
+      for (const line of tail) {
+        const activity = parseActivityEntry(line);
+        if (activity) this.push(activity);
+      }
+    } catch {}
+  }
+
+  /** Read new bytes appended to the file */
+  private readNewEntries() {
+    if (!this.sessionFile) return;
+    try {
+      const fd = openSync(this.sessionFile, "r");
+      try {
+        const stat = fstatSync(fd);
+        if (stat.size <= this.fileOffset) return;
+
+        const newSize = stat.size - this.fileOffset;
+        const buf = Buffer.alloc(newSize);
+        readSync(fd, buf, 0, newSize, this.fileOffset);
+        this.fileOffset = stat.size;
+
+        const text = buf.toString("utf-8");
+        const lines = text.split("\n").filter((l) => l.trim().length > 0);
+        for (const line of lines) {
+          const activity = parseActivityEntry(line);
+          if (activity) this.push(activity);
+        }
+      } finally {
+        closeSync(fd);
+      }
+    } catch {}
+  }
+
+  /** Push to ring buffer */
+  private push(item: ActivityLine) {
+    this.buffer.push(item);
+    if (this.buffer.length > ACTIVITY_BUFFER_SIZE) {
+      this.buffer.shift();
+    }
+  }
+
+  /** Add an activity line directly (for same-session events) */
+  addDirect(item: ActivityLine) {
+    this.push(item);
+  }
+
+  /** Get current buffer */
+  getLines(): readonly ActivityLine[] {
+    return this.buffer;
+  }
+
+  /** Stop watching */
+  stop() {
+    if (this.watcher) { this.watcher.close(); this.watcher = null; }
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+  }
 }
 
 // ── Rendering ───────────────────────────────────────────────────────────────
@@ -280,6 +484,12 @@ function formatUptime(ms: number): string {
   return `${s}s`;
 }
 
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+}
+
 function pad(left: string, right: string, width: number, indent: number = 2): string {
   const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(right) - indent);
   return truncateToWidth(`${left}${" ".repeat(gap)}${right}${"".padEnd(indent)}`, width);
@@ -287,8 +497,9 @@ function pad(left: string, right: string, width: number, indent: number = 2): st
 
 function renderDashboard(
   data: DashboardData,
+  activity: readonly ActivityLine[],
   theme: ExtensionContext["ui"]["theme"],
-  width: number
+  width: number,
 ): string[] {
   const lines: string[] = [];
   const dim = (s: string) => theme.fg("dim", s);
@@ -341,35 +552,23 @@ function renderDashboard(
       theme.fg("accent", `● ${data.devAgentCount} dev-agent${data.devAgentCount > 1 ? "s" : ""}`)
     );
   }
+  lines.push(pad(`  ${parts.join("  ")}`, "", width));
 
-  const row2Left = `  ${parts.join("  ")}`;
-  lines.push(pad(row2Left, "", width));
-
-  // ── Row 3: todos │ worktrees │ refresh time ──
+  // ── Row 3: todos │ worktrees │ heartbeat ──
   const todoParts: string[] = [];
   if (data.todosInProgress > 0) {
     todoParts.push(theme.fg("accent", `${data.todosInProgress} active`));
   }
   todoParts.push(dim(`${data.todosDone} done`));
   todoParts.push(dim(`${data.todosTotal} total`));
-
   const todoStr = `todos ${todoParts.join(dim(" / "))}`;
 
   const wtIcon = data.worktreeCount > 0 ? theme.fg("accent", "●") : dim("○");
   const wtLabel = data.worktreeCount > 0
     ? theme.fg("accent", `${data.worktreeCount}`)
     : dim("0");
-  const wtStr = `${wtIcon} ${wtLabel} worktree${data.worktreeCount !== 1 ? "s" : ""}`;
+  const wtStr = `${wtIcon} ${wtLabel} wt`;
 
-  const refreshTime = data.lastRefresh.toLocaleTimeString("en-US", {
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-  });
-
-  const row3Left = `  ${todoStr}  ${dim("│")}  ${wtStr}`;
-  const row3Right = dim(`⟳ ${refreshTime}`);
-  lines.push(pad(row3Left, row3Right, width));
-
-  // ── Row 4: heartbeat │ last event ──
   let hbStr: string;
   if (!data.heartbeat.enabled) {
     hbStr = `${theme.fg("warning", "♥")} ${theme.fg("warning", "paused")}`;
@@ -382,18 +581,55 @@ function renderDashboard(
     hbStr = `${dim("♥")} ${dim("pending")}`;
   }
 
-  let eventStr: string;
-  if (data.lastEvent) {
-    const ago = formatAgo(data.lastEvent.time);
-    const src = dim(`[${data.lastEvent.source}]`);
-    const summary = truncateToWidth(data.lastEvent.summary, 40);
-    eventStr = `${src} ${summary} ${dim(ago)}`;
-  } else {
-    eventStr = dim("no events yet");
-  }
+  const refreshTime = data.lastRefresh.toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
 
-  const row4Left = `  heartbeat ${hbStr}  ${dim("│")}  ${eventStr}`;
-  lines.push(pad(row4Left, "", width));
+  const row3Left = `  ${todoStr}  ${dim("│")}  ${wtStr}  ${dim("│")}  ${hbStr}`;
+  const row3Right = dim(`⟳ ${refreshTime}`);
+  lines.push(pad(row3Left, row3Right, width));
+
+  // ── Activity feed ──
+  if (activity.length > 0) {
+    // Thin separator
+    const actLabel = " activity ";
+    const actLabelStyled = dim(actLabel);
+    const actLabelLen = visibleWidth(actLabel);
+    const actSideL = 2;
+    const actSideR = Math.max(1, width - actSideL - actLabelLen);
+    lines.push(truncateToWidth(dim(bar.repeat(actSideL)) + actLabelStyled + dim(bar.repeat(actSideR)), width));
+
+    for (const item of activity) {
+      const time = dim(formatTime(item.time));
+      let icon: string;
+      let text: string;
+      switch (item.type) {
+        case "tool":
+          icon = theme.fg("accent", "⚡");
+          text = dim(item.text);
+          break;
+        case "incoming":
+          icon = theme.fg("success", "→");
+          text = theme.fg("success", item.text);
+          break;
+        case "thinking":
+          icon = dim("…");
+          text = dim(item.text);
+          break;
+        case "compaction":
+          icon = dim("◇");
+          text = dim(item.text);
+          break;
+        case "text":
+        default:
+          icon = dim("│");
+          text = item.text;
+          break;
+      }
+      const lineText = `  ${time} ${icon} ${text}`;
+      lines.push(truncateToWidth(lineText, width));
+    }
+  }
 
   // ── Bottom border ──
   lines.push(truncateToWidth(dim(bar.repeat(width)), width));
@@ -408,10 +644,10 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
   const startTime = Date.now();
   const piVersion = getPiVersion();
 
-  // Mutable data ref — widget's render() reads from this on every frame
   let data: DashboardData | null = null;
   let savedCtx: ExtensionContext | null = null;
   let lastEvent: LastEvent | null = null;
+  const activityFeed = new ActivityFeed();
 
   async function refresh() {
     const [bridgeUp, piLatest] = await Promise.all([
@@ -423,11 +659,8 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     const devAgents = getDevAgents();
     const todoStats = getTodoStats();
     const worktreeCount = getWorktreeCount();
-
     const baudbot = getBaudbotVersion();
-
     const bridgeType = detectBridgeType();
-
     const heartbeat = savedCtx ? readHeartbeatState(savedCtx) : { enabled: true, lastRunAt: null, totalRuns: 0, healthy: true };
 
     data = {
@@ -463,12 +696,21 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
             theme.fg("dim", "─".repeat(width)),
           ];
         }
-        // Update uptime live on every render
         data.uptimeMs = Date.now() - startTime;
-        return renderDashboard(data, theme, width);
+        return renderDashboard(data, activityFeed.getLines(), theme, width);
       },
       invalidate() {},
     }));
+  }
+
+  function startActivityFeed() {
+    const sessionId = getControlAgentSessionId();
+    if (!sessionId) return;
+
+    const sessionFile = findSessionFile(sessionId);
+    if (!sessionFile) return;
+
+    activityFeed.start(sessionFile);
   }
 
   // /dashboard command — force immediate refresh
@@ -484,25 +726,21 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     savedCtx = ctx;
     await refresh();
     installWidget(ctx);
+    startActivityFeed();
 
-    // Periodic refresh
     timer = setInterval(async () => {
       try { await refresh(); }
       catch {}
     }, REFRESH_INTERVAL_MS);
   });
 
-  // Track last event from inbound messages.
-  // before_agent_start fires for ALL inbound messages — user prompts, custom
-  // messages (session-message from Slack bridge, heartbeat), etc.
+  // Track last event + feed activity from our own session's inbound messages
   pi.on("before_agent_start", async (event) => {
     const prompt = event.prompt ?? "";
 
     if (prompt.includes("EXTERNAL_UNTRUSTED_CONTENT")) {
-      // Slack message via bridge — extract sender
       const fromMatch = prompt.match(/From:\s*(<@[^>]+>|[^\n]+)/);
       const from = fromMatch ? fromMatch[1].trim() : "user";
-      // Extract the actual message content after the --- separator
       const bodyMatch = prompt.match(/---\n([\s\S]*?)<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>/);
       const body = bodyMatch ? bodyMatch[1].trim().substring(0, 40).replace(/\n/g, " ") : "";
       const summary = body ? `${from}: ${body}` : from;
@@ -523,9 +761,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
+    if (timer) { clearInterval(timer); timer = null; }
+    activityFeed.stop();
   });
 }
