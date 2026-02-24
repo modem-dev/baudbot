@@ -16,12 +16,6 @@ set -euo pipefail
 # processes and causes `varlock run` to treat subcommands as Node module paths).
 unset PKG_EXECPATH 2>/dev/null || true
 
-BRIDGE_POLICY_HELPER="$HOME/runtime/bin/lib/bridge-restart-policy.sh"
-if [ -r "$BRIDGE_POLICY_HELPER" ]; then
-  # shellcheck source=bin/lib/bridge-restart-policy.sh
-  source "$BRIDGE_POLICY_HELPER"
-fi
-
 SOCKET_DIR="$HOME/.pi/session-control"
 
 if [ $# -eq 0 ]; then
@@ -77,47 +71,33 @@ else
   exit 1
 fi
 
-BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
 BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
+BRIDGE_DIR="/opt/baudbot/current/slack-bridge"
+BRIDGE_TMUX_SESSION="slack-bridge"
 
-kill_bridge_supervisor() {
-  local bridge_pid="$1"
-  [ -n "$bridge_pid" ] || return 0
-  if ! kill -0 "$bridge_pid" 2>/dev/null; then
-    return 0
-  fi
+mkdir -p "$BRIDGE_LOG_DIR"
 
-  # Best-effort: terminate direct children first so no stale bridge process keeps the port.
-  local bridge_child_pids
-  bridge_child_pids="$(pgrep -P "$bridge_pid" 2>/dev/null || true)"
-  if [ -n "$bridge_child_pids" ]; then
-    kill $bridge_child_pids 2>/dev/null || true
-    sleep 1
-    kill -9 $bridge_child_pids 2>/dev/null || true
-  fi
-
-  kill "$bridge_pid" 2>/dev/null || true
+# --- Kill anything holding port 7890, any existing bridge tmux session,
+#     and any leftover old-style PID-file supervisor.
+echo "Cleaning up old bridge..."
+PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
+if [ -n "$PORT_PIDS" ]; then
+  echo "Killing processes on port 7890: $PORT_PIDS"
+  echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
   sleep 1
-  kill -9 "$bridge_pid" 2>/dev/null || true
-}
-
-# Kill existing slack-bridge process if running
-if [ -f "$BRIDGE_PID_FILE" ]; then
-  BRIDGE_PID="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
-  if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
-    echo "Killing existing slack-bridge process (pid=$BRIDGE_PID)..."
-    kill_bridge_supervisor "$BRIDGE_PID"
-  fi
-  rm -f "$BRIDGE_PID_FILE"
+fi
+tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+OLD_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+if [ -f "$OLD_PID_FILE" ]; then
+  OLD_PID="$(cat "$OLD_PID_FILE" 2>/dev/null || true)"
+  [ -n "$OLD_PID" ] && kill -9 "$OLD_PID" 2>/dev/null || true
+  rm -f "$OLD_PID_FILE"
 fi
 
-# Select bridge script: prefer broker pull mode when SLACK_BROKER_* vars are present,
-# then Socket Mode when SLACK_BOT_TOKEN + SLACK_APP_TOKEN are present.
-# If neither mode is configured, skip bridge startup.
+# --- Detect bridge mode ---
 BRIDGE_SCRIPT=""
-if [ -f "/opt/baudbot/current/slack-bridge/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
+if [ -f "$BRIDGE_DIR/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
   test -n "$SLACK_BROKER_URL" &&
   test -n "$SLACK_BROKER_WORKSPACE_ID" &&
   test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
@@ -126,7 +106,7 @@ if [ -f "/opt/baudbot/current/slack-bridge/broker-bridge.mjs" ] && varlock run -
   test -n "$SLACK_BROKER_PUBLIC_KEY" &&
   test -n "$SLACK_BROKER_SIGNING_PUBLIC_KEY"' 2>/dev/null; then
   BRIDGE_SCRIPT="broker-bridge.mjs"
-elif varlock run --path "$HOME/.config/" -- sh -c '
+elif [ -f "$BRIDGE_DIR/bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
   test -n "$SLACK_BOT_TOKEN" &&
   test -n "$SLACK_APP_TOKEN"' 2>/dev/null; then
   BRIDGE_SCRIPT="bridge.mjs"
@@ -139,54 +119,33 @@ if [ -z "$BRIDGE_SCRIPT" ]; then
   exit 0
 fi
 
-# Start fresh slack-bridge
-# Keep a supervisor loop (matching start.sh) so bridge restarts automatically on crash.
-echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
-mkdir -p "$BRIDGE_LOG_DIR"
-(
-  unset PKG_EXECPATH
-  # Clear ALL varlock-managed env vars inherited from the parent session.
-  # varlock run does not override vars already set in the environment, so
-  # stale values (e.g. expired broker tokens) would leak through. By unsetting
-  # every key varlock manages, we guarantee varlock run injects fresh values
-  # from ~/.config/.env on every bridge restart.
-  if command -v varlock >/dev/null 2>&1; then
-    while IFS='=' read -r key _; do
-      [ -n "$key" ] && unset "$key"
-    done < <(varlock load --path "$HOME/.config/" --format env --compact 2>/dev/null)
-  fi
-  export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH"
-  export PI_SESSION_ID="$MY_UUID"
-  cd /opt/baudbot/current/slack-bridge
+# --- Launch bridge in a tmux session with restart loop ---
+# The tmux session stays alive independently of this script (same pattern as
+# sentry-agent). If the bridge crashes, the loop restarts it after 5 seconds.
+echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
+tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
+  unset PKG_EXECPATH; \
+  export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH; \
+  export PI_SESSION_ID=$MY_UUID; \
+  cd $BRIDGE_DIR; \
+  while true; do \
+    echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT\" >> $BRIDGE_LOG_FILE; \
+    varlock run --path \$HOME/.config/ -- node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
+    exit_code=\$?; \
+    echo \"[\$(date -Is)] bridge: exited with code \$exit_code, restarting in 5s\" >> $BRIDGE_LOG_FILE; \
+    sleep 5; \
+  done"
 
-  if command -v bb_bridge_supervise >/dev/null 2>&1; then
-    bb_bridge_supervise "$BRIDGE_LOG_FILE" "$BRIDGE_STATUS_FILE" "$BRIDGE_SCRIPT" \
-      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
-  else
-    while true; do
-      if varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT" >>"$BRIDGE_LOG_FILE" 2>&1; then
-        exit_code=0
-      else
-        exit_code=$?
-      fi
-      echo "[$(date -Is)] bridge-supervisor event=restart_scheduled mode=legacy script=$BRIDGE_SCRIPT exit_code=$exit_code delay_seconds=5" >>"$BRIDGE_LOG_FILE"
-      sleep 5
-    done
-  fi
-) &
-NEW_BRIDGE_PID=$!
-echo "$NEW_BRIDGE_PID" > "$BRIDGE_PID_FILE"
-chmod 600 "$BRIDGE_PID_FILE"
-echo "Bridge pid: $NEW_BRIDGE_PID"
+echo "Bridge tmux session: $BRIDGE_TMUX_SESSION"
 echo "Bridge logs: $BRIDGE_LOG_FILE"
 
-# Wait for bridge to come up
+# --- Verify bridge is up ---
 sleep 3
 HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "400" ]; then
   echo "✅ Slack bridge is up (HTTP $HTTP_CODE)"
 else
-  echo "⚠️  Slack bridge may not be ready yet (HTTP $HTTP_CODE). Check manually."
+  echo "⚠️  Bridge may not be ready yet (HTTP $HTTP_CODE). Check: tmux attach -t $BRIDGE_TMUX_SESSION"
 fi
 
 echo ""
