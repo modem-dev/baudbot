@@ -149,6 +149,37 @@ const threadLookup = new Map();
 let threadCounter = 0;
 const MAX_THREADS = 10_000;
 
+// Track inbound message timestamps pending a ✅ reaction.
+// Key: "channel:thread_ts" (the thread root), Value: { channel, messageTs, receivedAt }
+// When the agent replies via /send with a matching thread_ts, we react with ✅
+// on the original inbound message and remove the entry.
+const pendingAckReactions = new Map();
+const PENDING_ACK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * When the agent sends a reply in a thread, resolve the pending ack by
+ * adding a ✅ reaction to the original inbound message and removing the entry.
+ * Also prunes expired entries.
+ */
+function resolveAckReaction(channel, threadTs) {
+  const now = Date.now();
+  // Prune expired entries while we're here
+  for (const [key, entry] of pendingAckReactions) {
+    if (now - entry.receivedAt > PENDING_ACK_TTL_MS) {
+      pendingAckReactions.delete(key);
+    }
+  }
+
+  const threadKey = `${channel}:${threadTs}`;
+  const pending = pendingAckReactions.get(threadKey);
+  if (!pending) return;
+
+  pendingAckReactions.delete(threadKey);
+  _react(pending.channel, pending.messageTs, "white_check_mark").catch((err) => {
+    logWarn(`✅ check reaction failed: ${err.message}`);
+  });
+}
+
 let socketPath = null;
 
 let cryptoState = null;
@@ -695,6 +726,21 @@ async function handleUserMessage(userMessage, event) {
     logWarn(`⚠️ Suspicious patterns from <@${event.user}>: ${suspicious.join(", ")}`);
   }
 
+  // React with 👀 immediately so the user knows we saw their message.
+  const ackChannel = event.channel;
+  const ackMessageTs = event.ts;
+  _react(ackChannel, ackMessageTs, "eyes").catch((err) => {
+    logWarn(`👀 eyes reaction failed: ${err.message}`);
+  });
+
+  // Track this message so we can add ✅ when the agent replies.
+  const threadKey = `${ackChannel}:${event.thread_ts || ackMessageTs}`;
+  pendingAckReactions.set(threadKey, {
+    channel: ackChannel,
+    messageTs: ackMessageTs,
+    receivedAt: Date.now(),
+  });
+
   refreshSocket();
   const currentSocket = socketPath;
   if (!currentSocket) {
@@ -988,6 +1034,11 @@ function startApiServer() {
           actionRequestBody: { text: safeText },
         });
 
+        // If this is a threaded reply, check for a pending ✅ ack reaction.
+        if (thread_ts) {
+          resolveAckReaction(channel, thread_ts);
+        }
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts }));
         return;
@@ -1019,6 +1070,9 @@ function startApiServer() {
           routing: { channel: thread.channel, thread_ts: thread.thread_ts },
           actionRequestBody: { text: safeText },
         });
+
+        // Check for a pending ✅ ack reaction on the /reply path too.
+        resolveAckReaction(thread.channel, thread.thread_ts);
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts }));

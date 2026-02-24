@@ -74,6 +74,41 @@ const threadLookup = new Map();     // "channel:thread_ts" → thread-N
 let threadCounter = 0;
 const MAX_THREADS = 10_000;
 
+// Track inbound message timestamps pending a ✅ reaction.
+// Key: "channel:thread_ts" (the thread root), Value: { channel, messageTs, receivedAt }
+// When the agent replies via /send with a matching thread_ts, we react with ✅
+// on the original inbound message and remove the entry.
+const pendingAckReactions = new Map();
+const PENDING_ACK_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * When the agent sends a reply in a thread, resolve the pending ack by
+ * adding a ✅ reaction to the original inbound message and removing the entry.
+ * Also prunes expired entries.
+ */
+function resolveAckReaction(channel, threadTs) {
+  const now = Date.now();
+  for (const [key, entry] of pendingAckReactions) {
+    if (now - entry.receivedAt > PENDING_ACK_TTL_MS) {
+      pendingAckReactions.delete(key);
+    }
+  }
+
+  const threadKey = `${channel}:${threadTs}`;
+  const pending = pendingAckReactions.get(threadKey);
+  if (!pending) return;
+
+  pendingAckReactions.delete(threadKey);
+  app.client.reactions.add({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel: pending.channel,
+    timestamp: pending.messageTs,
+    name: "white_check_mark",
+  }).catch((err) => {
+    console.warn(`✅ check reaction failed: ${err.message}`);
+  });
+}
+
 /**
  * Evict the oldest entries when the registry exceeds MAX_THREADS.
  * Maps iterate in insertion order, so the first entries are the oldest.
@@ -259,6 +294,24 @@ async function handleMessage(userMessage, event, say) {
 
   console.log(`💬 from <@${event.user}>: ${userMessage}`);
 
+  // React with 👀 immediately so the user knows we saw their message.
+  app.client.reactions.add({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel: event.channel,
+    timestamp: event.ts,
+    name: "eyes",
+  }).catch((err) => {
+    console.warn(`👀 eyes reaction failed: ${err.message}`);
+  });
+
+  // Track this message so we can add ✅ when the agent replies.
+  const threadKey = `${event.channel}:${event.thread_ts || event.ts}`;
+  pendingAckReactions.set(threadKey, {
+    channel: event.channel,
+    messageTs: event.ts,
+    receivedAt: Date.now(),
+  });
+
   try {
     // Always re-resolve the socket before sending (handles agent restarts).
     // Capture into a local to avoid TOCTOU with concurrent handleMessage calls.
@@ -422,6 +475,12 @@ function startApiServer() {
         });
 
         console.log(`📤 Sent to ${channel}: ${text.slice(0, 80)}${text.length > 80 ? "..." : ""}`);
+
+        // If this is a threaded reply, check for a pending ✅ ack reaction.
+        if (thread_ts) {
+          resolveAckReaction(channel, thread_ts);
+        }
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts, channel: result.channel }));
 
@@ -460,6 +519,10 @@ function startApiServer() {
         });
 
         console.log(`📤 Reply to ${thread_id} (${thread.channel}): ${text.slice(0, 80)}${text.length > 80 ? "..." : ""}`);
+
+        // Check for a pending ✅ ack reaction on the /reply path too.
+        resolveAckReaction(thread.channel, thread.thread_ts);
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts, channel: result.channel }));
 
