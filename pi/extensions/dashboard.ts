@@ -492,42 +492,31 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     }, REFRESH_INTERVAL_MS);
   });
 
-  // Track last event from inbound messages
-  pi.on("message_start", async (event) => {
-    const msg = event.message as any;
-    if (!msg) return;
+  // Track last event from inbound messages.
+  // before_agent_start fires for ALL inbound messages — user prompts, custom
+  // messages (session-message from Slack bridge, heartbeat), etc.
+  pi.on("before_agent_start", async (event) => {
+    const prompt = event.prompt ?? "";
 
-    if (msg.role === "user") {
-      const text = Array.isArray(msg.content)
-        ? msg.content.find((c: any) => c.type === "text")?.text ?? ""
-        : String(msg.content ?? "");
-
-      if (text.includes("EXTERNAL_UNTRUSTED_CONTENT")) {
-        // Slack message — extract source info
-        const fromMatch = text.match(/From:\s*(<@[^>]+>|[^\n]+)/);
-        const from = fromMatch ? fromMatch[1].trim() : "user";
-        lastEvent = { source: "slack", summary: from, time: new Date() };
-      } else if (text.length > 0) {
-        const preview = text.substring(0, 50).replace(/\n/g, " ");
-        lastEvent = { source: "chat", summary: preview, time: new Date() };
-      }
-    } else if (msg.customType === "heartbeat") {
+    if (prompt.includes("EXTERNAL_UNTRUSTED_CONTENT")) {
+      // Slack message via bridge — extract sender
+      const fromMatch = prompt.match(/From:\s*(<@[^>]+>|[^\n]+)/);
+      const from = fromMatch ? fromMatch[1].trim() : "user";
+      // Extract the actual message content after the --- separator
+      const bodyMatch = prompt.match(/---\n([\s\S]*?)<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>/);
+      const body = bodyMatch ? bodyMatch[1].trim().substring(0, 40).replace(/\n/g, " ") : "";
+      const summary = body ? `${from}: ${body}` : from;
+      lastEvent = { source: "slack", summary, time: new Date() };
+    } else if (prompt.includes("Heartbeat")) {
       lastEvent = { source: "heartbeat", summary: "health check fired", time: new Date() };
-    } else if (msg.customType === "session-message") {
-      // RPC / session-control message
-      const text = String(msg.content ?? "").substring(0, 50).replace(/\n/g, " ");
-      if (text.includes("EXTERNAL_UNTRUSTED_CONTENT")) {
-        const fromMatch = text.match(/From:\s*(<@[^>]+>|[^\n]+)/);
-        const from = fromMatch ? fromMatch[1].trim() : "unknown";
-        lastEvent = { source: "slack", summary: from, time: new Date() };
-      } else if (text.includes("sentry") || text.includes("Sentry")) {
-        lastEvent = { source: "sentry", summary: text.substring(0, 40), time: new Date() };
-      } else {
-        lastEvent = { source: "rpc", summary: text || "message", time: new Date() };
-      }
+    } else if (prompt.includes("#bots-sentry") || prompt.includes("Sentry")) {
+      const preview = prompt.substring(0, 50).replace(/\n/g, " ");
+      lastEvent = { source: "sentry", summary: preview, time: new Date() };
+    } else if (prompt.length > 0) {
+      const preview = prompt.substring(0, 50).replace(/\n/g, " ");
+      lastEvent = { source: "chat", summary: preview, time: new Date() };
     }
 
-    // Update dashboard data immediately
     if (data && lastEvent) {
       data.lastEvent = lastEvent;
     }
