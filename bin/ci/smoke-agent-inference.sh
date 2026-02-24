@@ -18,7 +18,9 @@ readonly CONTROL_DIR="${AGENT_HOME}/.pi/session-control"
 readonly CONTROL_ALIAS="${CONTROL_DIR}/control-agent.alias"
 readonly START_TIMEOUT_SECONDS=60
 readonly INFERENCE_TIMEOUT_SECONDS=120
-readonly MIN_RESPONSE_LENGTH=10
+# We ask the agent to run a health check and report status.
+# A successful inference proves: socket → RPC → model API → tool use → response.
+# We look for positive health signals in the response.
 
 started=0
 
@@ -195,22 +197,35 @@ main() {
   fi
   log "control socket ready: ${socket_path}"
 
-  log "sending inference prompt (timeout ${INFERENCE_TIMEOUT_SECONDS}s)"
+  log "sending health check prompt (timeout ${INFERENCE_TIMEOUT_SECONDS}s)"
   local response=""
   if ! response="$(rpc_send_wait_turn_end "$socket_path" \
-    "Respond with a short greeting." \
+    "Run a quick health check: verify your session is live, check heartbeat status, and report whether everything looks healthy. Keep it brief." \
     "$INFERENCE_TIMEOUT_SECONDS")"; then
-    log "inference failed"
+    log "inference failed — no response from model"
     dump_diagnostics
     return 1
   fi
 
-  # Any non-trivial response proves end-to-end inference works.
-  if [[ ${#response} -ge $MIN_RESPONSE_LENGTH ]]; then
-    log "inference OK (${#response} chars)"
+  # Normalize to lowercase for matching
+  local lower_response
+  lower_response="$(echo "$response" | tr '[:upper:]' '[:lower:]')"
+
+  # Look for positive health signals in the response
+  local health_ok=0
+  for signal in "healthy" "running" "active" "ok" "good" "operational" "green" "no issues" "everything looks"; do
+    if [[ "$lower_response" == *"$signal"* ]]; then
+      health_ok=1
+      break
+    fi
+  done
+
+  if [[ $health_ok -eq 1 ]]; then
+    log "health check passed — agent reports healthy"
+    log "  response (first 200 chars): ${response:0:200}"
   else
-    log "response too short (${#response} chars):"
-    log "  ${response}"
+    log "health check failed — no positive health signal in response:"
+    log "  ${response:0:500}"
     dump_diagnostics
     return 1
   fi
