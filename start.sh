@@ -5,7 +5,7 @@
 # The agent runs entirely from deployed copies — no source repo access needed:
 #   ~/.pi/agent/extensions/          ← pi extensions
 #   ~/.pi/agent/skills/              ← operational skills
-#   /opt/baudbot/current/slack-bridge/ ← bridge process
+#   /opt/baudbot/current/broker-gateway/ ← bridge process
 #   ~/runtime/bin/                   ← utility scripts
 #
 # To update, admin edits source and runs deploy.sh.
@@ -84,7 +84,7 @@ if [ -d "$SOCKET_DIR" ]; then
   done
 fi
 
-# Start Slack bridge in the background (before pi, so it's ready for messages).
+# Start Broker gateway in the background (before pi, so it's ready for messages).
 # Broker pull mode has priority when SLACK_BROKER_* keys are configured.
 # Otherwise fallback to direct Slack Socket Mode.
 BRIDGE_SCRIPT=""
@@ -101,11 +101,11 @@ elif [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
 fi
 
 if [ -n "$BRIDGE_SCRIPT" ]; then
-  RELEASE_BRIDGE="/opt/baudbot/current/slack-bridge"
+  RELEASE_BRIDGE="/opt/baudbot/current/broker-gateway"
   BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
-  BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-  BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
-  BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+  BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/broker-gateway.log"
+  BRIDGE_STATUS_FILE="$HOME/.pi/agent/broker-gateway-supervisor.json"
+  BRIDGE_PID_FILE="$HOME/.pi/agent/broker-gateway.pid"
 
   mkdir -p "$BRIDGE_LOG_DIR"
 
@@ -120,7 +120,7 @@ if [ -n "$BRIDGE_SCRIPT" ]; then
     rm -f "$BRIDGE_PID_FILE"
   fi
 
-  echo "Starting Slack bridge ($BRIDGE_SCRIPT)... logs: $BRIDGE_LOG_FILE"
+  echo "Starting Broker gateway ($BRIDGE_SCRIPT)... logs: $BRIDGE_LOG_FILE"
   (
     export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
     cd "$RELEASE_BRIDGE"
@@ -136,8 +136,10 @@ fi
 # Set session name (read by auto-name.ts extension)
 export PI_SESSION_NAME="control-agent"
 
-# Pick model based on available API keys (first match wins)
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+# Pick model: explicit override or auto-detect from API keys (first match wins)
+if [ -n "${BAUDBOT_MODEL:-}" ]; then
+  MODEL="$BAUDBOT_MODEL"
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   MODEL="anthropic/claude-opus-4-6"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then
   MODEL="openai/gpt-5.2-codex"

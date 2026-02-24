@@ -209,14 +209,14 @@ EOF
 
 install_release_bridge_dependencies() {
   local release_dir="$1"
-  local bridge_dir="$release_dir/slack-bridge"
+  local bridge_dir="$release_dir/broker-gateway"
 
   if [ ! -d "$bridge_dir" ] || [ ! -f "$bridge_dir/package.json" ]; then
-    log "slack-bridge package.json missing; skipping bridge dependency install"
+    log "broker-gateway package.json missing; skipping bridge dependency install"
     return 0
   fi
 
-  log "installing production Slack bridge dependencies in release"
+  log "installing production Broker gateway dependencies in release"
   rm -rf "$bridge_dir/node_modules"
 
   if [ -f "$bridge_dir/package-lock.json" ]; then

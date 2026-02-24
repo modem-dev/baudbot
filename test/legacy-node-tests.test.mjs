@@ -24,7 +24,7 @@ describe("legacy node:test suites", () => {
   });
 
   it("bridge security", () => {
-    expect(() => runNodeTest("slack-bridge/security.test.mjs")).not.toThrow();
+    expect(() => runNodeTest("broker-gateway/security.test.mjs")).not.toThrow();
   });
 
   it("extension scanner", () => {

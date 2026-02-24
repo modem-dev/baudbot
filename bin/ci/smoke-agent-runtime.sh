@@ -15,7 +15,7 @@ readonly AGENT_USER="baudbot_agent"
 readonly AGENT_HOME="/home/${AGENT_USER}"
 readonly CONTROL_DIR="${AGENT_HOME}/.pi/session-control"
 readonly CONTROL_ALIAS="${CONTROL_DIR}/control-agent.alias"
-readonly BRIDGE_STATUS_FILE="${AGENT_HOME}/.pi/agent/slack-bridge-supervisor.json"
+readonly BRIDGE_STATUS_FILE="${AGENT_HOME}/.pi/agent/broker-gateway-supervisor.json"
 readonly START_TIMEOUT_SECONDS=60
 readonly STABILIZE_SECONDS=20
 

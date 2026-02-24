@@ -108,11 +108,14 @@ bash /home/baudbot_admin/baudbot/bin/ci/smoke-cli.sh
 echo "=== Running runtime smoke checks ==="
 bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-runtime.sh
 
+echo "=== Running inference smoke check ==="
+bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-inference.sh
+
 echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node/bin:$PATH"
 cd /home/baudbot_admin/baudbot
 npm install --ignore-scripts 2>&1 | tail -1
-cd slack-bridge && npm install 2>&1 | tail -1
+cd broker-gateway && npm install 2>&1 | tail -1
 cd ..
 
 echo "=== Running tests ==="

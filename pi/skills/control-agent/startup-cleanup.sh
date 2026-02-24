@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startup-cleanup.sh — Clean stale sockets and restart the Slack bridge.
+# startup-cleanup.sh — Clean stale sockets and restart the Broker gateway.
 # Run this at the start of every control-agent session.
 #
 # Usage: bash ~/.pi/agent/skills/control-agent/startup-cleanup.sh <live-session-ids...>
@@ -7,7 +7,7 @@
 # Pass the live session UUIDs (from list_sessions) as arguments.
 # Any .sock file whose UUID is NOT in the live set gets removed.
 # Stale .alias symlinks pointing to removed sockets also get cleaned.
-# Then restarts the slack-bridge process with the current control-agent UUID.
+# Then restarts the broker-gateway process with the current control-agent UUID.
 
 set -euo pipefail
 
@@ -63,9 +63,9 @@ done
 
 echo "Cleaned $cleaned stale socket(s)."
 
-# Restart Slack bridge with current control-agent UUID
+# Restart Broker gateway with current control-agent UUID
 echo ""
-echo "=== Slack Bridge Restart ==="
+echo "=== Broker Gateway Restart ==="
 
 # Find control-agent UUID from alias
 CONTROL_ALIAS="$SOCKET_DIR/control-agent.alias"
@@ -73,14 +73,14 @@ if [ -L "$CONTROL_ALIAS" ]; then
   MY_UUID=$(readlink "$CONTROL_ALIAS" | sed 's/.sock$//')
   echo "Control-agent UUID: $MY_UUID"
 else
-  echo "ERROR: control-agent.alias not found. Cannot start Slack bridge."
+  echo "ERROR: control-agent.alias not found. Cannot start Broker gateway."
   exit 1
 fi
 
-BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+BRIDGE_PID_FILE="$HOME/.pi/agent/broker-gateway.pid"
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
-BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
+BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/broker-gateway.log"
+BRIDGE_STATUS_FILE="$HOME/.pi/agent/broker-gateway-supervisor.json"
 
 kill_bridge_supervisor() {
   local bridge_pid="$1"
@@ -103,11 +103,11 @@ kill_bridge_supervisor() {
   kill -9 "$bridge_pid" 2>/dev/null || true
 }
 
-# Kill existing slack-bridge process if running
+# Kill existing broker-gateway process if running
 if [ -f "$BRIDGE_PID_FILE" ]; then
   BRIDGE_PID="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
   if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
-    echo "Killing existing slack-bridge process (pid=$BRIDGE_PID)..."
+    echo "Killing existing broker-gateway process (pid=$BRIDGE_PID)..."
     kill_bridge_supervisor "$BRIDGE_PID"
   fi
   rm -f "$BRIDGE_PID_FILE"
@@ -117,7 +117,7 @@ fi
 # then Socket Mode when SLACK_BOT_TOKEN + SLACK_APP_TOKEN are present.
 # If neither mode is configured, skip bridge startup.
 BRIDGE_SCRIPT=""
-if [ -f "/opt/baudbot/current/slack-bridge/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
+if [ -f "/opt/baudbot/current/broker-gateway/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
   test -n "$SLACK_BROKER_URL" &&
   test -n "$SLACK_BROKER_WORKSPACE_ID" &&
   test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
@@ -139,9 +139,9 @@ if [ -z "$BRIDGE_SCRIPT" ]; then
   exit 0
 fi
 
-# Start fresh slack-bridge
+# Start fresh broker-gateway
 # Keep a supervisor loop (matching start.sh) so bridge restarts automatically on crash.
-echo "Starting slack-bridge ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
+echo "Starting broker-gateway ($BRIDGE_SCRIPT) with PI_SESSION_ID=$MY_UUID..."
 mkdir -p "$BRIDGE_LOG_DIR"
 (
   unset PKG_EXECPATH
@@ -157,7 +157,7 @@ mkdir -p "$BRIDGE_LOG_DIR"
   fi
   export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH"
   export PI_SESSION_ID="$MY_UUID"
-  cd /opt/baudbot/current/slack-bridge
+  cd /opt/baudbot/current/broker-gateway
 
   if command -v bb_bridge_supervise >/dev/null 2>&1; then
     bb_bridge_supervise "$BRIDGE_LOG_FILE" "$BRIDGE_STATUS_FILE" "$BRIDGE_SCRIPT" \
@@ -184,9 +184,9 @@ echo "Bridge logs: $BRIDGE_LOG_FILE"
 sleep 3
 HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "400" ]; then
-  echo "✅ Slack bridge is up (HTTP $HTTP_CODE)"
+  echo "✅ Broker gateway is up (HTTP $HTTP_CODE)"
 else
-  echo "⚠️  Slack bridge may not be ready yet (HTTP $HTTP_CODE). Check manually."
+  echo "⚠️  Broker gateway may not be ready yet (HTTP $HTTP_CODE). Check manually."
 fi
 
 echo ""

@@ -44,7 +44,7 @@ You **can** modify: `~/scripts/`, `~/workspace/baudbot/pi/skills/`, non-security
 
 You **cannot** modify protected files (enforced by file ownership, tool-guard, and pre-commit hook):
 - `bin/`, `hooks/`, `setup.sh`, `start.sh`, `SECURITY.md`
-- `pi/extensions/tool-guard.ts`, `slack-bridge/security.mjs` (and their tests)
+- `pi/extensions/tool-guard.ts`, `broker-gateway/security.mjs` (and their tests)
 
 ## Memory
 

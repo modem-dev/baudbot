@@ -9,13 +9,13 @@
 # The agent can freely modify:
 #   - pi/skills/          (operational knowledge)
 #   - pi/extensions/      (non-security extensions like zen-provider.ts, auto-name.ts, etc.)
-#   - slack-bridge/bridge.mjs (non-security bridge code)
+#   - broker-gateway/bridge.mjs (non-security bridge code)
 #   - README.md, .gitignore, etc.
 #
 # The agent CANNOT modify (blocked by this hook):
 #   - bin/                (security scripts: tool deny lists, firewall, audit, hardening)
 #   - pi/extensions/tool-guard.ts (and its tests)
-#   - slack-bridge/security.mjs (and its tests)
+#   - broker-gateway/security.mjs (and its tests)
 #   - SECURITY.md
 #   - setup.sh
 #   - start.sh
@@ -34,8 +34,8 @@ PROTECTED_PREFIXES=(
 PROTECTED_FILES=(
   "pi/extensions/tool-guard.ts"
   "pi/extensions/tool-guard.test.mjs"
-  "slack-bridge/security.mjs"
-  "slack-bridge/security.test.mjs"
+  "broker-gateway/security.mjs"
+  "broker-gateway/security.test.mjs"
 )
 
 STAGED=$(git diff --cached --name-only --diff-filter=ACDMR)

@@ -1,7 +1,7 @@
 {
   "all": false,
   "include": [
-    "slack-bridge/security.mjs",
+    "broker-gateway/security.mjs",
     "bin/scan-extensions.mjs"
   ],
   "exclude": [

@@ -195,7 +195,7 @@ PY
 
 print_bridge_supervisor_status() {
   local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-  local status_file="/home/$agent_user/.pi/agent/slack-bridge-supervisor.json"
+  local status_file="/home/$agent_user/.pi/agent/broker-gateway-supervisor.json"
   local summary=""
   local mode=""
   local state=""

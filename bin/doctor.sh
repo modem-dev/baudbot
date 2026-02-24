@@ -289,7 +289,7 @@ else
   fi
 fi
 
-BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/broker-gateway"
 if [ -d "$BRIDGE_DIR" ] && [ -f "$BRIDGE_DIR/bridge.mjs" ]; then
   pass "slack bridge deployed ($BRIDGE_DIR)"
 else
@@ -457,7 +457,7 @@ fi
 echo ""
 echo "Runtime health:"
 
-# Slack bridge
+# Broker gateway
 if curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null | grep -q "400"; then
   pass "slack bridge responding (port 7890)"
 else
