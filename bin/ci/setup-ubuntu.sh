@@ -108,6 +108,9 @@ bash /home/baudbot_admin/baudbot/bin/ci/smoke-cli.sh
 echo "=== Running runtime smoke checks ==="
 bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-runtime.sh
 
+echo "=== Running inference smoke check ==="
+bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-inference.sh
+
 echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node/bin:$PATH"
 cd /home/baudbot_admin/baudbot

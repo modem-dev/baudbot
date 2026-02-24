@@ -184,12 +184,20 @@ cmd_wait_ssh() {
 
 # ── run <ip> <ssh_private_key_file> <script> ──────────────────────────────────
 cmd_run() {
-  local ip="${1:?Usage: droplet.sh run <ip> <ssh_private_key_file> <script>}"
+  local ip="${1:?Usage: droplet.sh run <ip> <ssh_private_key_file> <script> [env_vars...]}"
   local key_file="${2:?}"
   local script="${3:?}"
+  shift 3
 
-  ssh -o StrictHostKeyChecking=no -o BatchMode=yes \
-    -i "$key_file" "root@$ip" bash -s < "$script"
+  # Remaining args are KEY=VALUE env vars forwarded to the remote script.
+  # Prepend export statements so the remote bash -s session inherits them.
+  {
+    for var in "$@"; do
+      printf 'export %s\n' "$var"
+    done
+    cat "$script"
+  } | ssh -o StrictHostKeyChecking=no -o BatchMode=yes \
+    -i "$key_file" "root@$ip" bash -s
 }
 
 # ── list ──────────────────────────────────────────────────────────────────────
