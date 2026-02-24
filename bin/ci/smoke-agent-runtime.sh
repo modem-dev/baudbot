@@ -5,7 +5,7 @@
 #  - baudbot starts successfully
 #  - control-agent session socket is created and reachable
 #  - session-control RPC responds successfully
-#  - bridge supervisor status artifact exists
+#  - bridge supervisor status artifact exists (if bridge was started by start.sh)
 #  - process remains healthy for a short stabilization window
 #  - baudbot stops cleanly
 
@@ -139,11 +139,14 @@ main() {
   log "probing session-control RPC"
   probe_rpc_get_message "$socket_path"
 
+  # Bridge is now started by startup-pi.sh (inside the agent), not by
+  # start.sh. In CI the agent doesn't run long enough for startup-pi.sh
+  # to execute, so the status file may not exist. Log but don't fail.
   log "checking bridge supervisor status file"
-  if [[ ! -f "$BRIDGE_STATUS_FILE" ]]; then
-    log "missing bridge supervisor status file: ${BRIDGE_STATUS_FILE}"
-    sudo baudbot status || true
-    exit 1
+  if [[ -f "$BRIDGE_STATUS_FILE" ]]; then
+    log "bridge supervisor status file exists"
+  else
+    log "bridge supervisor status file not found (expected — bridge starts inside agent)"
   fi
 
   log "stabilization window (${STABILIZE_SECONDS}s)"

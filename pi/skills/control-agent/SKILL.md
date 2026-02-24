@@ -292,7 +292,7 @@ Use the Thread value as `thread_ts` when calling `/send` to reply in the same th
 
 Run `list_sessions` to get live UUIDs, then run:
 ```bash
-bash ~/.pi/agent/skills/control-agent/startup-cleanup.sh UUID1 UUID2 UUID3
+bash ~/.pi/agent/skills/control-agent/startup-pi.sh UUID1 UUID2 UUID3
 ```
 
 This removes stale `.sock` files, cleans dead aliases, and restarts the Slack bridge.
@@ -302,7 +302,7 @@ This removes stale `.sock` files, cleans dead aliases, and restarts the Slack br
 ### Checklist
 
 - [ ] Run `list_sessions` — note live UUIDs, confirm `control-agent` is listed
-- [ ] Run `startup-cleanup.sh` with live UUIDs (cleans sockets + restarts Slack bridge)
+- [ ] Run `startup-pi.sh` with live UUIDs (cleans sockets + restarts Slack bridge)
 - [ ] **Read memory files** — `ls ~/.pi/agent/memory/` then read each `.md` file to restore context from previous sessions
 - [ ] If `BAUDBOT_EXPERIMENTAL=1`: verify `BAUDBOT_SECRET`, create/verify `BAUDBOT_EMAIL` inbox, and start email monitor (inline mode, **300s / 5 min**)
 - [ ] Verify heartbeat is active (`heartbeat status` — should show enabled)
@@ -339,11 +339,11 @@ The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry ale
 
 ### Starting the Slack Bridge
 
-The `startup-cleanup.sh` script handles bridge (re)start automatically — it detects broker vs Socket Mode, reads the control-agent UUID, and starts the bridge as a normal background process.
+The `startup-pi.sh` script handles bridge (re)start automatically — it detects broker vs Socket Mode, reads the control-agent UUID, and starts the bridge as a normal background process.
 
 If you need to restart the bridge manually, rerun startup cleanup and then inspect logs:
 ```bash
-bash ~/.pi/agent/skills/control-agent/startup-cleanup.sh UUID1 UUID2 UUID3
+bash ~/.pi/agent/skills/control-agent/startup-pi.sh UUID1 UUID2 UUID3
 tail -n 200 ~/.pi/agent/logs/slack-bridge.log
 cat ~/.pi/agent/slack-bridge-supervisor.json
 ```
@@ -363,7 +363,7 @@ If you need to check manually, use `heartbeat trigger` to run all checks immedia
 When the heartbeat reports a failure, take the appropriate action:
 1. **Missing sentry-agent**: Respawn with tmux and re-send role assignment.
 2. **Orphaned dev-agents**: Kill tmux session and remove worktree.
-3. **Bridge down**: Restart via `startup-cleanup.sh`, then check `~/.pi/agent/logs/slack-bridge.log`.
+3. **Bridge down**: Restart via `startup-pi.sh`, then check `~/.pi/agent/logs/slack-bridge.log`.
 4. **Stale worktrees**: `git worktree remove --force` + `rmdir` empty parents.
 5. **Stuck todos**: Escalate to user via Slack.
 

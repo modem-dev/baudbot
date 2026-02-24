@@ -14,8 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/bin/lib/runtime-node.sh"
-# shellcheck source=bin/lib/bridge-restart-policy.sh
-source "$SCRIPT_DIR/bin/lib/bridge-restart-policy.sh"
+# bridge-restart-policy.sh no longer needed — bridge is started by
+# startup-pi.sh, not start.sh (see PR #164)
 cd ~
 
 NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
@@ -84,53 +84,35 @@ if [ -d "$SOCKET_DIR" ]; then
   done
 fi
 
-# Start Slack bridge in the background (before pi, so it's ready for messages).
-# Broker pull mode has priority when SLACK_BROKER_* keys are configured.
-# Otherwise fallback to direct Slack Socket Mode.
-BRIDGE_SCRIPT=""
-if [ -n "${SLACK_BROKER_URL:-}" ] \
-  && [ -n "${SLACK_BROKER_WORKSPACE_ID:-}" ] \
-  && [ -n "${SLACK_BROKER_SERVER_PRIVATE_KEY:-}" ] \
-  && [ -n "${SLACK_BROKER_SERVER_PUBLIC_KEY:-}" ] \
-  && [ -n "${SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY:-}" ] \
-  && [ -n "${SLACK_BROKER_PUBLIC_KEY:-}" ] \
-  && [ -n "${SLACK_BROKER_SIGNING_PUBLIC_KEY:-}" ]; then
-  BRIDGE_SCRIPT="broker-bridge.mjs"
-elif [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
-  BRIDGE_SCRIPT="bridge.mjs"
-fi
-
-if [ -n "$BRIDGE_SCRIPT" ]; then
-  RELEASE_BRIDGE="/opt/baudbot/current/slack-bridge"
-  BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
-  BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-  BRIDGE_STATUS_FILE="$HOME/.pi/agent/slack-bridge-supervisor.json"
-  BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
-
-  mkdir -p "$BRIDGE_LOG_DIR"
-
-  # Stop any previous bridge process tracked by pid file.
-  if [ -f "$BRIDGE_PID_FILE" ]; then
-    old_pid="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
-    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
-      kill "$old_pid" 2>/dev/null || true
-      sleep 1
-      kill -9 "$old_pid" 2>/dev/null || true
-    fi
-    rm -f "$BRIDGE_PID_FILE"
+# ── Slack bridge cleanup (bridge is started by startup-pi.sh) ──
+# The bridge needs the control-agent's session UUID (PI_SESSION_ID) to deliver
+# messages to the correct socket. That UUID isn't known until pi starts and
+# registers its socket. So we DON'T start the bridge here — the control-agent's
+# startup-pi.sh handles it after the session is live.
+#
+# We DO kill any stale bridge processes from previous runs to avoid port
+# conflicts when startup-pi.sh launches a fresh one.
+BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
+if [ -f "$BRIDGE_PID_FILE" ]; then
+  old_pid="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    echo "Stopping stale bridge supervisor (PID $old_pid)..."
+    kill "$old_pid" 2>/dev/null || true
+    sleep 1
+    kill -9 "$old_pid" 2>/dev/null || true
   fi
-
-  echo "Starting Slack bridge ($BRIDGE_SCRIPT)... logs: $BRIDGE_LOG_FILE"
-  (
-    export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
-    cd "$RELEASE_BRIDGE"
-    bb_bridge_supervise "$BRIDGE_LOG_FILE" "$BRIDGE_STATUS_FILE" "$BRIDGE_SCRIPT" \
-      varlock run --path ~/.config/ -- node "$BRIDGE_SCRIPT"
-  ) &
-  # Intentionally track the supervisor subshell PID (not per-restart node child PID)
-  # so a single kill stops the entire bridge restart loop.
-  echo $! > "$BRIDGE_PID_FILE"
-  chmod 600 "$BRIDGE_PID_FILE"
+  rm -f "$BRIDGE_PID_FILE"
+fi
+# Kill the tmux session too (startup-pi.sh uses this)
+tmux kill-session -t slack-bridge 2>/dev/null || true
+# Force-release port 7890 in case anything survived
+PORT_PIDS="$(lsof -ti :7890 2>/dev/null || true)"
+if [ -n "$PORT_PIDS" ]; then
+  echo "Releasing port 7890 (PIDs: $PORT_PIDS)..."
+  echo "$PORT_PIDS" | xargs kill 2>/dev/null || true
+  sleep 1
+  PORT_PIDS="$(lsof -ti :7890 2>/dev/null || true)"
+  [ -n "$PORT_PIDS" ] && echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
 fi
 
 # Set session name (read by auto-name.ts extension)

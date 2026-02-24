@@ -27,6 +27,17 @@ git commits → PRs → CI feedback → thread updates back to Slack
 
 **Deployment model:** Admin-managed source (this repo) is deployed as immutable, git-free release snapshots under `/opt/baudbot`. The agent runtime (`/home/baudbot_agent`) receives deployed extensions, skills, and bridge code. Updates and rollbacks are atomic symlink switches. See `docs/architecture.md` for full details.
 
+## Startup boundary: `start.sh` vs agent
+
+There are two startup phases with distinct ownership:
+
+| Phase | Owner | Scope |
+|-------|-------|-------|
+| **OS boot** (`start.sh`) | Admin | Env validation, permissions, secrets, socket cleanup, launch `pi` |
+| **Agent boot** (`startup-pi.sh`) | Agent | Slack bridge, sentry-agent, dev-agents, session wiring |
+
+**Rule: `start.sh` must never spawn tmux sessions or background processes that need pi runtime state** (session UUIDs, socket paths, etc.). Those only exist after pi starts. All tmux sessions (bridge, sentry-agent, dev-agents) are owned and managed by the agent via `startup-pi.sh` or extensions. `start.sh` may only *kill* stale processes as pre-cleanup.
+
 ## What this repo contains (high-level)
 
 - `bin/` — operational shell CLI, deploy/update/rollback, security and health scripts

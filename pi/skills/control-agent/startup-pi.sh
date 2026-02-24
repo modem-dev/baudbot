@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# startup-cleanup.sh — Clean stale sockets and restart the Slack bridge.
-# Run this at the start of every control-agent session.
+# startup-pi.sh — Agent-side startup: clean stale sockets + start Slack bridge.
 #
-# Usage: bash ~/.pi/agent/skills/control-agent/startup-cleanup.sh <live-session-ids...>
+# Called automatically by the control-agent on every session start (Step 0 in
+# SKILL.md). start.sh launches pi, pi loads the control-agent skill, and the
+# agent's first action is to run this script.
+#
+# Usage: bash ~/.pi/agent/skills/control-agent/startup-pi.sh <live-session-ids...>
 #
 # Pass the live session UUIDs (from list_sessions) as arguments.
 # Any .sock file whose UUID is NOT in the live set gets removed.
 # Stale .alias symlinks pointing to removed sockets also get cleaned.
-# Then restarts the slack-bridge process with the current control-agent UUID.
+# Then starts the slack-bridge process with the current control-agent UUID.
+#
+# This script is the SOLE owner of the bridge lifecycle. start.sh only does
+# pre-cleanup (kill stale processes, release port) — it never launches the bridge.
 
 set -euo pipefail
 
@@ -143,9 +149,15 @@ if [ -z "$BRIDGE_SCRIPT" ]; then
   exit 0
 fi
 
-# --- Launch bridge in a tmux session with restart loop ---
-# The tmux session stays alive independently of this script (same pattern as
-# sentry-agent). If the bridge crashes, the loop restarts it after 5 seconds.
+# --- Launch bridge in a tmux session with supervised restart loop ---
+# The restart loop:
+# - Re-reads .env on every restart (picks up config changes)
+# - Unsets SLACK_BROKER_* before sourcing (avoids stale parent env)
+# - Tracks consecutive fast failures (<60s runtime) and gives up after 10
+# - Backs off: 5s base + 2s per failure, capped at 60s
+# - Kills port holders before retrying (avoids EADDRINUSE spin)
+MAX_CONSECUTIVE_FAILURES=10
+
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
 NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
 if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
@@ -161,20 +173,35 @@ tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   export PATH=$NODE_BIN_DIR:\$PATH; \
   export PI_SESSION_ID=$MY_UUID; \
   cd $BRIDGE_DIR; \
+  consecutive_failures=0; \
   while true; do \
-    echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT\" >> $BRIDGE_LOG_FILE; \
+    echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT (attempt \$((consecutive_failures + 1)))\" >> $BRIDGE_LOG_FILE; \
+    start_time=\$(date +%s); \
     for v in \$(env | grep ^SLACK_BROKER_ | cut -d= -f1 || true); do unset \$v; done; \
     set -a; source \$HOME/.config/.env; set +a; \
     node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
     exit_code=\$?; \
-    echo \"[\$(date -Is)] bridge: exited with code \$exit_code, restarting in 5s\" >> $BRIDGE_LOG_FILE; \
-    sleep 5; \
-    tries=0; \
-    while lsof -ti :7890 >/dev/null 2>&1 && [ \$tries -lt 10 ]; do \
-      echo \"[\$(date -Is)] bridge: port 7890 still in use, waiting...\" >> $BRIDGE_LOG_FILE; \
-      sleep 2; \
-      tries=\$((tries + 1)); \
-    done; \
+    runtime=\$(( \$(date +%s) - start_time )); \
+    echo \"[\$(date -Is)] bridge: exited with code \$exit_code after \${runtime}s\" >> $BRIDGE_LOG_FILE; \
+    if [ \$runtime -ge 60 ]; then \
+      consecutive_failures=0; \
+    else \
+      consecutive_failures=\$((consecutive_failures + 1)); \
+    fi; \
+    if [ \$consecutive_failures -ge $MAX_CONSECUTIVE_FAILURES ]; then \
+      echo \"[\$(date -Is)] bridge: FATAL — \$consecutive_failures consecutive fast failures, giving up\" >> $BRIDGE_LOG_FILE; \
+      break; \
+    fi; \
+    delay=\$((5 + consecutive_failures * 2)); \
+    [ \$delay -gt 60 ] && delay=60; \
+    echo \"[\$(date -Is)] bridge: restarting in \${delay}s (failures: \$consecutive_failures/$MAX_CONSECUTIVE_FAILURES)\" >> $BRIDGE_LOG_FILE; \
+    sleep \$delay; \
+    port_pids=\$(lsof -ti :7890 2>/dev/null || true); \
+    if [ -n \"\$port_pids\" ]; then \
+      echo \"[\$(date -Is)] bridge: port 7890 still held, killing: \$port_pids\" >> $BRIDGE_LOG_FILE; \
+      echo \"\$port_pids\" | xargs kill -9 2>/dev/null || true; \
+      sleep 1; \
+    fi; \
   done"
 
 echo "Bridge tmux session: $BRIDGE_TMUX_SESSION"
