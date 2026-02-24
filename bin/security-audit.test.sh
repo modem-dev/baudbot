@@ -19,7 +19,7 @@ trap cleanup EXIT
 setup_base() {
   local home="$1"
   rm -rf "$home"
-  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/opt/baudbot/current/slack-bridge" "$home/baudbot/.git"
+  mkdir -p "$home/.config" "$home/.ssh" "$home/.pi" "$home/opt/baudbot/current/broker-gateway" "$home/baudbot/.git"
 
   # Secrets file
   echo "SLACK_BOT_TOKEN=xoxb-test" > "$home/.config/.env"
@@ -38,8 +38,8 @@ setup_base() {
   echo -e "[user]\n\tname = test\n\temail = test@test.com" > "$home/.gitconfig"
 
   # Bridge security module
-  echo "// security" > "$home/opt/baudbot/current/slack-bridge/security.mjs"
-  echo "// tests" > "$home/opt/baudbot/current/slack-bridge/security.test.mjs"
+  echo "// security" > "$home/opt/baudbot/current/broker-gateway/security.mjs"
+  echo "// tests" > "$home/opt/baudbot/current/broker-gateway/security.test.mjs"
 
   # Audit log (fallback location)
   mkdir -p "$home/logs"
@@ -183,7 +183,7 @@ echo ""
 echo "Test: missing bridge security module"
 HOME8="$TMPDIR/no-bridge-sec"
 setup_base "$HOME8"
-rm -f "$HOME8/opt/baudbot/current/slack-bridge/security.mjs"
+rm -f "$HOME8/opt/baudbot/current/broker-gateway/security.mjs"
 
 output=$(run_audit "$HOME8")
 expect_contains "reports missing security module" "$output" "Bridge security module not found"
@@ -195,7 +195,7 @@ echo ""
 echo "Test: missing bridge tests"
 HOME9="$TMPDIR/no-bridge-tests"
 setup_base "$HOME9"
-rm -f "$HOME9/opt/baudbot/current/slack-bridge/security.test.mjs"
+rm -f "$HOME9/opt/baudbot/current/broker-gateway/security.test.mjs"
 
 output=$(run_audit "$HOME9")
 expect_contains "reports missing tests" "$output" "No tests for bridge security"

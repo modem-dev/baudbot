@@ -220,7 +220,7 @@ else
   ok "~/.pi/agent/skills/ is a real directory"
 fi
 
-BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/broker-gateway"
 # shellcheck disable=SC2088
 if [ -d "$BRIDGE_DIR" ]; then
   ok "Release bridge directory exists ($BRIDGE_DIR)"
@@ -252,8 +252,8 @@ if [ -f "$MANIFEST_FILE" ]; then
   for critical_file in \
     ".pi/agent/extensions/tool-guard.ts" \
     ".pi/agent/extensions/tool-guard.test.mjs" \
-    "release/slack-bridge/security.mjs" \
-    "release/slack-bridge/security.test.mjs"; do
+    "release/broker-gateway/security.mjs" \
+    "release/broker-gateway/security.test.mjs"; do
 
     if [[ "$critical_file" == release/* ]]; then
       full_path="$BAUDBOT_CURRENT_LINK/${critical_file#release/}"
@@ -472,13 +472,13 @@ echo "Network"
 bridge_bind=$(ss -tlnp 2>/dev/null | grep ':7890' | awk '{print $4}' | head -1 || true)
 if [ -n "$bridge_bind" ]; then
   if echo "$bridge_bind" | grep -q '127.0.0.1'; then
-    ok "Slack bridge bound to 127.0.0.1:7890"
+    ok "Broker gateway bound to 127.0.0.1:7890"
   else
-    finding "CRITICAL" "Slack bridge bound to $bridge_bind (not localhost!)" \
+    finding "CRITICAL" "Broker gateway bound to $bridge_bind (not localhost!)" \
       "Should bind to 127.0.0.1 only"
   fi
 else
-  finding "INFO" "Slack bridge not running" ""
+  finding "INFO" "Broker gateway not running" ""
 fi
 
 # Check firewall rules

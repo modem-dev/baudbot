@@ -401,7 +401,7 @@ VEOF
       echo '  \"source_sha\": \"$GIT_SHA\",'
       echo '  \"files\": {'
       first=1
-      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '/opt/baudbot/current/slack-bridge' '$BAUDBOT_HOME/runtime/bin'; do
+      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '/opt/baudbot/current/broker-gateway' '$BAUDBOT_HOME/runtime/bin'; do
         if [ -d \"\$dir\" ]; then
           while IFS= read -r f; do
             hash=\$(sha256sum \"\$f\" | cut -d' ' -f1)

@@ -245,8 +245,8 @@ while IFS= read -r dir; do
   (cd "$dir" && npm install)
 done < <(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_modules/*' -exec dirname {} \;)
 
-echo "=== Installing Slack bridge dependencies ==="
-(cd "$REPO_DIR/slack-bridge" && npm install)
+echo "=== Installing Broker gateway dependencies ==="
+(cd "$REPO_DIR/broker-gateway" && npm install)
 
 echo "=== Installing varlock ==="
 # varlock must be available to the agent user (start.sh adds ~/.varlock/bin to PATH).

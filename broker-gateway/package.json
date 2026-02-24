@@ -1,7 +1,7 @@
 {
-  "name": "slack-bridge",
+  "name": "broker-gateway",
   "version": "1.0.0",
-  "description": "Slack bridges (Socket Mode + broker pull mode)",
+  "description": "Broker gateways (Socket Mode + broker pull mode)",
   "main": "bridge.mjs",
   "type": "module",
   "scripts": {
