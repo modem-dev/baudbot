@@ -2,8 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["pi/extensions/**/*.test.mjs", "test/**/*.test.mjs"],
-    exclude: ["pi/extensions/tool-guard.test.mjs"],
+    include: ["test/**/*.shell.test.mjs"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     fileParallelism: false,
