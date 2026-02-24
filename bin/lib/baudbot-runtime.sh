@@ -324,20 +324,6 @@ resolve_pi_session_id() {
   return 1
 }
 
-pause_before_attach() {
-  if [ "${BAUDBOT_ATTACH_NO_PAUSE:-0}" = "1" ]; then
-    return 0
-  fi
-
-  if [ -t 0 ] && [ -t 1 ]; then
-    echo -e "${DIM}Press Enter to attach (Ctrl+C to cancel)...${RESET}"
-    # shellcheck disable=SC2162
-    read _
-  else
-    sleep 2
-  fi
-}
-
 cmd_status() {
   if has_systemd && systemctl is-enabled baudbot &>/dev/null; then
     local status_rc=0
@@ -433,128 +419,103 @@ cmd_sessions() {
   fi
 }
 
-cmd_attach() {
-  require_root "attach"
+cmd_debug() {
+  require_root "debug"
 
   local AGENT_USER="baudbot_agent"
   local AGENT_HOME="/home/$AGENT_USER"
-  local ATTACH_MODE="auto"
-  local TARGET=""
-  local tmux_target pi_target
+  local MODEL=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --pi)
-        ATTACH_MODE="pi"
-        shift
-        ;;
-      --tmux)
-        ATTACH_MODE="tmux"
-        shift
+      --model)
+        MODEL="$2"
+        shift 2
         ;;
       -h|--help)
-        echo "Usage: sudo baudbot attach [--pi|--tmux] [session-name|session-id]"
+        echo "Usage: sudo baudbot debug [--model <model>]"
         echo ""
-        echo "Examples:"
-        echo "  sudo baudbot attach                  # defaults to control-agent"
-        echo "  sudo baudbot attach --pi control-agent"
-        echo "  sudo baudbot attach --pi <uuid>"
-        echo "  sudo baudbot attach --tmux sentry-agent"
+        echo "Launch a debug agent with a live dashboard showing control-agent"
+        echo "activity, health metrics, and system state. Use send_to_session"
+        echo "to communicate with running agents."
+        echo ""
+        echo "Options:"
+        echo "  --model <model>   LLM model to use (default: auto-detect from API keys)"
+        echo ""
+        echo "Exit: Ctrl+C (does NOT affect the running control-agent)"
         exit 0
         ;;
       *)
-        if [ -n "$TARGET" ]; then
-          echo "❌ Too many arguments for attach"
-          exit 1
-        fi
-        TARGET="$1"
-        shift
+        echo "❌ Unknown option: $1"
+        echo "Usage: sudo baudbot debug [--model <model>]"
+        exit 1
         ;;
     esac
   done
 
-  if [ -z "$TARGET" ]; then
-    TARGET="control-agent"
-  fi
-
-  attach_tmux_session() {
-    local tmux_target="$1"
-    echo -e "${BOLD}${CYAN}Attaching to tmux session:${RESET} $tmux_target"
-    echo -e "${GREEN}Safe detach:${RESET} Ctrl+b, d ${DIM}(keeps agent running)${RESET}"
-    echo ""
-    pause_before_attach
-    exec sudo -u "$AGENT_USER" tmux attach-session -t "$tmux_target"
-  }
-
-  attach_pi_session() {
-    local pi_target="$1"
-    echo -e "${BOLD}${CYAN}Attaching to pi session:${RESET} $pi_target"
-    echo -e "${BOLD}${YELLOW}Safe detach (does NOT stop the agent):${RESET}"
-    echo -e "  ${YELLOW}1)${RESET} Press Ctrl+C once to clear input/cancel local prompt"
-    echo -e "  ${YELLOW}2)${RESET} Press Ctrl+C again to exit this client"
-    echo -e "  ${GREEN}Agent keeps running under systemd in the background.${RESET}"
-    echo ""
-    pause_before_attach
-    local node_bin_dir=""
-    node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$AGENT_HOME")"
-    exec sudo -u "$AGENT_USER" bash -lc "export PATH='$AGENT_HOME/.varlock/bin:$node_bin_dir':\$PATH; cd ~; varlock run --path ~/.config/ -- pi --session '$pi_target'"
-  }
-
-  choose_tmux_target() {
-    local requested="${1:-}"
-    local first
-
-    if [ -n "$requested" ]; then
-      if sudo -u "$AGENT_USER" tmux has-session -t "$requested" 2>/dev/null; then
-        echo "$requested"
-        return 0
+  # Auto-detect model from env if not specified
+  if [ -z "$MODEL" ]; then
+    # Load env vars to check API keys
+    local env_file="$AGENT_HOME/.config/.env"
+    if [ -r "$env_file" ]; then
+      local env_val=""
+      env_val="$(grep -E '^BAUDBOT_MODEL=' "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+      if [ -n "$env_val" ]; then
+        MODEL="$env_val"
+      else
+        env_val="$(grep -E '^ANTHROPIC_API_KEY=' "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+        if [ -n "$env_val" ]; then
+          MODEL="anthropic/claude-sonnet-4-5"
+        else
+          env_val="$(grep -E '^OPENAI_API_KEY=' "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+          if [ -n "$env_val" ]; then
+            MODEL="openai/gpt-4.1"
+          else
+            env_val="$(grep -E '^GEMINI_API_KEY=' "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+            if [ -n "$env_val" ]; then
+              MODEL="google/gemini-3-flash-preview"
+            fi
+          fi
+        fi
       fi
-      return 1
     fi
 
-    first=$(sudo -u "$AGENT_USER" tmux ls -F '#{session_name}' 2>/dev/null | head -1)
-    [ -n "$first" ] || return 1
-    echo "$first"
-    return 0
-  }
-
-  choose_pi_target() {
-    local requested="${1:-}"
-    local resolved
-
-    if ! resolved=$(resolve_pi_session_id "$AGENT_USER" "$requested"); then
-      return 1
+    if [ -z "$MODEL" ]; then
+      echo "❌ No LLM API key found. Set --model or configure API keys in $AGENT_HOME/.config/.env"
+      exit 1
     fi
+  fi
 
-    [ -n "$resolved" ] || return 1
-    echo "$resolved"
-    return 0
-  }
+  local SKILL_DIR="$AGENT_HOME/.pi/agent/skills/debug-agent"
+  if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+    # Fall back to deployed location
+    SKILL_DIR="/opt/baudbot/current/pi/skills/debug-agent"
+  fi
 
-  if [ "$ATTACH_MODE" = "tmux" ]; then
-    if tmux_target=$(choose_tmux_target "$TARGET"); then
-      attach_tmux_session "$tmux_target"
-    fi
-    echo "❌ tmux session not found. See: sudo baudbot sessions"
+  if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+    echo "❌ Debug agent skill not found. Run: sudo baudbot deploy"
     exit 1
   fi
 
-  if [ "$ATTACH_MODE" = "pi" ]; then
-    if pi_target=$(choose_pi_target "$TARGET"); then
-      attach_pi_session "$pi_target"
-    fi
-    echo "❌ pi session not found. See: sudo baudbot sessions"
-    exit 1
-  fi
+  echo -e "${BOLD}${CYAN}Launching debug agent${RESET}"
+  echo -e "${DIM}Model: $MODEL${RESET}"
+  echo -e "${DIM}Skill: $SKILL_DIR${RESET}"
+  echo -e "${GREEN}Exit: Ctrl+C (does NOT affect the running control-agent)${RESET}"
+  echo ""
 
-  if pi_target=$(choose_pi_target "$TARGET"); then
-    attach_pi_session "$pi_target"
-  fi
+  local node_bin_dir=""
+  node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$AGENT_HOME")"
 
-  if tmux_target=$(choose_tmux_target "$TARGET"); then
-    attach_tmux_session "$tmux_target"
-  fi
-
-  echo "❌ No matching tmux/pi session found. See: sudo baudbot sessions"
-  exit 1
+  exec sudo -u "$AGENT_USER" bash -lc "
+    unset PKG_EXECPATH
+    export PATH='$AGENT_HOME/.varlock/bin:$node_bin_dir':\$PATH
+    export VARLOCK_TELEMETRY_DISABLED=1
+    cd ~
+    varlock run --path ~/.config/ -- pi \
+      --session-control \
+      --model '$MODEL' \
+      --skill '$SKILL_DIR' \
+      -e '$SKILL_DIR/debug-dashboard.ts' \
+      '/skill:debug-agent'
+  "
 }
