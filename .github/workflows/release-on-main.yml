@@ -67,10 +67,11 @@ jobs:
 
           gh api \
             --paginate \
+            --slurp \
             "/repos/$OWNER/$REPO/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100" \
             > /tmp/all_prs.json
 
-          jq --arg start "$START_DATE" '[.[] | select(.merged_at != null and .merged_at > $start)] | sort_by(.merged_at)' /tmp/all_prs.json > /tmp/merged_prs.json
+          jq --arg start "$START_DATE" 'flatten | map(select(.merged_at != null and .merged_at > $start)) | sort_by(.merged_at)' /tmp/all_prs.json > /tmp/merged_prs.json
 
           COUNT=$(jq 'length' /tmp/merged_prs.json)
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
