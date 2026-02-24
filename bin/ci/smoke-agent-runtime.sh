@@ -77,28 +77,31 @@ sock_path = sys.argv[1]
 request = {"type": "get_message", "id": "ci-runtime-smoke"}
 
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-client.settimeout(4)
-client.connect(sock_path)
-client.sendall((json.dumps(request) + "\n").encode("utf-8"))
+try:
+    client.settimeout(4)
+    client.connect(sock_path)
+    client.sendall((json.dumps(request) + "\n").encode("utf-8"))
 
-buf = b""
-while b"\n" not in buf:
-    chunk = client.recv(4096)
-    if not chunk:
-        break
-    buf += chunk
+    buf = b""
+    while b"\n" not in buf:
+        chunk = client.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
 
-if not buf:
-    print("empty rpc response", file=sys.stderr)
-    sys.exit(1)
+    if not buf:
+        print("empty rpc response", file=sys.stderr)
+        sys.exit(1)
 
-line = buf.split(b"\n", 1)[0].decode("utf-8", errors="replace")
-response = json.loads(line)
-if not response.get("success", False):
-    print(f"rpc reported failure: {response}", file=sys.stderr)
-    sys.exit(1)
+    line = buf.split(b"\n", 1)[0].decode("utf-8", errors="replace")
+    response = json.loads(line)
+    if not response.get("success", False):
+        print(f"rpc reported failure: {response}", file=sys.stderr)
+        sys.exit(1)
 
-print("rpc-ok")
+    print("rpc-ok")
+finally:
+    client.close()
 PY
 }
 
