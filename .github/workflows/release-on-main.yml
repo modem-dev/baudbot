@@ -1,0 +1,255 @@
+name: Release on main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Determine last release tag
+        id: last_tag
+        run: |
+          git fetch --tags --force
+          LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LAST_TAG" ]; then
+            LAST_TAG="v0.0.0"
+          fi
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Gather merged PRs since last tag
+        id: prs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LAST_TAG: ${{ steps.last_tag.outputs.last_tag }}
+        run: |
+          set -euo pipefail
+          OWNER_REPO="${GITHUB_REPOSITORY}"
+          OWNER="${OWNER_REPO%/*}"
+          REPO="${OWNER_REPO#*/}"
+
+          if [ "$LAST_TAG" = "v0.0.0" ]; then
+            START_DATE="1970-01-01T00:00:00Z"
+          else
+            START_DATE=$(git log -1 --format=%cI "$LAST_TAG")
+          fi
+
+          gh api \
+            --paginate \
+            "/repos/$OWNER/$REPO/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100" \
+            > /tmp/all_prs.json
+
+          jq --arg start "$START_DATE" '[.[] | select(.merged_at != null and .merged_at > $start)] | sort_by(.merged_at)' /tmp/all_prs.json > /tmp/merged_prs.json
+
+          COUNT=$(jq 'length' /tmp/merged_prs.json)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "pr_context=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          jq '[.[] | {number, title, body, labels: [.labels[].name], user: .user.login, merged_at, html_url}]' /tmp/merged_prs.json > /tmp/pr_context.json
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "pr_context=$(jq -c . /tmp/pr_context.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Decide release bump with Claude Sonnet
+        id: decide
+        if: steps.prs.outputs.has_changes == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_KEY }}
+          PR_CONTEXT: ${{ steps.prs.outputs.pr_context }}
+          LAST_TAG: ${{ steps.last_tag.outputs.last_tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "Missing CI_ANTHROPIC_KEY secret" >&2
+            exit 1
+          fi
+
+          PROMPT=$(cat <<'EOF'
+You are a release manager. Analyze merged pull requests since the last release and decide semver bump.
+Allowed outputs:
+- none
+- patch
+- minor
+
+Rules:
+- Never return major. Major releases are manual-only.
+- Use a judicious standard: user-facing features, capability expansion, or notable additive behavior => minor.
+- Bug fixes, refactors, infra/internal changes, docs/tests only => patch or none.
+- If no meaningful published change, choose none.
+
+Return ONLY strict JSON:
+{"decision":"none|patch|minor","reason":"short reason","highlights":["...","..."]}
+EOF
+)
+
+          jq -n \
+            --arg model "claude-3-5-sonnet-latest" \
+            --arg system "You are precise and must output strict JSON only." \
+            --arg prompt "$PROMPT" \
+            --arg last_tag "$LAST_TAG" \
+            --argjson prs "$PR_CONTEXT" \
+            '{
+              model: $model,
+              max_tokens: 700,
+              temperature: 0,
+              system: $system,
+              messages: [
+                {role: "user", content: ($prompt + "\n\nLast release tag: " + $last_tag + "\n\nPRs:\n" + ($prs|tojson))}
+              ]
+            }' > /tmp/anthropic-payload.json
+
+          curl -sS https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            --data @/tmp/anthropic-payload.json > /tmp/anthropic-response.json
+
+          TEXT=$(jq -r '.content[0].text // empty' /tmp/anthropic-response.json)
+          if [ -z "$TEXT" ]; then
+            echo "Invalid Anthropic response" >&2
+            cat /tmp/anthropic-response.json >&2
+            exit 1
+          fi
+
+          echo "$TEXT" > /tmp/decision-raw.txt
+          jq . /tmp/decision-raw.txt > /tmp/decision.json
+
+          DECISION=$(jq -r '.decision' /tmp/decision.json)
+          REASON=$(jq -r '.reason' /tmp/decision.json)
+
+          if [ "$DECISION" = "major" ]; then
+            echo "Major bump proposed but blocked by policy" >&2
+            exit 1
+          fi
+
+          case "$DECISION" in
+            none|patch|minor) ;;
+            *)
+              echo "Unexpected decision: $DECISION" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+
+      - name: No-op summary
+        if: steps.prs.outputs.has_changes != 'true' || steps.decide.outputs.decision == 'none'
+        run: |
+          echo "## Release decision" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.prs.outputs.has_changes }}" != "true" ]; then
+            echo "No merged PRs since last tag; skipping release." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Decision: none" >> "$GITHUB_STEP_SUMMARY"
+            echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Bump version
+        id: bump
+        if: steps.decide.outputs.decision == 'patch' || steps.decide.outputs.decision == 'minor'
+        env:
+          BUMP: ${{ steps.decide.outputs.decision }}
+        run: |
+          set -euo pipefail
+          CURRENT=$(node -p "require('./package.json').version")
+          NEXT=$(node -e "const v='${CURRENT}'.split('.').map(Number); if('${BUMP}'==='minor'){v[1]++; v[2]=0;} else {v[2]++;} process.stdout.write(v.join('.')); ")
+          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version='${NEXT}'; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n');"
+          if [ -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts
+          fi
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag does not already exist
+        if: steps.bump.outputs.tag != ''
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG. Skipping to keep idempotent."
+            exit 0
+          fi
+
+      - name: Commit and tag
+        if: steps.bump.outputs.tag != ''
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json || true
+          git commit -m "release: ${TAG}"
+          git tag "$TAG"
+          git push origin main
+          git push origin "$TAG"
+
+      - name: Build changelog markdown
+        id: changelog
+        if: steps.bump.outputs.tag != ''
+        env:
+          PR_CONTEXT: ${{ steps.prs.outputs.pr_context }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          DECISION: ${{ steps.decide.outputs.decision }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## ${TAG}"
+            echo
+            echo "Release type: ${DECISION}"
+            echo
+            echo "Reason: ${REASON}"
+            echo
+            echo "### Merged PRs"
+            jq -r '.[] | "- #\(.number) \(.title) (@\(.user)) — \(.html_url)"' <<< "$PR_CONTEXT"
+          } > /tmp/release-notes.md
+          echo "notes_path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          NOTES: ${{ steps.changelog.outputs.notes_path }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists for $TAG; skipping."
+            exit 0
+          fi
+          gh release create "$TAG" --title "$TAG" --notes-file "$NOTES"
+
+      - name: Release summary
+        if: steps.bump.outputs.tag != ''
+        run: |
+          echo "## Release created" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
