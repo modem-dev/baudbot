@@ -131,7 +131,7 @@ async function getPiLatestVersion(): Promise<string | null> {
 
 function detectBridgeType(): string | null {
   try {
-    const out = execSync("ps -eo args 2>/dev/null | grep -E 'broker-bridge|bridge\\.mjs' | grep -v grep", {
+    const out = execSync("ps -eo args", {
       encoding: "utf-8", timeout: 3000,
     }).trim();
     if (out.includes("broker-bridge")) return "broker";
@@ -718,7 +718,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     description: "Refresh the baudbot status dashboard",
     handler: async (_args, ctx) => {
       await refresh();
-      ctx.ui.notify("Dashboard refreshed", "info");
+      if (ctx.hasUI) ctx.ui.notify("Dashboard refreshed", "info");
     },
   });
 
@@ -730,7 +730,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
 
     timer = setInterval(async () => {
       try { await refresh(); }
-      catch {}
+      catch (err) { console.error("Dashboard refresh failed:", err); }
     }, REFRESH_INTERVAL_MS);
   });
 
