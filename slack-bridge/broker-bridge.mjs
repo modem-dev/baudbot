@@ -699,7 +699,7 @@ async function handleUserMessage(userMessage, event) {
   const currentSocket = socketPath;
   if (!currentSocket) {
     logError("🔌 no pi socket found — agent may not be running");
-    await say(event.channel, "⏳ Agent is starting up — try again in a moment.", event.ts);
+    await say(event.channel, "🔌 Agent is not connected — it may be restarting or the session expired. Run `sudo baudbot restart` to bring it back.", event.ts);
     return true;
   }
   logInfo(`🔌 forwarding to agent via ${currentSocket}`);
