@@ -1072,6 +1072,7 @@ function startApiServer() {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE" && bindAttempt < MAX_BIND_RETRIES) {
       logWarn(`⚠️ port ${API_PORT} in use, retrying in ${BIND_RETRY_DELAY_MS}ms (attempt ${bindAttempt}/${MAX_BIND_RETRIES})`);
+      server.close();
       setTimeout(tryListen, BIND_RETRY_DELAY_MS);
     } else {
       logError(`❌ HTTP server error: ${err.message}`);
