@@ -302,8 +302,11 @@ else:
   log "status=$status session_alive=$session_alive heartbeat_active=$heartbeat_active"
   log "message: $message"
 
-  if [[ "$status" != "healthy" ]]; then
-    log "agent reports status=$status (expected healthy)"
+  # In CI the Slack bridge has dummy tokens, so the agent correctly reports
+  # "degraded" (bridge auth failure). Both "healthy" and "degraded" are
+  # acceptable — "unhealthy" means core inference/session is broken.
+  if [[ "$status" == "unhealthy" ]]; then
+    log "agent reports unhealthy — core runtime failure"
     dump_diagnostics
     return 1
   fi
