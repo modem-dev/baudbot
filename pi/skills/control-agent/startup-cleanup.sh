@@ -16,6 +16,12 @@ set -euo pipefail
 # processes and causes `varlock run` to treat subcommands as Node module paths).
 unset PKG_EXECPATH 2>/dev/null || true
 
+RUNTIME_NODE_HELPER="$HOME/runtime/bin/lib/runtime-node.sh"
+if [ -r "$RUNTIME_NODE_HELPER" ]; then
+  # shellcheck source=bin/lib/runtime-node.sh
+  source "$RUNTIME_NODE_HELPER"
+fi
+
 SOCKET_DIR="$HOME/.pi/session-control"
 
 if [ $# -eq 0 ]; then
@@ -123,7 +129,10 @@ fi
 # The tmux session stays alive independently of this script (same pattern as
 # sentry-agent). If the bridge crashes, the loop restarts it after 5 seconds.
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
-NODE_BIN_DIR="$HOME/opt/node/bin"
+NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
+if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
+  NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
+fi
 if [ ! -d "$NODE_BIN_DIR" ]; then
   # Fallback: resolve versioned node dir
   NODE_BIN_DIR="$(echo "$HOME"/opt/node-v*-linux-x64/bin | awk '{print $1}')"
@@ -131,12 +140,14 @@ fi
 
 tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   unset PKG_EXECPATH; \
-  export PATH=\$HOME/.varlock/bin:$NODE_BIN_DIR:\$PATH; \
+  export PATH=$NODE_BIN_DIR:\$PATH; \
   export PI_SESSION_ID=$MY_UUID; \
   cd $BRIDGE_DIR; \
   while true; do \
     echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT\" >> $BRIDGE_LOG_FILE; \
-    varlock run --path \$HOME/.config/ -- node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
+    for v in \$(env | grep ^SLACK_BROKER_ | cut -d= -f1 || true); do unset \$v; done; \
+    set -a; source \$HOME/.config/.env; set +a; \
+    node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
     exit_code=\$?; \
     echo \"[\$(date -Is)] bridge: exited with code \$exit_code, restarting in 5s\" >> $BRIDGE_LOG_FILE; \
     sleep 5; \

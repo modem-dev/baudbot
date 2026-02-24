@@ -293,6 +293,14 @@ deploy_runtime_asset_entry() {
 
 bb_manifest_for_each RUNTIME_ASSET_MANIFEST deploy_runtime_asset_entry
 
+# Clean up legacy bridge runtime path; bridge now runs from /opt release only.
+if [ "$DRY_RUN" -eq 0 ]; then
+  as_agent bash -c "rm -rf '$BAUDBOT_HOME/runtime/slack-bridge'"
+  log "✓ removed legacy runtime/slack-bridge"
+else
+  log "would remove: runtime/slack-bridge (legacy path)"
+fi
+
 # ── Memory Seeds ─────────────────────────────────────────────────────────────
 
 MEMORY_SEED_DIR="$STAGE_DIR/skills/control-agent/memory"

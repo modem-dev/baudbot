@@ -253,7 +253,7 @@ const BASH_DENY_RULES: DenyRule[] = [
   ] : []),
   {
     id: "chmod-runtime-security",
-    pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security)\./,
+    pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security|opt\/baudbot\/current\/slack-bridge\/security)\./,
     label: "chmod on protected runtime security file",
     severity: "block" as const,
     tier: "high" as const,
@@ -311,8 +311,8 @@ function isAllowedWritePath(filePath: string): boolean {
 const PROTECTED_RUNTIME_FILES = [
   `${AGENT_HOME}/.pi/agent/extensions/tool-guard.ts`,
   `${AGENT_HOME}/.pi/agent/extensions/tool-guard.test.mjs`,
-  `${AGENT_HOME}/runtime/slack-bridge/security.mjs`,
-  `${AGENT_HOME}/runtime/slack-bridge/security.test.mjs`,
+  `/opt/baudbot/current/slack-bridge/security.mjs`,
+  `/opt/baudbot/current/slack-bridge/security.test.mjs`,
 ];
 
 function isProtectedPath(filePath: string): boolean {
