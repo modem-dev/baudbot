@@ -62,14 +62,15 @@ interface DashboardData {
   baudbotSha: string | null;
   bridgeUp: boolean;
   bridgeType: string | null;
-  sessions: { name: string; alive: boolean }[];
+  bridgeUptimeMs: number | null;
+  sessions: { name: string; alive: boolean; uptimeMs: number | null }[];
   devAgentCount: number;
   devAgentNames: string[];
   todosInProgress: number;
   todosDone: number;
   todosTotal: number;
   worktreeCount: number;
-  uptimeMs: number;
+  serviceUptimeMs: number | null;
   lastRefresh: Date;
   heartbeat: HeartbeatInfo;
   lastEvent: LastEvent | null;
@@ -131,12 +132,43 @@ async function getPiLatestVersion(): Promise<string | null> {
 
 function detectBridgeType(): string | null {
   try {
-    const out = execSync("ps -eo args", {
+    const out = execSync("ps -eo args 2>/dev/null | grep -E 'broker-bridge|bridge\\.mjs' | grep -v grep", {
       encoding: "utf-8", timeout: 3000,
     }).trim();
     if (out.includes("broker-bridge")) return "broker";
     if (out.includes("bridge.mjs")) return "socket";
     return null;
+  } catch {
+    return null;
+  }
+}
+
+function getBridgeUptime(): number | null {
+  try {
+    const out = execSync("ps -eo etime,cmd 2>/dev/null | grep -E 'broker-bridge|bridge\\.mjs' | grep -v grep", {
+      encoding: "utf-8", timeout: 3000,
+    }).trim();
+    if (!out) return null;
+    
+    // Parse etime format: [[dd-]hh:]mm:ss
+    const etimeStr = out.split(/\s+/)[0];
+    const parts = etimeStr.split(/[-:]/);
+    
+    let seconds = 0;
+    if (parts.length === 4) {
+      // dd-hh:mm:ss
+      seconds = parseInt(parts[0]) * 86400 + parseInt(parts[1]) * 3600 + parseInt(parts[2]) * 60 + parseInt(parts[3]);
+    } else if (parts.length === 3) {
+      // hh:mm:ss
+      seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+    } else if (parts.length === 2) {
+      // mm:ss
+      seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    } else {
+      return null;
+    }
+    
+    return seconds * 1000;
   } catch {
     return null;
   }
@@ -159,8 +191,32 @@ async function checkBridge(): Promise<boolean> {
   }
 }
 
-function getSessions(): { name: string; alive: boolean }[] {
-  const results: { name: string; alive: boolean }[] = [];
+function getSessionUptime(sessionName: string): number | null {
+  try {
+    const aliasFile = join(SOCKET_DIR, `${sessionName}.alias`);
+    const target = readlinkSync(aliasFile);
+    const sessionId = basename(target, ".sock");
+    
+    // Find session file
+    const subdirs = readdirSync(SESSION_DIR);
+    for (const subdir of subdirs) {
+      const dirPath = join(SESSION_DIR, subdir);
+      try {
+        const files = readdirSync(dirPath);
+        const match = files.find((f) => f.includes(sessionId) && f.endsWith(".jsonl"));
+        if (match) {
+          const filePath = join(dirPath, match);
+          const stat = statSync(filePath);
+          return Date.now() - stat.birthtimeMs;
+        }
+      } catch { continue; }
+    }
+  } catch {}
+  return null;
+}
+
+function getSessions(): { name: string; alive: boolean; uptimeMs: number | null }[] {
+  const results: { name: string; alive: boolean; uptimeMs: number | null }[] = [];
   const expected = ["control-agent", "sentry-agent"];
   try {
     const files = readdirSync(SOCKET_DIR);
@@ -168,20 +224,22 @@ function getSessions(): { name: string; alive: boolean }[] {
     for (const alias of expected) {
       const aliasFile = `${alias}.alias`;
       if (!aliases.includes(aliasFile)) {
-        results.push({ name: alias, alive: false });
+        results.push({ name: alias, alive: false, uptimeMs: null });
         continue;
       }
       try {
         const target = readlinkSync(join(SOCKET_DIR, aliasFile));
         const sockPath = join(SOCKET_DIR, target);
-        results.push({ name: alias, alive: existsSync(sockPath) });
+        const alive = existsSync(sockPath);
+        const uptimeMs = alive ? getSessionUptime(alias) : null;
+        results.push({ name: alias, alive, uptimeMs });
       } catch {
-        results.push({ name: alias, alive: false });
+        results.push({ name: alias, alive: false, uptimeMs: null });
       }
     }
   } catch {
     for (const alias of expected) {
-      results.push({ name: alias, alive: false });
+      results.push({ name: alias, alive: false, uptimeMs: null });
     }
   }
   return results;
@@ -227,6 +285,24 @@ function getWorktreeCount(): number {
     }).length;
   } catch {
     return 0;
+  }
+}
+
+function getServiceUptime(): number | null {
+  try {
+    const out = execSync("systemctl show baudbot --property=ActiveEnterTimestamp --value 2>/dev/null", {
+      encoding: "utf-8",
+      timeout: 3000,
+    }).trim();
+    
+    if (!out || out === "" || out === "0") return null;
+    
+    const startTime = new Date(out);
+    if (isNaN(startTime.getTime())) return null;
+    
+    return Date.now() - startTime.getTime();
+  } catch {
+    return null;
   }
 }
 
@@ -533,18 +609,29 @@ function renderDashboard(
   }
 
   const bridgeIcon = data.bridgeUp ? theme.fg("success", "●") : theme.fg("error", "●");
-  const bridgeLabel = data.bridgeUp ? "up" : theme.fg("error", "DOWN");
-  const bridgeTypeStr = data.bridgeType ? dim(` ${data.bridgeType}`) : "";
+  let bridgeLabel: string;
+  if (!data.bridgeUp) {
+    bridgeLabel = theme.fg("error", "bridge DOWN");
+  } else if (data.bridgeType && data.bridgeUptimeMs !== null) {
+    bridgeLabel = `bridge ${data.bridgeType} ${dim(`(up ${formatUptime(data.bridgeUptimeMs)})`)}`;
+  } else if (data.bridgeType) {
+    bridgeLabel = `bridge ${data.bridgeType}`;
+  } else {
+    bridgeLabel = "bridge up";
+  }
 
-  const row1Left = `  baudbot ${bbDisplay}  ${dim("│")}  pi ${piDisplay}  ${dim("│")}  ${bridgeIcon} bridge ${bridgeLabel}${bridgeTypeStr}`;
-  const row1Right = dim(`up ${formatUptime(data.uptimeMs)}`);
-  lines.push(pad(row1Left, row1Right, width));
+  const row1Left = `  baudbot ${bbDisplay}  ${dim("│")}  pi ${piDisplay}  ${dim("│")}  ${bridgeIcon} ${bridgeLabel}`;
+  lines.push(pad(row1Left, "", width));
 
-  // ── Row 2: sessions ──
+  // ── Row 2: sessions with uptimes ──
   const parts: string[] = [];
   for (const s of data.sessions) {
     const icon = s.alive ? theme.fg("success", "●") : theme.fg("error", "●");
-    const label = s.alive ? dim(s.name) : theme.fg("error", s.name);
+    const name = s.alive ? s.name : theme.fg("error", s.name);
+    const uptimeStr = s.alive && s.uptimeMs !== null 
+      ? dim(`(up ${formatUptime(s.uptimeMs)})`)
+      : "";
+    const label = uptimeStr ? `${name} ${uptimeStr}` : name;
     parts.push(`${icon} ${label}`);
   }
   if (data.devAgentCount > 0) {
@@ -631,9 +718,6 @@ function renderDashboard(
     }
   }
 
-  // ── Bottom border ──
-  lines.push(truncateToWidth(dim(bar.repeat(width)), width));
-
   return lines;
 }
 
@@ -641,7 +725,6 @@ function renderDashboard(
 
 export default function dashboardExtension(pi: ExtensionAPI): void {
   let timer: ReturnType<typeof setInterval> | null = null;
-  const startTime = Date.now();
   const piVersion = getPiVersion();
 
   let data: DashboardData | null = null;
@@ -661,6 +744,8 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     const worktreeCount = getWorktreeCount();
     const baudbot = getBaudbotVersion();
     const bridgeType = detectBridgeType();
+    const bridgeUptimeMs = getBridgeUptime();
+    const serviceUptimeMs = getServiceUptime();
     const heartbeat = savedCtx ? readHeartbeatState(savedCtx) : { enabled: true, lastRunAt: null, totalRuns: 0, healthy: true };
 
     data = {
@@ -670,6 +755,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
       baudbotSha: baudbot.sha,
       bridgeUp,
       bridgeType,
+      bridgeUptimeMs,
       sessions,
       devAgentCount: devAgents.count,
       devAgentNames: devAgents.names,
@@ -677,7 +763,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
       todosDone: todoStats.done,
       todosTotal: todoStats.total,
       worktreeCount,
-      uptimeMs: Date.now() - startTime,
+      serviceUptimeMs,
       lastRefresh: new Date(),
       heartbeat,
       lastEvent,
@@ -696,7 +782,6 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
             theme.fg("dim", "─".repeat(width)),
           ];
         }
-        data.uptimeMs = Date.now() - startTime;
         return renderDashboard(data, activityFeed.getLines(), theme, width);
       },
       invalidate() {},
@@ -718,7 +803,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     description: "Refresh the baudbot status dashboard",
     handler: async (_args, ctx) => {
       await refresh();
-      if (ctx.hasUI) ctx.ui.notify("Dashboard refreshed", "info");
+      ctx.ui.notify("Dashboard refreshed", "info");
     },
   });
 
@@ -730,7 +815,7 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
 
     timer = setInterval(async () => {
       try { await refresh(); }
-      catch (err) { console.error("Dashboard refresh failed:", err); }
+      catch {}
     }, REFRESH_INTERVAL_MS);
   });
 
