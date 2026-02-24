@@ -169,12 +169,13 @@ inject_ci_config() {
     return 1
   fi
   log "injecting CI API key and model override into agent .env"
-  sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${CI_ANTHROPIC_API_KEY}|" "$AGENT_ENV"
+  # Run as the agent user to preserve file ownership and permissions (600).
+  sudo -u "$AGENT_USER" sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${CI_ANTHROPIC_API_KEY}|" "$AGENT_ENV"
   # Use a cheap model for the smoke test — no need to burn Sonnet/Opus tokens.
   if grep -q "^BAUDBOT_MODEL=" "$AGENT_ENV" 2>/dev/null; then
-    sed -i "s|^BAUDBOT_MODEL=.*|BAUDBOT_MODEL=${CI_MODEL}|" "$AGENT_ENV"
+    sudo -u "$AGENT_USER" sed -i "s|^BAUDBOT_MODEL=.*|BAUDBOT_MODEL=${CI_MODEL}|" "$AGENT_ENV"
   else
-    echo "BAUDBOT_MODEL=${CI_MODEL}" >> "$AGENT_ENV"
+    sudo -u "$AGENT_USER" bash -c "echo 'BAUDBOT_MODEL=${CI_MODEL}' >> '${AGENT_ENV}'"
   fi
 }
 
