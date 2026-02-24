@@ -268,7 +268,7 @@ jobs:
           echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run release summary
-        if: steps.bump.outputs.tag != "" && steps.dryrun.outputs.enabled == "true"
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled == 'true'
         run: |
           echo "## Dry run: no release published" >> "$GITHUB_STEP_SUMMARY"
           echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
