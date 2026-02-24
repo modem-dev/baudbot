@@ -8,6 +8,7 @@ export default defineConfig({
       "test/legacy-node-tests.test.mjs",
       "test/broker-bridge.integration.test.mjs",
       "test/integrity-status-check.test.mjs",
+      "test/slack-allowed-users-check.test.mjs",
       "test/shell-scripts.test.mjs",
       "test/security-audit.test.mjs",
     ],
