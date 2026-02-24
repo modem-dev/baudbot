@@ -77,6 +77,7 @@ STAGE_DIR=$(mktemp -d /tmp/baudbot-deploy.XXXXXX)
 chmod 755 "$STAGE_DIR"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 
+# shellcheck disable=SC2034  # consumed via nameref in bb_manifest_for_each
 STAGE_MANIFEST=(
   "dir|pi/extensions|extensions|required|always"
   "dir|pi/skills|skills|required|always"
@@ -237,6 +238,7 @@ echo "Deploying runtime scripts..."
 echo "Deploying settings..."
 echo "Deploying env schema..."
 
+# shellcheck disable=SC2034  # consumed via nameref in bb_manifest_for_each
 RUNTIME_ASSET_MANIFEST=(
   "file|skills/control-agent/HEARTBEAT.md|.pi/agent/HEARTBEAT.md|644|agent|0|always|optional|HEARTBEAT.md"
   "file|bin/harden-permissions.sh|runtime/bin/harden-permissions.sh|u+x|agent|0|always|optional|bin/harden-permissions.sh"
