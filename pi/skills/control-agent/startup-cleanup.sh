@@ -123,9 +123,15 @@ fi
 # The tmux session stays alive independently of this script (same pattern as
 # sentry-agent). If the bridge crashes, the loop restarts it after 5 seconds.
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
+NODE_BIN_DIR="$HOME/opt/node/bin"
+if [ ! -d "$NODE_BIN_DIR" ]; then
+  # Fallback: resolve versioned node dir
+  NODE_BIN_DIR="$(echo "$HOME"/opt/node-v*-linux-x64/bin | awk '{print $1}')"
+fi
+
 tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   unset PKG_EXECPATH; \
-  export PATH=\$HOME/.varlock/bin:\$HOME/opt/node-v22.14.0-linux-x64/bin:\$PATH; \
+  export PATH=\$HOME/.varlock/bin:$NODE_BIN_DIR:\$PATH; \
   export PI_SESSION_ID=$MY_UUID; \
   cd $BRIDGE_DIR; \
   while true; do \
