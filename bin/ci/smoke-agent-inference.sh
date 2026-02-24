@@ -17,7 +17,7 @@ readonly AGENT_ENV="${AGENT_HOME}/.config/.env"
 readonly CONTROL_DIR="${AGENT_HOME}/.pi/session-control"
 readonly CONTROL_ALIAS="${CONTROL_DIR}/control-agent.alias"
 readonly START_TIMEOUT_SECONDS=60
-readonly INFERENCE_TIMEOUT_SECONDS=120
+readonly INFERENCE_TIMEOUT_SECONDS=300
 # We ask the agent to run a health check and respond with structured JSON.
 # A successful inference proves: socket → RPC → model API → tool use → response.
 # We parse the JSON and validate the health fields.
@@ -84,75 +84,28 @@ dump_diagnostics() {
   log "--- end diagnostics ---"
 }
 
-# Subscribe to turn_end and wait for the next turn to complete.
-# Used to drain the agent's startup turn before sending our prompt.
-rpc_wait_for_turn_end() {
-  local socket_path="$1"
-  local timeout_seconds="$2"
-
-  sudo -u "$AGENT_USER" python3 - "$socket_path" "$timeout_seconds" <<'PY'
-import json
-import socket
-import sys
-
-sock_path = sys.argv[1]
-timeout_seconds = int(sys.argv[2])
-
-subscribe_cmd = {"type": "subscribe", "event": "turn_end"}
-
-client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-try:
-    client.settimeout(timeout_seconds)
-    client.connect(sock_path)
-    client.sendall((json.dumps(subscribe_cmd) + "\n").encode("utf-8"))
-
-    buf = b""
-    while True:
-        chunk = client.recv(8192)
-        if not chunk:
-            print("connection closed before turn_end", file=sys.stderr)
-            sys.exit(1)
-        buf += chunk
-
-        while b"\n" in buf:
-            line, buf = buf.split(b"\n", 1)
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line.decode("utf-8", errors="replace"))
-            except json.JSONDecodeError:
-                continue
-
-            if msg.get("type") == "event" and msg.get("event") == "turn_end":
-                print("ok")
-                sys.exit(0)
-
-except socket.timeout:
-    print("timeout waiting for turn_end", file=sys.stderr)
-    sys.exit(1)
-finally:
-    client.close()
-PY
-}
-
-# Send a message via session-control RPC and wait for turn_end.
-# Prints the assistant response content on success, exits non-zero on failure.
-rpc_send_wait_turn_end() {
+# Send a follow-up message and wait for a turn_end whose response contains
+# a marker string. This handles the agent's multi-turn startup gracefully:
+# the message is queued after the current turn, and we keep consuming
+# turn_end events until we find one with our expected content.
+rpc_send_and_wait_for_marker() {
   local socket_path="$1"
   local message="$2"
-  local timeout_seconds="$3"
+  local marker="$3"
+  local timeout_seconds="$4"
 
-  sudo -u "$AGENT_USER" python3 - "$socket_path" "$message" "$timeout_seconds" <<'PY'
+  sudo -u "$AGENT_USER" python3 - "$socket_path" "$message" "$marker" "$timeout_seconds" <<'PY'
 import json
 import socket
 import sys
+import re
 
 sock_path = sys.argv[1]
 message = sys.argv[2]
-timeout_seconds = int(sys.argv[3])
+marker = sys.argv[3]
+timeout_seconds = int(sys.argv[4])
 
-send_cmd = {"type": "send", "message": message, "mode": "steer"}
+send_cmd = {"type": "send", "message": message, "mode": "follow_up"}
 subscribe_cmd = {"type": "subscribe", "event": "turn_end"}
 
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -160,17 +113,16 @@ try:
     client.settimeout(timeout_seconds)
     client.connect(sock_path)
 
-    # Send both commands
     client.sendall((json.dumps(send_cmd) + "\n").encode("utf-8"))
     client.sendall((json.dumps(subscribe_cmd) + "\n").encode("utf-8"))
 
     buf = b""
-    send_response = None
+    send_ack = False
 
     while True:
         chunk = client.recv(8192)
         if not chunk:
-            print("connection closed before turn_end", file=sys.stderr)
+            print("connection closed", file=sys.stderr)
             sys.exit(1)
         buf += chunk
 
@@ -185,31 +137,27 @@ try:
             except json.JSONDecodeError:
                 continue
 
-            if msg.get("type") == "response":
-                cmd = msg.get("command", "")
-                if cmd == "send":
-                    if not msg.get("success", False):
-                        print(f"send failed: {msg.get('error', 'unknown')}", file=sys.stderr)
-                        sys.exit(1)
-                    send_response = msg
-                # Ignore subscribe response
+            if msg.get("type") == "response" and msg.get("command") == "send":
+                if not msg.get("success", False):
+                    print(f"send failed: {msg.get('error', 'unknown')}", file=sys.stderr)
+                    sys.exit(1)
+                send_ack = True
+                # turn_end subscriptions are one-shot; re-subscribe so we
+                # keep receiving events across multiple startup turns.
+                client.sendall((json.dumps(subscribe_cmd) + "\n").encode("utf-8"))
                 continue
 
             if msg.get("type") == "event" and msg.get("event") == "turn_end":
-                if send_response is None:
-                    print("received turn_end before send response", file=sys.stderr)
-                    sys.exit(1)
                 data = msg.get("data", {})
-                assistant_msg = data.get("message", {})
-                content = assistant_msg.get("content", "")
-                if not content:
-                    print("turn completed but no assistant content", file=sys.stderr)
-                    sys.exit(1)
-                print(content)
-                sys.exit(0)
+                content = (data.get("message") or {}).get("content", "")
+                if marker in content:
+                    # This is the turn that answered our prompt
+                    print(content)
+                    sys.exit(0)
+                # Not our turn — re-subscribe for the next one
+                client.sendall((json.dumps(subscribe_cmd) + "\n").encode("utf-8"))
+                continue
 
-    print("stream ended without turn_end event", file=sys.stderr)
-    sys.exit(1)
 except socket.timeout:
     print("timeout waiting for inference response", file=sys.stderr)
     sys.exit(1)
@@ -252,12 +200,17 @@ main() {
   fi
   log "control socket ready: ${socket_path}"
 
+  # Unique marker so we can identify our response among startup turns.
+  local marker="CI_HEALTH_CHECK_RESPONSE"
+
   local prompt
-  prompt=$(cat <<'PROMPT'
+  prompt=$(cat <<PROMPT
 Run a quick health check: verify your session is live and check heartbeat status.
-Then respond with ONLY a JSON object (no markdown fences, no other text) matching this schema:
+Then respond with ONLY a JSON object (no markdown fences, no other text) matching this schema.
+You MUST include the marker field exactly as shown.
 
 {
+  "marker": "${marker}",
   "status": "healthy" | "degraded" | "unhealthy",
   "session_alive": true | false,
   "heartbeat_active": true | false,
@@ -268,23 +221,16 @@ PROMPT
 
   # Stream agent logs in the background so CI output shows what the agent is doing.
   sudo journalctl -u baudbot -f --no-pager -o cat &
-  local journal_pid=$!
+  journal_pid=$!
 
-  # The agent's first turn is its startup routine (loading skill, running
-  # checklist). We need to wait for that to finish before sending our prompt,
-  # otherwise we'll get the startup turn_end instead of ours.
-  log "waiting for agent startup turn to complete"
-  if ! rpc_wait_for_turn_end "$socket_path" "$INFERENCE_TIMEOUT_SECONDS" >/dev/null; then
-    log "agent startup turn did not complete"
-    dump_diagnostics
-    return 1
-  fi
-  log "startup turn complete"
-
+  # Send the health check as a follow-up (queued after the current turn).
+  # The agent may be mid-startup, so we keep consuming turn_end events
+  # until we find the one containing our marker.
   log "sending health check prompt (timeout ${INFERENCE_TIMEOUT_SECONDS}s)"
   local response=""
-  if ! response="$(rpc_send_wait_turn_end "$socket_path" \
+  if ! response="$(rpc_send_and_wait_for_marker "$socket_path" \
     "$prompt" \
+    "$marker" \
     "$INFERENCE_TIMEOUT_SECONDS")"; then
     log "inference failed — no response from model"
     dump_diagnostics

@@ -71,7 +71,7 @@ jobs:
             setup_script: bin/ci/setup-arch.sh
 
     name: ${{ matrix.distro }}
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
