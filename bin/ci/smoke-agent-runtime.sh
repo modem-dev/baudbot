@@ -68,7 +68,11 @@ wait_for_control_socket() {
 
 probe_rpc_get_message() {
   local socket_path="$1"
-  sudo -u "$AGENT_USER" python3 - "$socket_path" <<'PY'
+  local attempts=8
+  local delay_seconds=1
+
+  for ((i = 1; i <= attempts; i++)); do
+    if sudo -u "$AGENT_USER" python3 - "$socket_path" <<'PY'
 import json
 import socket
 import sys
@@ -103,6 +107,15 @@ try:
 finally:
     client.close()
 PY
+    then
+      return 0
+    fi
+
+    log "rpc probe attempt ${i}/${attempts} failed; retrying in ${delay_seconds}s"
+    sleep "$delay_seconds"
+  done
+
+  return 1
 }
 
 main() {
