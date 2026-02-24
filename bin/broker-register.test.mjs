@@ -14,6 +14,8 @@ import {
   upsertEnvContent,
   runRegistration,
   isMainModule,
+  lookupUser,
+  resolveConfigTargets,
 } from "./broker-register.mjs";
 
 const FIXTURE_SERVER_KEYS = {
@@ -306,4 +308,36 @@ test("upsertEnvContent updates existing values and appends new ones", () => {
   assert.match(next, /SLACK_ALLOWED_USERS=U3,U4/);
   assert.match(next, /SLACK_BROKER_URL=https:\/\/broker\.example\.com/);
   assert.match(next, /SLACK_BOT_TOKEN=xoxb-old/);
+});
+
+test("lookupUser parses passwd entries correctly", () => {
+  const passwdText = [
+    "root:x:0:0:root:/root:/bin/bash",
+    "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin",
+    "baudbot_agent:x:1001:1001::/home/baudbot_agent:/bin/bash",
+  ].join("\n");
+
+  const root = lookupUser("root", passwdText);
+  assert.deepEqual(root, { username: "root", uid: 0, gid: 0, home: "/root" });
+
+  const agent = lookupUser("baudbot_agent", passwdText);
+  assert.deepEqual(agent, { username: "baudbot_agent", uid: 1001, gid: 1001, home: "/home/baudbot_agent" });
+
+  assert.equal(lookupUser("missing", passwdText), null);
+});
+
+test("resolveConfigTargets uses BAUDBOT_CONFIG_USER when set", () => {
+  const currentUser = os.userInfo().username;
+  // Use BAUDBOT_CONFIG_USER to override admin user detection
+  const targets = resolveConfigTargets({ env: { BAUDBOT_CONFIG_USER: currentUser } });
+  assert.ok(targets.length >= 1);
+  assert.equal(targets[0].user, currentUser);
+  assert.equal(targets[0].label, "admin");
+});
+
+test("resolveConfigTargets throws for unknown BAUDBOT_CONFIG_USER", () => {
+  assert.throws(
+    () => resolveConfigTargets({ env: { BAUDBOT_CONFIG_USER: "no_such_user_xyz" } }),
+    /admin user not found/,
+  );
 });

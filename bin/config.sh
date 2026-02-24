@@ -223,10 +223,6 @@ if [ -n "${BAUDBOT_CONFIG_USER:-}" ]; then
   CONFIG_USER="$BAUDBOT_CONFIG_USER"
 elif [ "$(id -u)" -eq 0 ]; then
   CONFIG_USER="${SUDO_USER:-root}"
-  if [ "$CONFIG_USER" = "root" ]; then
-    echo "Run as: sudo baudbot config (not as root directly)"
-    exit 1
-  fi
 else
   CONFIG_USER="$(whoami)"
 fi
@@ -246,7 +242,7 @@ CONFIG_DIR="$CONFIG_HOME/.baudbot"
 CONFIG_FILE="$CONFIG_DIR/.env"
 
 mkdir -p "$CONFIG_DIR"
-# Ensure owned by the admin user (not root)
+# Ensure owned by the admin user (may be root when running directly as root)
 if [ "$(id -u)" -eq 0 ]; then
   chown "$CONFIG_USER:$CONFIG_USER" "$CONFIG_DIR"
 fi

@@ -374,13 +374,16 @@ export function resolveConfigTargets({ env = process.env } = {}) {
   let adminUser;
   if (explicitConfigUser) {
     adminUser = explicitConfigUser;
-  } else if (isRoot) {
+  } else if (isRoot && sudoUser) {
     adminUser = sudoUser;
+  } else if (isRoot) {
+    // Running directly as root (no sudo) — use root as the admin user.
+    adminUser = "root";
   } else {
     adminUser = os.userInfo().username;
   }
 
-  if (!adminUser || adminUser === "root") {
+  if (!adminUser) {
     throw new Error("could not determine admin user (run as: sudo baudbot broker register)");
   }
 
