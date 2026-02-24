@@ -289,34 +289,62 @@ else
     "Run deploy.sh to generate"
 fi
 
-if [ -f "$BAUDBOT_INTEGRITY_STATUS_FILE" ]; then
-  status_value="$(jq -r '.status // "unknown"' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
-  status_checked_at="$(jq -r '.checked_at // "unknown"' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
-  status_missing="$(jq -r '.missing_files // 0' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
-  status_mismatches="$(jq -r '.hash_mismatches // 0' "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+INTEGRITY_CHECK_SCRIPT="$BAUDBOT_SRC/bin/checks/integrity-status.mjs"
+INTEGRITY_CHECK_NODE_BIN="$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" 2>/dev/null || true)"
+if [ -z "$INTEGRITY_CHECK_NODE_BIN" ] && command -v node >/dev/null 2>&1; then
+  INTEGRITY_CHECK_NODE_BIN="$(command -v node)"
+fi
 
-  case "$status_value" in
-    pass)
-      ok "Last startup integrity check passed ($status_checked_at)"
-      ;;
-    warn)
-      finding "WARN" "Last startup integrity check reported issues" \
-        "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
-      ;;
-    fail)
-      finding "CRITICAL" "Last startup integrity check failed" \
-        "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
-      ;;
-    skipped)
-      finding "WARN" "Last startup integrity check was skipped/disabled" "$status_checked_at"
-      ;;
-    *)
-      finding "INFO" "Startup integrity status unknown" "$BAUDBOT_INTEGRITY_STATUS_FILE"
-      ;;
-  esac
+if [ -n "$INTEGRITY_CHECK_NODE_BIN" ] && [ -f "$INTEGRITY_CHECK_SCRIPT" ]; then
+  integrity_payload="$($INTEGRITY_CHECK_NODE_BIN "$INTEGRITY_CHECK_SCRIPT" "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || true)"
 else
-  finding "WARN" "No startup integrity status found" \
-    "Expected: $BAUDBOT_INTEGRITY_STATUS_FILE (restart agent after deploy)"
+  integrity_payload=""
+fi
+
+if [ -n "$integrity_payload" ]; then
+  status_exists="$(printf '%s' "$integrity_payload" | json_get_string_stdin "exists" 2>/dev/null || true)"
+  status_value="$(printf '%s' "$integrity_payload" | json_get_string_stdin "status" 2>/dev/null || true)"
+  status_checked_at="$(printf '%s' "$integrity_payload" | json_get_string_stdin "checked_at" 2>/dev/null || true)"
+  status_missing="$(printf '%s' "$integrity_payload" | json_get_string_stdin "missing_files" 2>/dev/null || true)"
+  status_mismatches="$(printf '%s' "$integrity_payload" | json_get_string_stdin "hash_mismatches" 2>/dev/null || true)"
+
+  [ -n "$status_exists" ] || status_exists="0"
+  [ -n "$status_value" ] || status_value="unknown"
+  [ -n "$status_checked_at" ] || status_checked_at="unknown"
+  [ -n "$status_missing" ] || status_missing="0"
+  [ -n "$status_mismatches" ] || status_mismatches="0"
+
+  if [ "$status_exists" != "1" ]; then
+    finding "WARN" "No startup integrity status found" \
+      "Expected: $BAUDBOT_INTEGRITY_STATUS_FILE (restart agent after deploy)"
+  else
+    case "$status_value" in
+      pass)
+        ok "Last startup integrity check passed ($status_checked_at)"
+        ;;
+      warn)
+        finding "WARN" "Last startup integrity check reported issues" \
+          "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
+        ;;
+      fail)
+        finding "CRITICAL" "Last startup integrity check failed" \
+          "$status_checked_at — missing: $status_missing, mismatched: $status_mismatches"
+        ;;
+      skipped)
+        finding "WARN" "Last startup integrity check was skipped/disabled" "$status_checked_at"
+        ;;
+      *)
+        finding "INFO" "Startup integrity status unknown" "$BAUDBOT_INTEGRITY_STATUS_FILE"
+        ;;
+    esac
+  fi
+else
+  if [ -f "$BAUDBOT_INTEGRITY_STATUS_FILE" ]; then
+    finding "INFO" "Startup integrity status unreadable" "$BAUDBOT_INTEGRITY_STATUS_FILE"
+  else
+    finding "WARN" "No startup integrity status found" \
+      "Expected: $BAUDBOT_INTEGRITY_STATUS_FILE (restart agent after deploy)"
+  fi
 fi
 echo ""
 

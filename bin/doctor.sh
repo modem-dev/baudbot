@@ -301,31 +301,62 @@ else
 fi
 
 INTEGRITY_STATUS_FILE="$BAUDBOT_INTEGRITY_STATUS_FILE"
-if [ -f "$INTEGRITY_STATUS_FILE" ]; then
-  integrity_status="$(jq -r '.status // "unknown"' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
-  integrity_checked_at="$(jq -r '.checked_at // "unknown"' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "unknown")"
-  integrity_missing="$(jq -r '.missing_files // 0' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
-  integrity_mismatches="$(jq -r '.hash_mismatches // 0' "$INTEGRITY_STATUS_FILE" 2>/dev/null || echo "0")"
+INTEGRITY_CHECK_SCRIPT="$BAUDBOT_ROOT/bin/checks/integrity-status.mjs"
+INTEGRITY_CHECK_NODE_BIN=""
+if [ -n "${NODE_BIN:-}" ] && [ -x "${NODE_BIN:-}" ]; then
+  INTEGRITY_CHECK_NODE_BIN="$NODE_BIN"
+elif command -v node >/dev/null 2>&1; then
+  INTEGRITY_CHECK_NODE_BIN="$(command -v node)"
+fi
 
-  case "$integrity_status" in
-    pass)
-      pass "startup manifest integrity passed ($integrity_checked_at)"
-      ;;
-    warn)
-      warn "startup manifest integrity reported issues at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
-      ;;
-    fail)
-      fail "startup manifest integrity failed at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
-      ;;
-    skipped)
-      warn "startup manifest integrity check is disabled/skipped"
-      ;;
-    *)
-      warn "startup manifest integrity status unknown (file: $INTEGRITY_STATUS_FILE)"
-      ;;
-  esac
+if [ -n "$INTEGRITY_CHECK_NODE_BIN" ] && [ -f "$INTEGRITY_CHECK_SCRIPT" ]; then
+  integrity_payload="$($INTEGRITY_CHECK_NODE_BIN "$INTEGRITY_CHECK_SCRIPT" "$INTEGRITY_STATUS_FILE" 2>/dev/null || true)"
 else
-  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.pi/agent" ]; then
+  integrity_payload=""
+fi
+
+if [ -n "$integrity_payload" ]; then
+  integrity_exists="$(printf '%s' "$integrity_payload" | json_get_string_stdin "exists" 2>/dev/null || true)"
+  integrity_status="$(printf '%s' "$integrity_payload" | json_get_string_stdin "status" 2>/dev/null || true)"
+  integrity_checked_at="$(printf '%s' "$integrity_payload" | json_get_string_stdin "checked_at" 2>/dev/null || true)"
+  integrity_missing="$(printf '%s' "$integrity_payload" | json_get_string_stdin "missing_files" 2>/dev/null || true)"
+  integrity_mismatches="$(printf '%s' "$integrity_payload" | json_get_string_stdin "hash_mismatches" 2>/dev/null || true)"
+
+  [ -n "$integrity_exists" ] || integrity_exists="0"
+  [ -n "$integrity_status" ] || integrity_status="unknown"
+  [ -n "$integrity_checked_at" ] || integrity_checked_at="unknown"
+  [ -n "$integrity_missing" ] || integrity_missing="0"
+  [ -n "$integrity_mismatches" ] || integrity_mismatches="0"
+
+  if [ "$integrity_exists" != "1" ]; then
+    if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.pi/agent" ]; then
+      warn "cannot verify startup manifest integrity status as non-root (run: sudo baudbot doctor)"
+    else
+      warn "startup manifest integrity status file missing ($INTEGRITY_STATUS_FILE)"
+    fi
+  else
+    case "$integrity_status" in
+      pass)
+        pass "startup manifest integrity passed ($integrity_checked_at)"
+        ;;
+      warn)
+        warn "startup manifest integrity reported issues at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
+        ;;
+      fail)
+        fail "startup manifest integrity failed at $integrity_checked_at ($integrity_missing missing, $integrity_mismatches mismatched)"
+        ;;
+      skipped)
+        warn "startup manifest integrity check is disabled/skipped"
+        ;;
+      *)
+        warn "startup manifest integrity status unknown (file: $INTEGRITY_STATUS_FILE)"
+        ;;
+    esac
+  fi
+else
+  if [ -f "$INTEGRITY_STATUS_FILE" ]; then
+    warn "startup manifest integrity status unreadable (file: $INTEGRITY_STATUS_FILE)"
+  elif [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.pi/agent" ]; then
     warn "cannot verify startup manifest integrity status as non-root (run: sudo baudbot doctor)"
   else
     warn "startup manifest integrity status file missing ($INTEGRITY_STATUS_FILE)"
