@@ -71,7 +71,7 @@ jobs:
             setup_script: bin/ci/setup-arch.sh
 
     name: ${{ matrix.distro }}
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -115,7 +115,8 @@ jobs:
           bash bin/ci/droplet.sh run \
             "${{ steps.droplet.outputs.DROPLET_IP }}" \
             ~/.ssh/ci_key \
-            "${{ matrix.setup_script }}"
+            "${{ matrix.setup_script }}" \
+            "CI_ANTHROPIC_API_KEY=${{ secrets.CI_ANTHROPIC_API_KEY }}"
 
       - name: Cleanup
         if: always()
