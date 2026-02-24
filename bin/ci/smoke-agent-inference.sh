@@ -28,8 +28,11 @@ log() {
   printf '[inference-smoke] %s\n' "$*"
 }
 
+journal_pid=""
+
 cleanup() {
   local exit_code=$?
+  [[ -n "$journal_pid" ]] && kill "$journal_pid" 2>/dev/null || true
   if [[ $started -eq 1 ]]; then
     log "cleanup: stopping baudbot"
     sudo baudbot stop >/dev/null 2>&1 || true
@@ -79,6 +82,58 @@ dump_diagnostics() {
   log "--- diagnostics ---"
   sudo baudbot status 2>&1 || true
   log "--- end diagnostics ---"
+}
+
+# Subscribe to turn_end and wait for the next turn to complete.
+# Used to drain the agent's startup turn before sending our prompt.
+rpc_wait_for_turn_end() {
+  local socket_path="$1"
+  local timeout_seconds="$2"
+
+  sudo -u "$AGENT_USER" python3 - "$socket_path" "$timeout_seconds" <<'PY'
+import json
+import socket
+import sys
+
+sock_path = sys.argv[1]
+timeout_seconds = int(sys.argv[2])
+
+subscribe_cmd = {"type": "subscribe", "event": "turn_end"}
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    client.settimeout(timeout_seconds)
+    client.connect(sock_path)
+    client.sendall((json.dumps(subscribe_cmd) + "\n").encode("utf-8"))
+
+    buf = b""
+    while True:
+        chunk = client.recv(8192)
+        if not chunk:
+            print("connection closed before turn_end", file=sys.stderr)
+            sys.exit(1)
+        buf += chunk
+
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                continue
+
+            if msg.get("type") == "event" and msg.get("event") == "turn_end":
+                print("ok")
+                sys.exit(0)
+
+except socket.timeout:
+    print("timeout waiting for turn_end", file=sys.stderr)
+    sys.exit(1)
+finally:
+    client.close()
+PY
 }
 
 # Send a message via session-control RPC and wait for turn_end.
@@ -210,6 +265,21 @@ Then respond with ONLY a JSON object (no markdown fences, no other text) matchin
 }
 PROMPT
 )
+
+  # Stream agent logs in the background so CI output shows what the agent is doing.
+  sudo journalctl -u baudbot -f --no-pager -o cat &
+  local journal_pid=$!
+
+  # The agent's first turn is its startup routine (loading skill, running
+  # checklist). We need to wait for that to finish before sending our prompt,
+  # otherwise we'll get the startup turn_end instead of ours.
+  log "waiting for agent startup turn to complete"
+  if ! rpc_wait_for_turn_end "$socket_path" "$INFERENCE_TIMEOUT_SECONDS" >/dev/null; then
+    log "agent startup turn did not complete"
+    dump_diagnostics
+    return 1
+  fi
+  log "startup turn complete"
 
   log "sending health check prompt (timeout ${INFERENCE_TIMEOUT_SECONDS}s)"
   local response=""
