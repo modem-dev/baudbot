@@ -108,19 +108,8 @@ bash /home/baudbot_admin/baudbot/bin/ci/smoke-cli.sh
 echo "=== Running runtime smoke checks ==="
 bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-runtime.sh
 
-if [[ "${BAUDBOT_CI_INFERENCE_SMOKE:-}" == "1" ]]; then
-  echo "=== Running inference smoke check ==="
-  if bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-inference.sh; then
-    echo "  ✓ inference smoke passed"
-  elif [[ "${BAUDBOT_CI_INFERENCE_SMOKE_OPTIONAL:-}" == "1" ]]; then
-    echo "  ⚠ inference smoke failed (optional — continuing)"
-  else
-    echo "  ✗ inference smoke failed"
-    exit 1
-  fi
-else
-  echo "=== Inference smoke check skipped (set BAUDBOT_CI_INFERENCE_SMOKE=1 to enable) ==="
-fi
+echo "=== Running inference smoke check ==="
+bash /home/baudbot_admin/baudbot/bin/ci/smoke-agent-inference.sh
 
 echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node/bin:$PATH"

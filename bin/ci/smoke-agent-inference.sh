@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Gated inference smoke-test for baudbot.
+# Inference smoke-test for baudbot.
 #
 # Verifies that the control-agent can complete at least one real LLM turn
-# end-to-end via session-control RPC. Default OFF for PR CI; enabled by
-# setting BAUDBOT_CI_INFERENCE_SMOKE=1.
+# end-to-end via session-control RPC.
 #
-# Optional fail-open mode: BAUDBOT_CI_INFERENCE_SMOKE_OPTIONAL=1 logs failure
-# as a warning instead of failing the build (useful for non-nightly runs where
-# flaky provider errors shouldn't block merges).
+# Requires CI_ANTHROPIC_API_KEY in the environment (injected into the
+# agent's .env before starting baudbot).
 #
 # Expects baudbot to be already installed and stoppable via `sudo baudbot`.
 
@@ -149,20 +147,25 @@ finally:
 PY
 }
 
-inject_api_key() {
-  # If a real API key is available in the environment, inject it into the
-  # agent's .env so the runtime can authenticate with the provider.
-  if [[ -n "${CI_ANTHROPIC_API_KEY:-}" ]]; then
-    log "injecting CI API key into agent .env"
-    sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${CI_ANTHROPIC_API_KEY}|" "$AGENT_ENV"
-  elif grep -q "ANTHROPIC_API_KEY=sk-ant-testkey" "$AGENT_ENV" 2>/dev/null; then
-    log "WARNING: agent .env has dummy API key; inference will likely fail"
-    log "  set CI_ANTHROPIC_API_KEY to provide a real key"
+readonly CI_MODEL="anthropic/claude-haiku"
+
+inject_ci_config() {
+  if [[ -z "${CI_ANTHROPIC_API_KEY:-}" ]]; then
+    log "ERROR: CI_ANTHROPIC_API_KEY is not set"
+    return 1
+  fi
+  log "injecting CI API key and model override into agent .env"
+  sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${CI_ANTHROPIC_API_KEY}|" "$AGENT_ENV"
+  # Use a cheap model for the smoke test — no need to burn Sonnet/Opus tokens.
+  if grep -q "^BAUDBOT_MODEL=" "$AGENT_ENV" 2>/dev/null; then
+    sed -i "s|^BAUDBOT_MODEL=.*|BAUDBOT_MODEL=${CI_MODEL}|" "$AGENT_ENV"
+  else
+    echo "BAUDBOT_MODEL=${CI_MODEL}" >> "$AGENT_ENV"
   fi
 }
 
 main() {
-  inject_api_key
+  inject_ci_config
 
   log "starting baudbot"
   sudo baudbot start

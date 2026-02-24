@@ -136,8 +136,10 @@ fi
 # Set session name (read by auto-name.ts extension)
 export PI_SESSION_NAME="control-agent"
 
-# Pick model based on available API keys (first match wins)
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+# Pick model: explicit override or auto-detect from API keys (first match wins)
+if [ -n "${BAUDBOT_MODEL:-}" ]; then
+  MODEL="$BAUDBOT_MODEL"
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   MODEL="anthropic/claude-opus-4-6"
 elif [ -n "${OPENAI_API_KEY:-}" ]; then
   MODEL="openai/gpt-5.2-codex"
