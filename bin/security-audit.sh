@@ -289,30 +289,16 @@ else
     "Run deploy.sh to generate"
 fi
 
-INTEGRITY_CHECK_SCRIPT="$BAUDBOT_SRC/bin/checks/integrity-status.mjs"
-INTEGRITY_CHECK_NODE_BIN="$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" 2>/dev/null || true)"
-if [ -z "$INTEGRITY_CHECK_NODE_BIN" ] && command -v node >/dev/null 2>&1; then
-  INTEGRITY_CHECK_NODE_BIN="$(command -v node)"
-fi
-
-if [ -n "$INTEGRITY_CHECK_NODE_BIN" ] && [ -f "$INTEGRITY_CHECK_SCRIPT" ]; then
-  integrity_payload="$($INTEGRITY_CHECK_NODE_BIN "$INTEGRITY_CHECK_SCRIPT" "$BAUDBOT_INTEGRITY_STATUS_FILE" 2>/dev/null || true)"
-else
-  integrity_payload=""
-fi
+CHECK_NODE_BIN="$(bb_pick_node_bin "$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" 2>/dev/null || true)" || true)"
+INTEGRITY_CHECK_SCRIPT="$SCRIPT_DIR/checks/integrity-status.mjs"
+integrity_payload="$(bb_run_node_check_payload "$CHECK_NODE_BIN" "$INTEGRITY_CHECK_SCRIPT" "$BAUDBOT_INTEGRITY_STATUS_FILE")"
 
 if [ -n "$integrity_payload" ]; then
-  status_exists="$(printf '%s' "$integrity_payload" | json_get_string_stdin "exists" 2>/dev/null || true)"
-  status_value="$(printf '%s' "$integrity_payload" | json_get_string_stdin "status" 2>/dev/null || true)"
-  status_checked_at="$(printf '%s' "$integrity_payload" | json_get_string_stdin "checked_at" 2>/dev/null || true)"
-  status_missing="$(printf '%s' "$integrity_payload" | json_get_string_stdin "missing_files" 2>/dev/null || true)"
-  status_mismatches="$(printf '%s' "$integrity_payload" | json_get_string_stdin "hash_mismatches" 2>/dev/null || true)"
-
-  [ -n "$status_exists" ] || status_exists="0"
-  [ -n "$status_value" ] || status_value="unknown"
-  [ -n "$status_checked_at" ] || status_checked_at="unknown"
-  [ -n "$status_missing" ] || status_missing="0"
-  [ -n "$status_mismatches" ] || status_mismatches="0"
+  status_exists="$(bb_json_field_or_default "$integrity_payload" "exists" "0")"
+  status_value="$(bb_json_field_or_default "$integrity_payload" "status" "unknown")"
+  status_checked_at="$(bb_json_field_or_default "$integrity_payload" "checked_at" "unknown")"
+  status_missing="$(bb_json_field_or_default "$integrity_payload" "missing_files" "0")"
+  status_mismatches="$(bb_json_field_or_default "$integrity_payload" "hash_mismatches" "0")"
 
   if [ "$status_exists" != "1" ]; then
     finding "WARN" "No startup integrity status found" \
@@ -731,17 +717,22 @@ echo ""
 echo "Bridge Configuration"
 
 # Check SLACK_ALLOWED_USERS mode (without reading the actual value)
-if [ -f "$BAUDBOT_HOME/.config/.env" ]; then
-  if grep -q '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
-    allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
-    if [ "$allowed_count" -gt 0 ]; then
-      ok "SLACK_ALLOWED_USERS configured ($allowed_count user(s))"
-    else
-      finding "WARN" "SLACK_ALLOWED_USERS is empty" \
-        "Bridge will allow all workspace members"
-    fi
-  else
+SLACK_ALLOWED_USERS_CHECK_SCRIPT="$SCRIPT_DIR/checks/slack-allowed-users.mjs"
+SLACK_ALLOWED_USERS_ENV_FILE="$BAUDBOT_HOME/.config/.env"
+slack_allowed_users_payload="$(bb_run_node_check_payload "$CHECK_NODE_BIN" "$SLACK_ALLOWED_USERS_CHECK_SCRIPT" "$SLACK_ALLOWED_USERS_ENV_FILE")"
+
+slack_allowed_users_exists="$(bb_json_field_or_default "$slack_allowed_users_payload" "exists" "0")"
+slack_allowed_users_defined="$(bb_json_field_or_default "$slack_allowed_users_payload" "defined" "0")"
+slack_allowed_users_count="$(bb_json_field_or_default "$slack_allowed_users_payload" "count" "0")"
+
+if [ "$slack_allowed_users_exists" = "1" ]; then
+  if [ "$slack_allowed_users_defined" != "1" ]; then
     finding "WARN" "SLACK_ALLOWED_USERS not set in .env" \
+      "Bridge will allow all workspace members"
+  elif [ "$slack_allowed_users_count" -gt 0 ]; then
+    ok "SLACK_ALLOWED_USERS configured ($slack_allowed_users_count user(s))"
+  else
+    finding "WARN" "SLACK_ALLOWED_USERS is empty" \
       "Bridge will allow all workspace members"
   fi
 fi

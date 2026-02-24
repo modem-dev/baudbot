@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/lib/shell-common.sh"
 source "$SCRIPT_DIR/lib/paths-common.sh"
 # shellcheck source=bin/lib/doctor-common.sh
 source "$SCRIPT_DIR/lib/doctor-common.sh"
+# shellcheck source=bin/lib/json-common.sh
+source "$SCRIPT_DIR/lib/json-common.sh"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/lib/runtime-node.sh"
 bb_enable_strict_mode
@@ -63,6 +65,8 @@ else
   NODE_BIN="$(bb_runtime_node_bin_dir "$BAUDBOT_HOME")/node"
   fail "Node.js not found (expected: $NODE_BIN)"
 fi
+
+CHECK_NODE_BIN="$(bb_pick_node_bin "${NODE_BIN:-}" || true)"
 
 PI_BIN="$(bb_resolve_runtime_node_bin_dir "$BAUDBOT_HOME")/pi"
 if [ -x "$PI_BIN" ] || [ -L "$PI_BIN" ]; then
@@ -240,7 +244,10 @@ if [ -f "$ENV_FILE" ]; then
     fi
   fi
 
-  if grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
+  SLACK_ALLOWED_USERS_CHECK_SCRIPT="$BAUDBOT_ROOT/bin/checks/slack-allowed-users.mjs"
+  slack_allowed_users_payload="$(bb_run_node_check_payload "$CHECK_NODE_BIN" "$SLACK_ALLOWED_USERS_CHECK_SCRIPT" "$ENV_FILE")"
+  slack_allowed_users_non_empty="$(bb_json_field_or_default "$slack_allowed_users_payload" "raw_non_empty" "0")"
+  if [ "$slack_allowed_users_non_empty" = "1" ]; then
     pass "SLACK_ALLOWED_USERS is set"
   else
     warn "SLACK_ALLOWED_USERS is not set (all workspace members allowed)"
@@ -302,31 +309,14 @@ fi
 
 INTEGRITY_STATUS_FILE="$BAUDBOT_INTEGRITY_STATUS_FILE"
 INTEGRITY_CHECK_SCRIPT="$BAUDBOT_ROOT/bin/checks/integrity-status.mjs"
-INTEGRITY_CHECK_NODE_BIN=""
-if [ -n "${NODE_BIN:-}" ] && [ -x "${NODE_BIN:-}" ]; then
-  INTEGRITY_CHECK_NODE_BIN="$NODE_BIN"
-elif command -v node >/dev/null 2>&1; then
-  INTEGRITY_CHECK_NODE_BIN="$(command -v node)"
-fi
-
-if [ -n "$INTEGRITY_CHECK_NODE_BIN" ] && [ -f "$INTEGRITY_CHECK_SCRIPT" ]; then
-  integrity_payload="$($INTEGRITY_CHECK_NODE_BIN "$INTEGRITY_CHECK_SCRIPT" "$INTEGRITY_STATUS_FILE" 2>/dev/null || true)"
-else
-  integrity_payload=""
-fi
+integrity_payload="$(bb_run_node_check_payload "$CHECK_NODE_BIN" "$INTEGRITY_CHECK_SCRIPT" "$INTEGRITY_STATUS_FILE")"
 
 if [ -n "$integrity_payload" ]; then
-  integrity_exists="$(printf '%s' "$integrity_payload" | json_get_string_stdin "exists" 2>/dev/null || true)"
-  integrity_status="$(printf '%s' "$integrity_payload" | json_get_string_stdin "status" 2>/dev/null || true)"
-  integrity_checked_at="$(printf '%s' "$integrity_payload" | json_get_string_stdin "checked_at" 2>/dev/null || true)"
-  integrity_missing="$(printf '%s' "$integrity_payload" | json_get_string_stdin "missing_files" 2>/dev/null || true)"
-  integrity_mismatches="$(printf '%s' "$integrity_payload" | json_get_string_stdin "hash_mismatches" 2>/dev/null || true)"
-
-  [ -n "$integrity_exists" ] || integrity_exists="0"
-  [ -n "$integrity_status" ] || integrity_status="unknown"
-  [ -n "$integrity_checked_at" ] || integrity_checked_at="unknown"
-  [ -n "$integrity_missing" ] || integrity_missing="0"
-  [ -n "$integrity_mismatches" ] || integrity_mismatches="0"
+  integrity_exists="$(bb_json_field_or_default "$integrity_payload" "exists" "0")"
+  integrity_status="$(bb_json_field_or_default "$integrity_payload" "status" "unknown")"
+  integrity_checked_at="$(bb_json_field_or_default "$integrity_payload" "checked_at" "unknown")"
+  integrity_missing="$(bb_json_field_or_default "$integrity_payload" "missing_files" "0")"
+  integrity_mismatches="$(bb_json_field_or_default "$integrity_payload" "hash_mismatches" "0")"
 
   if [ "$integrity_exists" != "1" ]; then
     if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.pi/agent" ]; then
