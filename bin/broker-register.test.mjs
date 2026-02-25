@@ -16,6 +16,8 @@ import {
   isMainModule,
   lookupUser,
   resolveConfigTargets,
+  restartAgent,
+  hasSystemd,
 } from "./broker-register.mjs";
 
 const FIXTURE_SERVER_KEYS = {
@@ -48,6 +50,7 @@ test("parseArgs parses long-form options", () => {
     registrationToken: "token-xyz",
     verbose: false,
     help: false,
+    noRestart: false,
   });
 });
 
@@ -340,4 +343,34 @@ test("resolveConfigTargets throws for unknown BAUDBOT_CONFIG_USER", () => {
     () => resolveConfigTargets({ env: { BAUDBOT_CONFIG_USER: "no_such_user_xyz" } }),
     /admin user not found/,
   );
+});
+
+test("parseArgs accepts --no-restart flag", () => {
+  const parsed = parseArgs(["--no-restart", "--registration-token", "tok"]);
+  assert.equal(parsed.noRestart, true);
+  assert.equal(parsed.registrationToken, "tok");
+});
+
+test("parseArgs defaults noRestart to false", () => {
+  const parsed = parseArgs([]);
+  assert.equal(parsed.noRestart, false);
+});
+
+test("restartAgent returns false and warns when execFileSync fails", { skip: !hasSystemd() && "no systemd" }, () => {
+  const logs = [];
+  const logger = (msg) => logs.push(msg);
+  const failingExec = () => { throw new Error("simulated failure"); };
+
+  const result = restartAgent({ logger, execFileSyncImpl: failingExec });
+  assert.equal(result, false);
+});
+
+test("restartAgent calls systemctl restart baudbot on success", { skip: !hasSystemd() && "no systemd" }, () => {
+  const calls = [];
+  const mockExec = (cmd, args) => { calls.push({ cmd, args }); };
+
+  restartAgent({ execFileSyncImpl: mockExec });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].cmd, "systemctl");
+  assert.deepEqual(calls[0].args, ["restart", "baudbot"]);
 });

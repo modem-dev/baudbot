@@ -107,28 +107,24 @@ info "Detected: ${BOLD}$PRETTY_NAME${RESET} ($DISTRO)"
 
 # ── Detect admin user ────────────────────────────────────────────────────────
 
-# If run via sudo, SUDO_USER is the real user. Otherwise ask.
+# If run via sudo, SUDO_USER is the real user. Otherwise detect or ask.
 ADMIN_USER="${SUDO_USER:-}"
 if [ -z "$ADMIN_USER" ] || [ "$ADMIN_USER" = "root" ]; then
-  # Try to find a non-root user with a home directory
-  ADMIN_USER=""
+  # Try to find a non-root user with a home directory as the default candidate
+  CANDIDATE=""
   while IFS=: read -r username _ uid _ _ home _; do
     if [ "$uid" -ge 1000 ] && [ "$uid" -lt 60000 ] && [ -d "$home" ] && [ "$username" != "baudbot_agent" ]; then
-      ADMIN_USER="$username"
+      CANDIDATE="$username"
       break
     fi
   done < /etc/passwd
 
-  if [ -z "$ADMIN_USER" ]; then
-    ask "Admin username (your account, not root): "
-    read -r ADMIN_USER
-  else
-    ask "Admin username [${ADMIN_USER}]: "
-    read -r input
-    if [ -n "$input" ]; then
-      ADMIN_USER="$input"
-    fi
-  fi
+  # Fall back to current user (typically root when running directly as root)
+  CANDIDATE="${CANDIDATE:-$(whoami)}"
+
+  ask "Admin username [${CANDIDATE}]: "
+  read -r input
+  ADMIN_USER="${input:-$CANDIDATE}"
 fi
 
 if ! id "$ADMIN_USER" &>/dev/null; then

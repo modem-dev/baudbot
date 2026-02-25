@@ -12,6 +12,7 @@
  * - agent config: /home/baudbot_agent/.config/.env
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,6 +49,7 @@ export function usageText() {
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
     "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
     "  --registration-token TOKEN  Registration token from dashboard callback (required)",
+    "  --no-restart           Skip automatic agent restart after registration",
     "  -v, --verbose          Show detailed registration progress",
     "  -h, --help             Show this help",
     "",
@@ -62,6 +64,7 @@ export function parseArgs(argv) {
     registrationToken: "",
     verbose: false,
     help: false,
+    noRestart: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -74,6 +77,11 @@ export function parseArgs(argv) {
 
     if (arg === "-v" || arg === "--verbose") {
       out.verbose = true;
+      continue;
+    }
+
+    if (arg === "--no-restart") {
+      out.noRestart = true;
       continue;
     }
 
@@ -558,6 +566,32 @@ export function isMainModule(moduleUrl = import.meta.url, argv1 = process.argv[1
   return moduleUrl === argvUrl || (argvRealUrl !== "" && moduleUrl === argvRealUrl);
 }
 
+export function hasSystemd() {
+  try {
+    fs.accessSync("/run/systemd/system", fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function restartAgent({ logger = () => {}, execFileSyncImpl = execFileSync } = {}) {
+  if (!hasSystemd()) {
+    console.log("⚠️  systemd not available — restart the agent manually.");
+    return false;
+  }
+
+  logger("Restarting agent via systemctl...");
+  try {
+    execFileSyncImpl("systemctl", ["restart", "baudbot"], { stdio: "inherit" });
+    console.log("✅ Agent restarted.");
+    return true;
+  } catch {
+    console.error("⚠️  Agent restart failed — run: sudo baudbot restart");
+    return false;
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const parsed = parseArgs(argv);
 
@@ -597,7 +631,11 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(`  - ${target.path}`);
   }
 
-  console.log("Next step: sudo baudbot restart");
+  if (parsed.noRestart) {
+    console.log("Next step: sudo baudbot restart");
+  } else {
+    restartAgent({ logger });
+  }
 
   return 0;
 }
