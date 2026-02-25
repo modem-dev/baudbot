@@ -94,28 +94,29 @@ mkdir -p "$BRIDGE_LOG_DIR"
 #     and any leftover old-style PID-file supervisor.
 echo "Cleaning up old bridge..."
 
-# Kill the tmux session first — this stops the restart loop from respawning
-# the bridge while we're trying to clean up the port.
-tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+# Kill ALL tmux sessions named slack-bridge. Using list-sessions + filter
+# instead of kill-session -t handles edge cases where multiple sessions
+# somehow got the same name (e.g., from racing startups or orphaned sessions).
+BRIDGE_SESSIONS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${BRIDGE_TMUX_SESSION}$" || true)
+if [ -n "$BRIDGE_SESSIONS" ]; then
+  echo "Killing tmux sessions: $BRIDGE_SESSIONS"
+  echo "$BRIDGE_SESSIONS" | xargs -r -I{} tmux kill-session -t {} 2>/dev/null || true
+fi
 
-# Now gracefully stop any process on the port. SIGTERM lets the bridge close
-# the HTTP server and release the port cleanly; SIGKILL is the fallback.
+# Kill ALL bridge processes (broker-bridge.mjs and bridge.mjs) regardless of
+# which session or process tree they're in. This prevents orphaned processes
+# from surviving control-agent restarts. The pattern is specific enough (unique
+# script names) that false positives are extremely unlikely.
+echo "Killing all bridge processes..."
+pkill -9 -f "broker-bridge\.mjs|bridge\.mjs" 2>/dev/null || true
+sleep 1
+
+# Final safety check: kill anything still on port 7890
 PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
 if [ -n "$PORT_PIDS" ]; then
-  echo "Stopping processes on port 7890 (SIGTERM): $PORT_PIDS"
-  echo "$PORT_PIDS" | xargs kill 2>/dev/null || true
-  # Wait up to 3s for graceful shutdown
-  for i in 1 2 3; do
-    sleep 1
-    PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
-    [ -z "$PORT_PIDS" ] && break
-  done
-  # Force-kill anything that didn't exit
-  if [ -n "$PORT_PIDS" ]; then
-    echo "Force-killing stubborn processes: $PORT_PIDS"
-    echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
-    sleep 1
-  fi
+  echo "Force-killing remaining processes on port 7890: $PORT_PIDS"
+  echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+  sleep 1
 fi
 
 OLD_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
