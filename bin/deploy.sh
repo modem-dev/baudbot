@@ -26,6 +26,8 @@ source "$SCRIPT_DIR/lib/paths-common.sh"
 source "$SCRIPT_DIR/lib/json-common.sh"
 # shellcheck source=bin/lib/deploy-common.sh
 source "$SCRIPT_DIR/lib/deploy-common.sh"
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/lib/runtime-node.sh"
 bb_enable_strict_mode
 bb_init_paths
 
@@ -215,6 +217,36 @@ for ext in "$EXT_SRC"/*; do
     fi
   fi
 done
+
+# Install extension dependencies (extensions with package.json)
+if [ "$DRY_RUN" -eq 0 ]; then
+  npm_bin=""
+  node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$BAUDBOT_HOME" 2>/dev/null || true)"
+  if [ -n "$node_bin_dir" ] && [ -x "$node_bin_dir/npm" ]; then
+    npm_bin="$node_bin_dir/npm"
+  fi
+
+  has_ext_deps=0
+  for ext_dir in "$EXT_DEST"/*/; do
+    [ -d "$ext_dir" ] && [ -f "$ext_dir/package.json" ] && has_ext_deps=1 && break
+  done
+
+  if [ "$has_ext_deps" -eq 1 ] && [ -z "$npm_bin" ]; then
+    bb_log "⚠️  npm not found — cannot install extension dependencies"
+  elif [ -n "$npm_bin" ]; then
+    for ext_dir in "$EXT_DEST"/*/; do
+      [ -d "$ext_dir" ] || continue
+      [ -f "$ext_dir/package.json" ] || continue
+      ext_name="$(basename "$ext_dir")"
+      log "installing dependencies for $ext_name/"
+      if as_agent bash -c "cd '$ext_dir' && '$npm_bin' install --omit=dev 2>&1"; then
+        log "✓ $ext_name/ dependencies installed"
+      else
+        bb_log "⚠️  failed to install dependencies for $ext_name/ — extension may not load"
+      fi
+    done
+  fi
+fi
 
 # ── Skills ───────────────────────────────────────────────────────────────────
 
