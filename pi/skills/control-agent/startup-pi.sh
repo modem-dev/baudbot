@@ -94,9 +94,14 @@ mkdir -p "$BRIDGE_LOG_DIR"
 #     and any leftover old-style PID-file supervisor.
 echo "Cleaning up old bridge..."
 
-# Kill the tmux session first — this stops the restart loop from respawning
-# the bridge while we're trying to clean up the port.
-tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+# Kill ALL tmux sessions named slack-bridge. Using list-sessions + filter
+# instead of kill-session -t handles edge cases where multiple sessions
+# somehow got the same name (e.g., from racing startups or orphaned sessions).
+BRIDGE_SESSIONS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${BRIDGE_TMUX_SESSION}$" || true)
+if [ -n "$BRIDGE_SESSIONS" ]; then
+  echo "Killing tmux sessions: $BRIDGE_SESSIONS"
+  echo "$BRIDGE_SESSIONS" | xargs -r -I{} tmux kill-session -t {} 2>/dev/null || true
+fi
 
 # Kill ALL bridge processes (broker-bridge.mjs and bridge.mjs) to prevent
 # orphaned processes from holding port 7890 after control-agent restarts.
