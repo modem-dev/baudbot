@@ -46,6 +46,8 @@ RELEASE_DIR=""
 log() { bb_log "$1"; }
 die() { bb_die "$1"; }
 
+# shellcheck source=bin/lib/runtime-node.sh
+source "$SCRIPT_DIR/lib/runtime-node.sh"
 # shellcheck source=bin/lib/release-common.sh
 source "$SCRIPT_DIR/lib/release-common.sh"
 # shellcheck source=bin/lib/release-runtime-common.sh
@@ -219,10 +221,19 @@ install_release_bridge_dependencies() {
   log "installing production Slack bridge dependencies in release"
   rm -rf "$bridge_dir/node_modules"
 
+  # Resolve npm from the agent's embedded node runtime, falling back to PATH.
+  local npm_bin="npm"
+  local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
+  local node_bin_dir=""
+  node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
+  if [ -n "$node_bin_dir" ] && [ -x "$node_bin_dir/npm" ]; then
+    npm_bin="$node_bin_dir/npm"
+  fi
+
   if [ -f "$bridge_dir/package-lock.json" ]; then
-    (cd "$bridge_dir" && npm ci --omit=dev)
+    (cd "$bridge_dir" && "$npm_bin" ci --omit=dev)
   else
-    (cd "$bridge_dir" && npm install --omit=dev)
+    (cd "$bridge_dir" && "$npm_bin" install --omit=dev)
   fi
 }
 
