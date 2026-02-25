@@ -14,6 +14,7 @@ import {
   isAllowed,
   cleanMessage,
   formatForSlack,
+  markdownToMrkdwn,
   validateSendParams,
   validateReactParams,
   safeEqualSecret,
@@ -313,6 +314,197 @@ describe("formatForSlack", () => {
     assert.equal(formatForSlack(42), "42");
     assert.equal(formatForSlack(null), "null");
     assert.equal(formatForSlack(undefined), "undefined");
+  });
+});
+
+// ── markdownToMrkdwn ────────────────────────────────────────────────────────
+
+describe("markdownToMrkdwn", () => {
+  // Bold
+  it("converts **bold** to *bold*", () => {
+    assert.equal(markdownToMrkdwn("This is **bold** text"), "This is *bold* text");
+  });
+
+  it("converts __bold__ to *bold*", () => {
+    assert.equal(markdownToMrkdwn("This is __bold__ text"), "This is *bold* text");
+  });
+
+  it("converts multiple bold spans in one line", () => {
+    assert.equal(
+      markdownToMrkdwn("**first** and **second**"),
+      "*first* and *second*",
+    );
+  });
+
+  // Strikethrough
+  it("converts ~~strikethrough~~ to ~strikethrough~", () => {
+    assert.equal(markdownToMrkdwn("This is ~~removed~~ text"), "This is ~removed~ text");
+  });
+
+  // Links
+  it("converts [text](url) to <url|text>", () => {
+    assert.equal(
+      markdownToMrkdwn("See [the docs](https://example.com) here"),
+      "See <https://example.com|the docs> here",
+    );
+  });
+
+  it("converts image ![alt](url) to <url|alt>", () => {
+    assert.equal(
+      markdownToMrkdwn("Check ![screenshot](https://img.example.com/pic.png)"),
+      "Check <https://img.example.com/pic.png|screenshot>",
+    );
+  });
+
+  it("converts image with empty alt to bare URL", () => {
+    assert.equal(
+      markdownToMrkdwn("![](https://img.example.com/pic.png)"),
+      "<https://img.example.com/pic.png>",
+    );
+  });
+
+  // Headings
+  it("converts # Heading to *Heading*", () => {
+    assert.equal(markdownToMrkdwn("# Main Title"), "*Main Title*");
+  });
+
+  it("converts ## Heading to *Heading*", () => {
+    assert.equal(markdownToMrkdwn("## Section"), "*Section*");
+  });
+
+  it("converts ### through ###### headings", () => {
+    assert.equal(markdownToMrkdwn("### Sub"), "*Sub*");
+    assert.equal(markdownToMrkdwn("###### Deep"), "*Deep*");
+  });
+
+  it("does not convert # mid-line", () => {
+    assert.equal(markdownToMrkdwn("Issue #123 is fixed"), "Issue #123 is fixed");
+  });
+
+  // Code blocks
+  it("strips language hint from fenced code blocks", () => {
+    const input = "```javascript\nconsole.log('hi');\n```";
+    const expected = "```\nconsole.log('hi');\n```";
+    assert.equal(markdownToMrkdwn(input), expected);
+  });
+
+  it("preserves content inside fenced code blocks", () => {
+    const input = "```\n**not bold** [not a link](foo)\n```";
+    assert.equal(markdownToMrkdwn(input), input);
+  });
+
+  it("preserves content inside code blocks with language hint", () => {
+    const input = "```sql\nSELECT **col** FROM tbl;\n```";
+    const expected = "```\nSELECT **col** FROM tbl;\n```";
+    assert.equal(markdownToMrkdwn(input), expected);
+  });
+
+  // Inline code
+  it("preserves inline code spans untouched", () => {
+    assert.equal(
+      markdownToMrkdwn("Use `**not bold**` in code"),
+      "Use `**not bold**` in code",
+    );
+  });
+
+  it("does not transform markdown inside inline code", () => {
+    assert.equal(
+      markdownToMrkdwn("Run `rm -rf /` carefully and `[link](url)` there"),
+      "Run `rm -rf /` carefully and `[link](url)` there",
+    );
+  });
+
+  // Horizontal rules
+  it("converts --- horizontal rule", () => {
+    assert.equal(markdownToMrkdwn("above\n---\nbelow"), "above\n─────────\nbelow");
+  });
+
+  it("converts *** horizontal rule", () => {
+    assert.equal(markdownToMrkdwn("above\n***\nbelow"), "above\n─────────\nbelow");
+  });
+
+  it("converts ___ horizontal rule", () => {
+    assert.equal(markdownToMrkdwn("above\n___\nbelow"), "above\n─────────\nbelow");
+  });
+
+  // Pass-through (already valid mrkdwn)
+  it("leaves single *bold* unchanged", () => {
+    assert.equal(markdownToMrkdwn("This is *bold* already"), "This is *bold* already");
+  });
+
+  it("leaves _italic_ unchanged", () => {
+    assert.equal(markdownToMrkdwn("This is _italic_ text"), "This is _italic_ text");
+  });
+
+  it("leaves > blockquotes unchanged", () => {
+    assert.equal(markdownToMrkdwn("> quoted text"), "> quoted text");
+  });
+
+  it("leaves bullet lists unchanged", () => {
+    assert.equal(markdownToMrkdwn("• item one\n• item two"), "• item one\n• item two");
+  });
+
+  it("leaves - bullet lists unchanged", () => {
+    assert.equal(markdownToMrkdwn("- item one\n- item two"), "- item one\n- item two");
+  });
+
+  it("leaves Slack-native links unchanged", () => {
+    assert.equal(markdownToMrkdwn("<https://example.com|click>"), "<https://example.com|click>");
+  });
+
+  // Non-string input
+  it("converts non-string to string", () => {
+    assert.equal(markdownToMrkdwn(42), "42");
+    assert.equal(markdownToMrkdwn(null), "null");
+  });
+
+  // Complex real-world example (like the one from the issue)
+  it("handles a realistic agent message", () => {
+    const input = [
+      "That's a much better approach. Authors are immutable, so the count only needs to increment.",
+      "",
+      "Right now the expensive queries are:",
+      "• **Persons**: person_identities → messages (COUNT DISTINCT on messages table)",
+      "• **Companies**: company_persons → person_identities → messages (even worse — 3-way join)",
+      "",
+      "With message_count on authors instead:",
+      "• **Persons**: person_identities → authors then SUM(authors.message_count)",
+      "• **Companies**: company_persons → person_identities → authors then SUM(...)",
+      "• **Write path is trivial**: just INCREMENT message_count",
+      "",
+      "I'll close both PRs (#2439 and #2440) and open a new one. Want me to go ahead?",
+    ].join("\n");
+
+    const output = markdownToMrkdwn(input);
+
+    // **bold** should become *bold*
+    assert.ok(!output.includes("**Persons**"));
+    assert.ok(output.includes("*Persons*"));
+    assert.ok(!output.includes("**Companies**"));
+    assert.ok(output.includes("*Companies*"));
+    assert.ok(!output.includes("**Write path is trivial**"));
+    assert.ok(output.includes("*Write path is trivial*"));
+
+    // Bullet structure and other text should be preserved
+    assert.ok(output.includes("• *Persons*: person_identities"));
+    assert.ok(output.includes("(#2439 and #2440)"));
+  });
+
+  // Mixed formatting
+  it("handles bold + link in same line", () => {
+    assert.equal(
+      markdownToMrkdwn("See **bold** and [link](https://x.com)"),
+      "See *bold* and <https://x.com|link>",
+    );
+  });
+
+  it("handles multiple code blocks with surrounding markdown", () => {
+    const input = "**Title**\n```js\nconst x = 1;\n```\nSome **more** text\n```\nplain\n```";
+    const output = markdownToMrkdwn(input);
+    assert.ok(output.startsWith("*Title*"));
+    assert.ok(output.includes("```\nconst x = 1;\n```"));
+    assert.ok(output.includes("Some *more* text"));
+    assert.ok(output.includes("```\nplain\n```"));
   });
 });
 

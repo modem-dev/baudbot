@@ -252,6 +252,85 @@ export function formatForSlack(text) {
   return text;
 }
 
+/**
+ * Convert Markdown to Slack mrkdwn.
+ *
+ * The agent (LLM) naturally writes Markdown but Slack uses mrkdwn, which has
+ * different syntax. This converts the most common divergences:
+ *
+ * - **bold** / __bold__         → *bold*
+ * - *italic* / _italic_         → _italic_  (already valid — but must not
+ *                                  collide with bold conversion)
+ * - ~~strikethrough~~           → ~strikethrough~
+ * - [text](url)                 → <url|text>
+ * - ![alt](url)                 → <url|alt>  (image links → plain link)
+ * - # Headings (h1–h6)         → *Heading* (bolded line)
+ * - ```lang\ncode\n```          → ```\ncode\n```  (strip language hint)
+ * - `inline code`               → `inline code`   (already valid)
+ * - > blockquote                → > blockquote     (already valid)
+ * - Ordered list (1. item)      → kept as-is (Slack renders plain text lists fine)
+ * - Horizontal rules (---, ***) → ───────── (unicode line)
+ *
+ * Designed to be safe/idempotent: already-valid mrkdwn passes through unchanged.
+ */
+export function markdownToMrkdwn(text) {
+  if (typeof text !== "string") return String(text);
+
+  // Protect fenced code blocks from transformation by extracting them first.
+  // Use a placeholder unlikely to appear in real text (U+FFFC OBJECT REPLACEMENT CHARACTER).
+  const PH = "\uFFFC";
+  const codeBlocks = [];
+  let processed = text.replace(/```[^\n]*\n([\s\S]*?)```/g, (_match, code) => {
+    const index = codeBlocks.length;
+    codeBlocks.push(`\`\`\`\n${code}\`\`\``);
+    return `${PH}CODEBLOCK_${index}${PH}`;
+  });
+
+  // Protect inline code spans from transformation.
+  const inlineCode = [];
+  processed = processed.replace(/`[^`\n]+`/g, (match) => {
+    const index = inlineCode.length;
+    inlineCode.push(match);
+    return `${PH}INLINE_${index}${PH}`;
+  });
+
+  // Headings: "# Heading" → "*Heading*" (bold line)
+  // Only match at line start; support h1–h6.
+  processed = processed.replace(/^#{1,6}\s+(.+)$/gm, (_, heading) => `*${heading.trim()}*`);
+
+  // Images: ![alt](url) → <url|alt>  (must come before link conversion)
+  processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+    return alt ? `<${url}|${alt}>` : `<${url}>`;
+  });
+
+  // Links: [text](url) → <url|text>
+  processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
+    return `<${url}|${linkText}>`;
+  });
+
+  // Bold: **text** or __text__ → *text*
+  // Use negative lookbehind/ahead to avoid converting already-single-star patterns.
+  // Process ** first, then __ .
+  processed = processed.replace(/\*\*(.+?)\*\*/g, (_, content) => `*${content}*`);
+  processed = processed.replace(/__(.+?)__/g, (_, content) => `*${content}*`);
+
+  // Strikethrough: ~~text~~ → ~text~
+  processed = processed.replace(/~~(.+?)~~/g, (_, content) => `~${content}~`);
+
+  // Horizontal rules: lines that are just ---, ***, or ___ (with optional spaces)
+  processed = processed.replace(/^[ \t]*([-*_])\1{2,}[ \t]*$/gm, "─────────");
+
+  // Restore inline code spans.
+  const inlineRe = new RegExp(`${PH}INLINE_(\\d+)${PH}`, "g");
+  processed = processed.replace(inlineRe, (_, index) => inlineCode[Number(index)]);
+
+  // Restore code blocks.
+  const blockRe = new RegExp(`${PH}CODEBLOCK_(\\d+)${PH}`, "g");
+  processed = processed.replace(blockRe, (_, index) => codeBlocks[Number(index)]);
+
+  return processed;
+}
+
 // ── Bridge API Validation ───────────────────────────────────────────────────
 
 /**

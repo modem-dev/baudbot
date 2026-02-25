@@ -22,6 +22,7 @@ import {
   validateReactParams,
   createRateLimiter,
   sanitizeOutboundText,
+  markdownToMrkdwn,
 } from "./security.mjs";
 import {
   canonicalizeEnvelope,
@@ -701,10 +702,13 @@ function sanitizeOutboundMessage(text, contextLabel) {
   const sanitized = sanitizeOutboundText(text);
   if (sanitized.blocked) {
     logWarn(`🛡️ outbound message blocked (${contextLabel}): ${sanitized.reasons.join(", ")}`);
-  } else if (sanitized.redacted) {
+    return sanitized.text;
+  }
+  if (sanitized.redacted) {
     logWarn(`🧼 outbound message redacted (${contextLabel}): ${sanitized.reasons.join(", ")}`);
   }
-  return sanitized.text;
+  // Convert Markdown → Slack mrkdwn so agent output renders correctly.
+  return markdownToMrkdwn(sanitized.text);
 }
 
 async function handleUserMessage(userMessage, event) {

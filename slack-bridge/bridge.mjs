@@ -34,6 +34,7 @@ import {
   validateSendParams,
   validateReactParams,
   createRateLimiter,
+  markdownToMrkdwn,
 } from "./security.mjs";
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -467,14 +468,15 @@ function startApiServer() {
         }
 
         const { channel, text, thread_ts } = apiRequestBody;
+        const safeText = markdownToMrkdwn(text);
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel,
-          text,
+          text: safeText,
           ...(thread_ts && { thread_ts }),
         });
 
-        console.log(`📤 Sent to ${channel}: ${text.slice(0, 80)}${text.length > 80 ? "..." : ""}`);
+        console.log(`📤 Sent to ${channel}: ${safeText.slice(0, 80)}${safeText.length > 80 ? "..." : ""}`);
 
         // If this is a threaded reply, check for a pending ✅ ack reaction.
         if (thread_ts) {
@@ -511,14 +513,15 @@ function startApiServer() {
           return;
         }
 
+        const safeText = markdownToMrkdwn(text);
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel: thread.channel,
-          text,
+          text: safeText,
           thread_ts: thread.thread_ts,
         });
 
-        console.log(`📤 Reply to ${thread_id} (${thread.channel}): ${text.slice(0, 80)}${text.length > 80 ? "..." : ""}`);
+        console.log(`📤 Reply to ${thread_id} (${thread.channel}): ${safeText.slice(0, 80)}${safeText.length > 80 ? "..." : ""}`);
 
         // Check for a pending ✅ ack reaction on the /reply path too.
         resolveAckReaction(thread.channel, thread.thread_ts);
