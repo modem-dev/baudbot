@@ -469,8 +469,9 @@ function startApiServer() {
         }
 
         const { channel, text, thread_ts } = apiRequestBody;
-        const sanitized = sanitizeOutboundText(text);
-        const safeText = sanitized.blocked ? sanitized.text : markdownToMrkdwn(sanitized.text);
+        const converted = markdownToMrkdwn(text);
+        const sanitized = sanitizeOutboundText(converted);
+        const safeText = sanitized.text;
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel,
@@ -515,8 +516,9 @@ function startApiServer() {
           return;
         }
 
-        const sanitized = sanitizeOutboundText(text);
-        const safeText = sanitized.blocked ? sanitized.text : markdownToMrkdwn(sanitized.text);
+        const converted = markdownToMrkdwn(text);
+        const sanitized = sanitizeOutboundText(converted);
+        const safeText = sanitized.text;
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel: thread.channel,

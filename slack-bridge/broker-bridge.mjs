@@ -699,16 +699,17 @@ async function _react(channel, threadTs, emoji) {
 }
 
 function sanitizeOutboundMessage(text, contextLabel) {
-  const sanitized = sanitizeOutboundText(text);
+  // Convert Markdown → Slack mrkdwn first, then sanitize the final text.
+  // Sanitization runs last so it sees the exact text that will be sent to Slack
+  // (markdown conversion can reshape tokens, e.g. [text](xoxb-...) → <xoxb-...|text>).
+  const converted = markdownToMrkdwn(text);
+  const sanitized = sanitizeOutboundText(converted);
   if (sanitized.blocked) {
     logWarn(`🛡️ outbound message blocked (${contextLabel}): ${sanitized.reasons.join(", ")}`);
-    return sanitized.text;
-  }
-  if (sanitized.redacted) {
+  } else if (sanitized.redacted) {
     logWarn(`🧼 outbound message redacted (${contextLabel}): ${sanitized.reasons.join(", ")}`);
   }
-  // Convert Markdown → Slack mrkdwn so agent output renders correctly.
-  return markdownToMrkdwn(sanitized.text);
+  return sanitized.text;
 }
 
 async function handleUserMessage(userMessage, event) {
