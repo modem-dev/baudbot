@@ -34,6 +34,7 @@ import {
   validateSendParams,
   validateReactParams,
   createRateLimiter,
+  sanitizeOutboundText,
   markdownToMrkdwn,
 } from "./security.mjs";
 
@@ -468,7 +469,8 @@ function startApiServer() {
         }
 
         const { channel, text, thread_ts } = apiRequestBody;
-        const safeText = markdownToMrkdwn(text);
+        const sanitized = sanitizeOutboundText(text);
+        const safeText = sanitized.blocked ? sanitized.text : markdownToMrkdwn(sanitized.text);
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel,
@@ -513,7 +515,8 @@ function startApiServer() {
           return;
         }
 
-        const safeText = markdownToMrkdwn(text);
+        const sanitized = sanitizeOutboundText(text);
+        const safeText = sanitized.blocked ? sanitized.text : markdownToMrkdwn(sanitized.text);
         const result = await app.client.chat.postMessage({
           token: process.env.SLACK_BOT_TOKEN,
           channel: thread.channel,
