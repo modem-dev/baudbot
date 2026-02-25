@@ -18,6 +18,17 @@ Scope: shell CLI and operational scripts under `bin/`.
 - Reuse shared helpers (`shell-common.sh`, `paths-common.sh`, `release-common.sh`, etc.) instead of duplicating constants or logging/error patterns.
 - Prefer portable shell patterns; distro-specific branches are acceptable when reliability improves.
 - Any security-relevant shell change must include/adjust tests.
+- **Never call `node`, `npm`, or other runtime binaries by bare name** in scripts that run as root or outside the agent user's shell. These binaries live in the agent's embedded runtime (`/home/baudbot_agent/opt/node/bin/`) and are not on root's PATH. Use `runtime-node.sh` helpers (e.g. `bb_resolve_runtime_node_bin`, `bb_resolve_runtime_node_bin_dir`) to resolve the full path, then invoke via a variable. Fall back to bare name only as a last resort.
+
+  ```bash
+  # ✅ Good: resolve then invoke
+  source "$SCRIPT_DIR/lib/runtime-node.sh"
+  node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$agent_home")"
+  "$node_bin_dir/npm" ci --omit=dev
+
+  # ❌ Bad: bare name breaks when not on PATH
+  npm ci --omit=dev
+  ```
 
 ## Critical files
 
