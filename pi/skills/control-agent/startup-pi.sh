@@ -98,24 +98,35 @@ echo "Cleaning up old bridge..."
 # the bridge while we're trying to clean up the port.
 tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
 
-# Now gracefully stop any process on the port. SIGTERM lets the bridge close
-# the HTTP server and release the port cleanly; SIGKILL is the fallback.
-PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
-if [ -n "$PORT_PIDS" ]; then
-  echo "Stopping processes on port 7890 (SIGTERM): $PORT_PIDS"
-  echo "$PORT_PIDS" | xargs kill 2>/dev/null || true
+# Kill ALL bridge processes (broker-bridge.mjs and bridge.mjs) to prevent
+# orphaned processes from holding port 7890 after control-agent restarts.
+# This is more aggressive than just killing port holders, but prevents the
+# common failure mode where a bridge process survives tmux session cleanup
+# (e.g., detached, zombied, or in a different session tree).
+BRIDGE_PIDS=$(pgrep -f 'node (broker-)?bridge\.mjs' 2>/dev/null || true)
+if [ -n "$BRIDGE_PIDS" ]; then
+  echo "Killing all bridge processes (SIGTERM): $BRIDGE_PIDS"
+  echo "$BRIDGE_PIDS" | xargs kill 2>/dev/null || true
   # Wait up to 3s for graceful shutdown
   for i in 1 2 3; do
     sleep 1
-    PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
-    [ -z "$PORT_PIDS" ] && break
+    BRIDGE_PIDS=$(pgrep -f 'node (broker-)?bridge\.mjs' 2>/dev/null || true)
+    [ -z "$BRIDGE_PIDS" ] && break
   done
   # Force-kill anything that didn't exit
-  if [ -n "$PORT_PIDS" ]; then
-    echo "Force-killing stubborn processes: $PORT_PIDS"
-    echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+  if [ -n "$BRIDGE_PIDS" ]; then
+    echo "Force-killing stubborn bridge processes: $BRIDGE_PIDS"
+    echo "$BRIDGE_PIDS" | xargs kill -9 2>/dev/null || true
     sleep 1
   fi
+fi
+
+# Final safety check: kill anything still on port 7890
+PORT_PIDS=$(lsof -ti :7890 2>/dev/null || true)
+if [ -n "$PORT_PIDS" ]; then
+  echo "Force-killing remaining processes on port 7890: $PORT_PIDS"
+  echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+  sleep 1
 fi
 
 OLD_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
