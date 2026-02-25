@@ -786,11 +786,18 @@ function verifyBrokerEnvelope(message) {
 }
 
 function decryptEnvelope(message) {
-  const plaintext = sodium.crypto_box_seal_open(
-    fromBase64(message.encrypted),
-    cryptoState.serverBoxPublicKey,
-    cryptoState.serverBoxSecretKey,
-  );
+  let plaintext;
+  try {
+    plaintext = sodium.crypto_box_seal_open(
+      fromBase64(message.encrypted),
+      cryptoState.serverBoxPublicKey,
+      cryptoState.serverBoxSecretKey,
+    );
+  } catch (err) {
+    // Wrap libsodium errors (e.g., "incorrect key pair for the given ciphertext")
+    // into a format that isPoisonMessageError() can detect
+    throw new Error(`failed to decrypt broker envelope (message_id: ${message.message_id || "unknown"})`);
+  }
   if (!plaintext) {
     throw new Error(`failed to decrypt broker envelope (message_id: ${message.message_id || "unknown"})`);
   }
