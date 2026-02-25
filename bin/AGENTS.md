@@ -18,6 +18,7 @@ Scope: shell CLI and operational scripts under `bin/`.
 - Reuse shared helpers (`shell-common.sh`, `paths-common.sh`, `release-common.sh`, etc.) instead of duplicating constants or logging/error patterns.
 - Prefer portable shell patterns; distro-specific branches are acceptable when reliability improves.
 - Any security-relevant shell change must include/adjust tests.
+- **Never call `node`, `npm`, etc. by bare name** in scripts that run as root. The embedded runtime is not on root's PATH. Use `runtime-node.sh` helpers (`bb_resolve_runtime_node_bin`, `bb_resolve_runtime_node_bin_dir`) to resolve the full path first.
 
 ## Critical files
 
