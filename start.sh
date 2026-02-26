@@ -126,14 +126,14 @@ else
   exit 1
 fi
 
-# Start control-agent in a new process group (setsid).
-# All spawned services inherit this PGID, making cleanup automatic:
-# killing the process group terminates everything without tracking individual processes.
+# Start control-agent.
+# Save our PID as the process group ID for cleanup on next restart.
+# When systemd launches start.sh (Type=simple), our PID is already the
+# process group leader. `exec pi` replaces this process in-place (same PID,
+# same PGID), so all child processes (bridge, workers) inherit the group.
+# On restart, killing -$PGID terminates the entire tree automatically.
 #
 # --session-control: enables inter-session communication (handled by control.ts extension)
-echo "Starting control-agent (new process group)..."
-exec setsid bash -c "
-  # Save PGID for next restart
-  echo \$\$ > '$CONTROL_PGID_FILE'
-  exec pi --session-control --model '$MODEL' --skill ~/.pi/agent/skills/control-agent '/skill:control-agent'
-"
+echo "Starting control-agent..."
+echo $$ > "$CONTROL_PGID_FILE"
+exec pi --session-control --model "$MODEL" --skill ~/.pi/agent/skills/control-agent "/skill:control-agent"
