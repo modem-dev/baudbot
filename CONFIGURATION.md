@@ -107,6 +107,7 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 | `SLACK_BROKER_ACCESS_TOKEN` | Broker-issued bearer token for broker API auth (required for broker pull mode runtime) |
 | `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | ISO timestamp for broker token expiry (recommended; runtime exits if expired) |
 | `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Comma-separated broker token scopes |
+| `GITHUB_IGNORED_USERS` | Optional comma-separated GitHub logins to ignore when forwarding broker GitHub events (`baudbot-agent` is always ignored) |
 | `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
 | `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
 | `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
@@ -218,6 +219,8 @@ SLACK_BROKER_WORKSPACE_ID=T0123ABCD
 # SLACK_BROKER_ACCESS_TOKEN=...
 # SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT=2026-02-22T22:15:00.000Z
 # SLACK_BROKER_ACCESS_TOKEN_SCOPES=slack.send,inbox.pull,inbox.ack
+# Optional GitHub bot/user filters for broker-delivered GitHub webhook events
+# GITHUB_IGNORED_USERS=dependabot[bot],renovate[bot]
 SLACK_BROKER_POLL_INTERVAL_MS=3000
 SLACK_BROKER_MAX_MESSAGES=10
 SLACK_BROKER_WAIT_SECONDS=20

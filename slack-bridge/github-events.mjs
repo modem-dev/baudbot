@@ -5,34 +5,29 @@
  * The bridge imports these and wires them into the message pipeline.
  */
 
-// ── Security Boundary Wrapping ──────────────────────────────────────────────
+import { wrapExternalContent } from "./security.mjs";
 
-const CONTENT_BOUNDARY_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
-const CONTENT_BOUNDARY_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+// ── Security Boundary Wrapping ──────────────────────────────────────────────
 
 /**
  * Wrap a GitHub event message with security boundaries.
  *
- * Uses the same <<<EXTERNAL_UNTRUSTED_CONTENT>>> markers as Slack messages
- * but with GitHub-specific metadata (Repo, Event, PR, Actor) instead of
- * Slack-specific fields (Channel, Thread).
+ * Uses shared security wrapping (notice + marker sanitization + boundaries)
+ * with GitHub-specific metadata (Repo, Event, Ref, Actor).
  */
 export function wrapGitHubContent({ body, repo, event, action, actor, ref }) {
-  const metadata = [
-    "Source: GitHub",
+  const metadataLines = [
     `Repo: ${repo}`,
     `Event: ${event}${action ? ` (${action})` : ""}`,
     ...(ref ? [`Ref: ${ref}`] : []),
     ...(actor ? [`Actor: ${actor}`] : []),
-  ].join("\n");
+  ];
 
-  return [
-    CONTENT_BOUNDARY_START,
-    metadata,
-    "---",
-    body,
-    CONTENT_BOUNDARY_END,
-  ].join("\n");
+  return wrapExternalContent({
+    text: body,
+    source: "GitHub",
+    metadataLines,
+  });
 }
 
 // ── Filtering ───────────────────────────────────────────────────────────────

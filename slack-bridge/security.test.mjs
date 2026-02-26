@@ -219,6 +219,19 @@ describe("wrapExternalContent", () => {
     const contentSection = result.split("---\n")[1].split("\n<<<END")[0];
     assert.equal(contentSection, "hello world");
   });
+
+  it("supports custom metadata lines for non-Slack sources", () => {
+    const result = wrapExternalContent({
+      text: "payload",
+      source: "GitHub",
+      metadataLines: ["Repo: modem-dev/baudbot", "Event: pull_request (opened)"],
+    });
+    assert.ok(result.includes("SECURITY NOTICE"));
+    assert.ok(result.includes("Source: GitHub"));
+    assert.ok(result.includes("Repo: modem-dev/baudbot"));
+    assert.ok(!result.includes("From: <@undefined>"));
+    assert.ok(!result.includes("Channel: <#undefined>"));
+  });
 });
 
 // ── parseAllowedUsers / isAllowed ───────────────────────────────────────────
