@@ -86,10 +86,9 @@ fi
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
 BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
 BRIDGE_DIR="/opt/baudbot/current/slack-bridge"
-BRIDGE_TMUX_SESSION="slack-bridge"
+BRIDGE_TMUX_SESSION="baudbot-slack-bridge"
 
 mkdir -p "$BRIDGE_LOG_DIR"
-
 
 # --- Detect bridge mode ---
 BRIDGE_SCRIPT=""
@@ -127,10 +126,14 @@ fi
 # termination. We need to explicitly kill old sessions before creating new ones.
 MAX_CONSECUTIVE_FAILURES=10
 
-# Kill old tmux session if it exists (tmux sessions have their own PGID)
-if tmux has-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null; then
-  echo "Killing old tmux session: $BRIDGE_TMUX_SESSION"
-  tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+# Kill all agent tmux sessions (prefix: baudbot-*)
+# Tmux sessions create their own PGID, so they survive process group cleanup.
+# Using a naming convention allows us to kill all agent sessions without
+# tracking individual session names.
+AGENT_SESSIONS=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^baudbot-' || true)
+if [ -n "$AGENT_SESSIONS" ]; then
+  echo "Killing agent tmux sessions: $AGENT_SESSIONS"
+  echo "$AGENT_SESSIONS" | xargs -r -I{} tmux kill-session -t {} 2>/dev/null || true
   sleep 1
 fi
 
