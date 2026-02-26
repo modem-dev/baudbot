@@ -90,7 +90,7 @@ if [ -f "$CONTROL_PGID_FILE" ]; then
     echo "Terminating old control-agent process group (PGID $OLD_PGID)..."
     kill -TERM -"$OLD_PGID" 2>/dev/null || true
     # Wait up to 5s for graceful shutdown
-    for i in 1 2 3 4 5; do
+    for _i in 1 2 3 4 5; do
       if ! kill -0 -"$OLD_PGID" 2>/dev/null; then
         echo "  Process group terminated cleanly"
         break
