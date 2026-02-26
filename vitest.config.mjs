@@ -10,6 +10,7 @@ export default defineConfig({
       "test/integrity-status-check.test.mjs",
       "test/shell-scripts.test.mjs",
       "test/security-audit.test.mjs",
+      "test/github-events.test.mjs",
     ],
     testTimeout: 120_000,
     hookTimeout: 120_000,

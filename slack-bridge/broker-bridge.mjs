@@ -24,6 +24,12 @@ import {
   sanitizeOutboundText,
 } from "./security.mjs";
 import {
+  formatGitHubEvent,
+  shouldSkipEvent,
+  parseIgnoredUsers,
+  extractActor,
+} from "./github-events.mjs";
+import {
   canonicalizeEnvelope,
   canonicalizeProtocolRequest,
   canonicalizeSendRequest,
@@ -134,6 +140,8 @@ const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 if (ALLOWED_USERS.length === 0) {
   logWarn("⚠️  SLACK_ALLOWED_USERS not set — all workspace members can interact");
 }
+
+const GITHUB_IGNORED_USERS = parseIgnoredUsers(process.env.GITHUB_IGNORED_USERS);
 
 const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });
 const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
@@ -864,6 +872,46 @@ async function handleSlackPayload(slackEventEnvelopePayload) {
   return true;
 }
 
+async function handleGitHubEvent(type, payload) {
+  const actor = extractActor(type, payload);
+  const repo = payload?.repository?.full_name || "unknown/repo";
+  logInfo(`🐙 github event: ${type} (action: ${payload?.action || "n/a"}) repo: ${repo} actor: ${actor || "n/a"}`);
+
+  // Filtering: skip noisy or self-generated events
+  const skipReason = shouldSkipEvent(type, payload, GITHUB_IGNORED_USERS);
+  if (skipReason) {
+    logInfo(`   ↳ skipping: ${skipReason}`);
+    return true;
+  }
+
+  const { message, isPing, isUnknown } = formatGitHubEvent(type, payload);
+
+  if (isPing) {
+    logInfo("   ↳ ping event — webhook configured successfully");
+    return true;
+  }
+
+  if (isUnknown) {
+    logWarn(`   ↳ unhandled github event type: ${type} — forwarding minimal summary`);
+  }
+
+  if (!message) {
+    logWarn(`   ↳ formatter returned no message for ${type} — skipping`);
+    return true;
+  }
+
+  refreshSocket();
+  const currentSocket = socketPath;
+  if (!currentSocket) {
+    logError("🔌 no pi socket found for github event — agent may not be running");
+    return true;
+  }
+
+  await enqueue(() => sendToAgent(currentSocket, message));
+  logInfo(`   ↳ forwarded to agent`);
+  return true;
+}
+
 async function handleDashboardEvent(type, payload) {
   logInfo(`📊 dashboard event: ${type}`, JSON.stringify(payload).slice(0, 200));
   // TODO: implement dashboard event handling (env updates, config changes)
@@ -896,6 +944,8 @@ async function processPulledMessage(message) {
     switch (payload.source) {
       case "slack":
         return handleSlackPayload(payload.payload);
+      case "github":
+        return handleGitHubEvent(payload.type, payload.payload);
       case "dashboard":
         return handleDashboardEvent(payload.type, payload.payload);
       case "system":
