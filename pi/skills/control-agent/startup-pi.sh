@@ -123,9 +123,16 @@ fi
 # - Backs off: 5s base + 2s per failure, capped at 60s
 # - Kills port holders before retrying (avoids EADDRINUSE spin)
 #
-# Note: The tmux session will be killed automatically when control-agent
-# restarts (via process group termination in start.sh). No manual cleanup needed.
+# Note: tmux creates its own session (PGID), so it's not killed by process group
+# termination. We need to explicitly kill old sessions before creating new ones.
 MAX_CONSECUTIVE_FAILURES=10
+
+# Kill old tmux session if it exists (tmux sessions have their own PGID)
+if tmux has-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null; then
+  echo "Killing old tmux session: $BRIDGE_TMUX_SESSION"
+  tmux kill-session -t "$BRIDGE_TMUX_SESSION" 2>/dev/null || true
+  sleep 1
+fi
 
 echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
 NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
