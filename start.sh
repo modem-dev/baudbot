@@ -14,8 +14,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/bin/lib/runtime-node.sh"
-# bridge-restart-policy.sh no longer needed — bridge is started by
-# startup-pi.sh, not start.sh (see PR #164)
 cd ~
 
 NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
@@ -24,7 +22,6 @@ NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
 export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
 
 # Work around varlock telemetry config crash by opting out at runtime.
-# This avoids loading anonymousId from user config and keeps startup deterministic.
 export VARLOCK_TELEMETRY_DISABLED=1
 
 # Validate and load secrets via varlock
@@ -33,7 +30,7 @@ varlock load --path ~/.config/ || {
   exit 1
 }
 set -a
-# shellcheck disable=SC1090  # path is dynamic (agent home)
+# shellcheck disable=SC1090
 source ~/.config/.env
 set +a
 
@@ -48,7 +45,6 @@ umask 077
 ~/runtime/bin/redact-logs.sh 2>/dev/null || true
 
 # Verify deployed runtime integrity against deploy manifest.
-# Modes: off | warn | strict (default: warn)
 INTEGRITY_MODE="${BAUDBOT_STARTUP_INTEGRITY_MODE:-warn}"
 if [ -x "$HOME/runtime/bin/verify-manifest.sh" ]; then
   if ! BAUDBOT_STARTUP_INTEGRITY_MODE="$INTEGRITY_MODE" "$HOME/runtime/bin/verify-manifest.sh"; then
@@ -66,7 +62,6 @@ if [ -d "$SOCKET_DIR" ]; then
   if command -v fuser &>/dev/null; then
     for sock in "$SOCKET_DIR"/*.sock; do
       [ -e "$sock" ] || continue
-      # If no process has the socket open, it's stale
       if ! fuser "$sock" &>/dev/null 2>&1; then
         rm -f "$sock"
       fi
@@ -74,7 +69,6 @@ if [ -d "$SOCKET_DIR" ]; then
   else
     echo "  fuser not found, skipping socket cleanup (install psmisc)"
   fi
-  # Clean broken alias symlinks
   for alias in "$SOCKET_DIR"/*.alias; do
     [ -L "$alias" ] || continue
     target=$(readlink "$alias")
@@ -84,35 +78,33 @@ if [ -d "$SOCKET_DIR" ]; then
   done
 fi
 
-# ── Slack bridge cleanup (bridge is started by startup-pi.sh) ──
-# The bridge needs the control-agent's session UUID (PI_SESSION_ID) to deliver
-# messages to the correct socket. That UUID isn't known until pi starts and
-# registers its socket. So we DON'T start the bridge here — the control-agent's
-# startup-pi.sh handles it after the session is live.
-#
-# We DO kill any stale bridge processes from previous runs to avoid port
-# conflicts when startup-pi.sh launches a fresh one.
-BRIDGE_PID_FILE="$HOME/.pi/agent/slack-bridge.pid"
-if [ -f "$BRIDGE_PID_FILE" ]; then
-  old_pid="$(cat "$BRIDGE_PID_FILE" 2>/dev/null || true)"
-  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
-    echo "Stopping stale bridge supervisor (PID $old_pid)..."
-    kill "$old_pid" 2>/dev/null || true
-    sleep 1
-    kill -9 "$old_pid" 2>/dev/null || true
+# ── Process Group Management ──
+# Kill old control-agent process group to ensure clean slate.
+# This automatically terminates all spawned services (bridge, workers, etc.)
+# without needing to track individual PIDs or process names.
+CONTROL_PGID_FILE="$HOME/.pi/agent/control-agent.pgid"
+
+if [ -f "$CONTROL_PGID_FILE" ]; then
+  OLD_PGID=$(cat "$CONTROL_PGID_FILE" 2>/dev/null || echo "")
+  if [ -n "$OLD_PGID" ] && kill -0 -"$OLD_PGID" 2>/dev/null; then
+    echo "Terminating old control-agent process group (PGID $OLD_PGID)..."
+    kill -TERM -"$OLD_PGID" 2>/dev/null || true
+    # Wait up to 5s for graceful shutdown
+    for i in 1 2 3 4 5; do
+      if ! kill -0 -"$OLD_PGID" 2>/dev/null; then
+        echo "  Process group terminated cleanly"
+        break
+      fi
+      sleep 1
+    done
+    # Force-kill any survivors
+    if kill -0 -"$OLD_PGID" 2>/dev/null; then
+      echo "  Force-killing stubborn processes in group $OLD_PGID..."
+      kill -KILL -"$OLD_PGID" 2>/dev/null || true
+      sleep 1
+    fi
   fi
-  rm -f "$BRIDGE_PID_FILE"
-fi
-# Kill the tmux session too (startup-pi.sh uses this)
-tmux kill-session -t slack-bridge 2>/dev/null || true
-# Force-release port 7890 in case anything survived
-PORT_PIDS="$(lsof -ti :7890 2>/dev/null || true)"
-if [ -n "$PORT_PIDS" ]; then
-  echo "Releasing port 7890 (PIDs: $PORT_PIDS)..."
-  echo "$PORT_PIDS" | xargs kill 2>/dev/null || true
-  sleep 1
-  PORT_PIDS="$(lsof -ti :7890 2>/dev/null || true)"
-  [ -n "$PORT_PIDS" ] && echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+  rm -f "$CONTROL_PGID_FILE"
 fi
 
 # Set session name (read by auto-name.ts extension)
@@ -134,6 +126,14 @@ else
   exit 1
 fi
 
-# Start control-agent
+# Start control-agent in a new process group (setsid).
+# All spawned services inherit this PGID, making cleanup automatic:
+# killing the process group terminates everything without tracking individual processes.
+#
 # --session-control: enables inter-session communication (handled by control.ts extension)
-pi --session-control --model "$MODEL" --skill ~/.pi/agent/skills/control-agent "/skill:control-agent"
+echo "Starting control-agent (new process group)..."
+exec setsid bash -c "
+  # Save PGID for next restart
+  echo \$\$ > '$CONTROL_PGID_FILE'
+  exec pi --session-control --model '$MODEL' --skill ~/.pi/agent/skills/control-agent '/skill:control-agent'
+"
