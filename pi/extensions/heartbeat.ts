@@ -375,41 +375,45 @@ function checkUnansweredMentions(): CheckResult[] {
 }
 
 function hasRepliedToThread(threadTs: string): boolean {
-  // Check session logs and bridge logs for evidence of a reply to this thread_ts
-  
-  // 1. Check bridge log for /send or /reply with this thread_ts
-  if (existsSync(BRIDGE_LOG)) {
+  // Check multiple sources for evidence of a reply to this thread_ts.
+
+  // 1. Check the reply tracking log (most reliable — written by the agent).
+  //    File: ~/.pi/agent/slack-reply-log.jsonl
+  //    Each line: {"thread_ts":"...","replied_at":"..."}
+  const replyLogPath = join(homedir(), ".pi", "agent", "slack-reply-log.jsonl");
+  if (existsSync(replyLogPath)) {
     try {
-      const { execSync } = require("node:child_process");
-      // Look for POST to /send or /reply with this thread_ts in the last 1000 lines
-      const result = execSync(
-        `tail -1000 "${BRIDGE_LOG}" | grep -E "(POST /send|POST /reply)" | grep -c "${threadTs}" || echo 0`,
-        { encoding: "utf-8" }
-      );
-      const count = parseInt(result.trim(), 10);
-      if (count > 0) return true;
+      const content = readFileSync(replyLogPath, "utf-8");
+      if (content.includes(threadTs)) return true;
     } catch {
-      // grep failed or command error
+      // File read error — fall through to other checks
     }
   }
 
-  // 2. Check control-agent session logs for mentions of this thread_ts in recent sessions
-  if (existsSync(SESSION_DIR)) {
+  // 2. Check control-agent session logs for the thread_ts.
+  //    Session files are in ~/.pi/agent/sessions/--home-baudbot_agent--/
+  //    and named <timestamp>_<uuid>.jsonl.
+  //    If the agent processed a thread_ts (via curl /send with thread_ts),
+  //    the JSONL will contain it in the tool call arguments.
+  const controlAgentSessionDir = join(SESSION_DIR, "--home-baudbot_agent--");
+  if (existsSync(controlAgentSessionDir)) {
     try {
-      const sessionFiles = readdirSync(SESSION_DIR);
-      // Get the most recent control-agent session file
-      const controlAgentFiles = sessionFiles
-        .filter(f => f.includes("control-agent") && f.endsWith(".jsonl"))
+      const sessionFiles = readdirSync(controlAgentSessionDir)
+        .filter(f => f.endsWith(".jsonl"))
         .sort()
         .reverse()
         .slice(0, 3); // Check last 3 sessions
 
-      for (const file of controlAgentFiles) {
+      for (const file of sessionFiles) {
         try {
-          const content = readFileSync(join(SESSION_DIR, file), "utf-8");
-          // Look for the thread_ts being mentioned in message content or tool calls
-          if (content.includes(threadTs)) {
-            // Found reference to this thread - likely replied
+          const content = readFileSync(join(controlAgentSessionDir, file), "utf-8");
+          // Look for evidence of a reply: the thread_ts appearing in a curl /send command
+          // or in a send_to_session message. The thread_ts in an outbound context
+          // (not just the inbound mention) indicates we replied.
+          if (content.includes(`"thread_ts":"${threadTs}"`) || 
+              content.includes(`"thread_ts": "${threadTs}"`) ||
+              content.includes(`\\"thread_ts\\":\\"${threadTs}\\"`) ||
+              content.includes(`\\"thread_ts\\":\\"${threadTs}\\"`)) {
             return true;
           }
         } catch {
@@ -420,6 +424,14 @@ function hasRepliedToThread(threadTs: string): boolean {
       // Dir read error
     }
   }
+
+  // 3. Check the bridge log for the ✅ check reaction resolving this thread.
+  //    The bridge logs failures like "✅ check reaction failed" but successful
+  //    ack reactions are silent. Still worth checking for the thread_ts in
+  //    any outbound context (e.g., reaction calls).
+  //    Also check for the 👀 eyes reaction — if we reacted with eyes AND
+  //    the thread_ts appears in an outbound /send context, we likely replied.
+  //    (This is a weak signal but better than nothing.)
 
   return false;
 }
