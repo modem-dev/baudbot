@@ -22,6 +22,7 @@ import {
   validateReactParams,
   createRateLimiter,
   sanitizeOutboundText,
+  markdownToMrkdwn,
 } from "./security.mjs";
 import {
   formatGitHubEvent,
@@ -706,7 +707,11 @@ async function _react(channel, threadTs, emoji) {
 }
 
 function sanitizeOutboundMessage(text, contextLabel) {
-  const sanitized = sanitizeOutboundText(text);
+  // Convert Markdown → Slack mrkdwn first, then sanitize the final text.
+  // Sanitization runs last so it sees the exact text that will be sent to Slack
+  // (markdown conversion can reshape tokens, e.g. [text](xoxb-...) → <xoxb-...|text>).
+  const converted = markdownToMrkdwn(text);
+  const sanitized = sanitizeOutboundText(converted);
   if (sanitized.blocked) {
     logWarn(`🛡️ outbound message blocked (${contextLabel}): ${sanitized.reasons.join(", ")}`);
   } else if (sanitized.redacted) {
