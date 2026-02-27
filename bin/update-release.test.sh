@@ -252,6 +252,37 @@ test_release_root_overrides_stale_source_path_env() {
   )
 }
 
+test_update_picks_up_latest_commit() {
+  (
+    set -euo pipefail
+    local tmp repo release_root sha1 sha2 current_sha
+
+    tmp="$(mktemp -d /tmp/baudbot-update-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    repo="$tmp/repo"
+    release_root="$tmp/opt/baudbot"
+
+    make_repo "$repo"
+    sha1="$(git -C "$repo" rev-parse HEAD)"
+
+    run_update "$repo" "$release_root" "test -f hello.txt"
+
+    current_sha="$(readlink -f "$release_root/current")"
+    [ "$current_sha" = "$release_root/releases/$sha1" ]
+
+    # Push a new commit and update again — must land on the new SHA.
+    new_commit "$repo" "latest-tip"
+    sha2="$(git -C "$repo" rev-parse HEAD)"
+    [ "$sha1" != "$sha2" ]
+
+    run_update "$repo" "$release_root" "test -f hello.txt"
+
+    current_sha="$(readlink -f "$release_root/current")"
+    [ "$current_sha" = "$release_root/releases/$sha2" ]
+  )
+}
+
 test_resolve_npm_from_fake_agent_home() {
   (
     set -euo pipefail
@@ -364,6 +395,7 @@ run_test "publishes git-free release snapshot" test_publish_git_free_release
 run_test "preflight failure keeps current release" test_preflight_failure_keeps_current
 run_test "deploy failure keeps current release" test_deploy_failure_keeps_current
 run_test "release root overrides stale source env" test_release_root_overrides_stale_source_path_env
+run_test "update picks up latest commit" test_update_picks_up_latest_commit
 run_test "resolves npm from agent embedded runtime" test_resolve_npm_from_fake_agent_home
 run_test "resolves npm from sudo user home" test_resolve_npm_from_fake_sudo_user_home
 run_test "resolve_npm_bin fails when npm missing" test_resolve_npm_fails_when_missing

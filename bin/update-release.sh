@@ -393,6 +393,12 @@ fi
 log "cloning update source"
 git clone --quiet --single-branch --branch "$BRANCH" "$REPO_URL" "$CHECKOUT_DIR"
 
+# Force-refresh the branch tip to defeat transport-level caching (GitHub CDN,
+# HTTP proxies, stale local mirrors).  Without this, `git clone` can serve a
+# ref advertisement that is minutes-to-days behind the true remote HEAD.
+git -C "$CHECKOUT_DIR" fetch --quiet --force --no-tags origin "$BRANCH"
+git -C "$CHECKOUT_DIR" reset --quiet --hard "origin/$BRANCH"
+
 if [ -n "$BAUDBOT_UPDATE_REF" ]; then
   log "checking out ref: $BAUDBOT_UPDATE_REF"
   git -C "$CHECKOUT_DIR" fetch --quiet origin "$BAUDBOT_UPDATE_REF"
