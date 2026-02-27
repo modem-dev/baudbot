@@ -84,6 +84,23 @@ The `linear` extension provides a tool for interacting with the Linear issue tra
 |----------|-------------|---------------|
 | `LINEAR_API_KEY` | Linear API key (personal or OAuth token) | Go to [Linear Settings → API](https://linear.app/settings/api), create a **Personal API key**. For workspace-wide access, create an OAuth application instead. The key needs read/write access to issues and comments. |
 
+### Notion Integration
+
+The `notion` extension provides a read-only tool for accessing your Notion workspace. The agent can search for pages and databases, retrieve full page content (including nested blocks), query database entries, and inspect database schemas.
+
+| Variable | Description | How to get it |
+|----------|-------------|---------------|
+| `NOTION_API_KEY` | Notion integration secret (internal integration token) | Go to [Notion → My integrations](https://www.notion.so/my-integrations), create a new **Internal Integration**. Copy the **Internal Integration Token** (starts with `secret_`). After creating the integration, share the pages/databases you want the agent to access by clicking **"•••"** → **Add connections** → select your integration. The integration can only read content explicitly shared with it. |
+
+**Capabilities:**
+- `search` — Find pages and databases by text query or type filter
+- `get` — Read full page content with all blocks (paragraphs, headings, lists, code, callouts, etc.)
+- `list` — Query database entries with filters and sorting
+- `database` — Inspect database schema and property types
+
+**Permissions:**  
+The integration token only provides read access to pages/databases explicitly shared with the integration. It cannot create, update, or delete content.
+
 ### Slack Channels
 
 | Variable | Description | How to get it |
