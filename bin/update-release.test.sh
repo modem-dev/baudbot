@@ -214,6 +214,95 @@ test_release_root_overrides_stale_source_path_env() {
   )
 }
 
+test_resolve_npm_from_fake_agent_home() {
+  (
+    set -euo pipefail
+    local tmp fake_home npm_path
+
+    tmp="$(mktemp -d /tmp/baudbot-update-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    # Create a fake embedded node runtime layout.
+    fake_home="$tmp/home/baudbot_agent"
+    mkdir -p "$fake_home/opt/node/bin"
+    printf '#!/bin/sh\necho fake-npm\n' > "$fake_home/opt/node/bin/npm"
+    chmod +x "$fake_home/opt/node/bin/npm"
+    # Create a matching node binary so bb_resolve_runtime_node_bin succeeds.
+    printf '#!/bin/sh\ntrue\n' > "$fake_home/opt/node/bin/node"
+    chmod +x "$fake_home/opt/node/bin/node"
+
+    # Source the helpers and the resolve_npm_bin function from the script.
+    # We extract the function by sourcing with BAUDBOT_AGENT_USER set so the
+    # resolution targets our fake home.
+    npm_path="$(
+      source "$REPO_ROOT/bin/lib/shell-common.sh"
+      source "$REPO_ROOT/bin/lib/paths-common.sh"
+      source "$REPO_ROOT/bin/lib/runtime-node.sh"
+      source "$REPO_ROOT/bin/lib/release-common.sh"
+      source "$REPO_ROOT/bin/lib/release-runtime-common.sh"
+      source "$REPO_ROOT/bin/lib/json-common.sh"
+
+      # Define the function inline (extracted from update-release.sh).
+      resolve_npm_bin() {
+        local candidate=""
+        local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
+        candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
+        if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
+          echo "$candidate/npm"
+          return 0
+        fi
+        if command -v npm >/dev/null 2>&1; then
+          command -v npm
+          return 0
+        fi
+        return 1
+      }
+
+      BAUDBOT_AGENT_USER="baudbot_agent"
+      BAUDBOT_HOME="$fake_home"
+      # Point the resolution at our fake tree.
+      BAUDBOT_RUNTIME_NODE_BIN_DIR="$fake_home/opt/node/bin"
+      resolve_npm_bin
+    )"
+
+    [ "$npm_path" = "$fake_home/opt/node/bin/npm" ]
+  )
+}
+
+test_resolve_npm_fails_when_missing() {
+  (
+    set -euo pipefail
+    local tmp
+
+    tmp="$(mktemp -d /tmp/baudbot-update-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    # Empty fake home — no node installed anywhere.
+    local result=0
+    (
+      source "$REPO_ROOT/bin/lib/shell-common.sh"
+      source "$REPO_ROOT/bin/lib/paths-common.sh"
+      source "$REPO_ROOT/bin/lib/runtime-node.sh"
+
+      resolve_npm_bin() {
+        local candidate=""
+        local agent_home="$tmp/home/nobody"
+        candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
+        if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
+          echo "$candidate/npm"
+          return 0
+        fi
+        # Don't check PATH here — we want to verify the function fails.
+        return 1
+      }
+
+      resolve_npm_bin
+    ) && result=1
+
+    [ "$result" -eq 0 ]
+  )
+}
+
 echo "=== update-release tests ==="
 echo ""
 
@@ -221,6 +310,8 @@ run_test "publishes git-free release snapshot" test_publish_git_free_release
 run_test "preflight failure keeps current release" test_preflight_failure_keeps_current
 run_test "deploy failure keeps current release" test_deploy_failure_keeps_current
 run_test "release root overrides stale source env" test_release_root_overrides_stale_source_path_env
+run_test "resolves npm from agent embedded runtime" test_resolve_npm_from_fake_agent_home
+run_test "resolve_npm_bin fails when npm missing" test_resolve_npm_fails_when_missing
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

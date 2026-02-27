@@ -55,6 +55,53 @@ source "$SCRIPT_DIR/lib/release-runtime-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
 
+# ---------------------------------------------------------------------------
+# Resolve the full path to npm.  This script runs as root (sudo) where the
+# embedded Node runtime is *not* on PATH.  Resolution order:
+#   1. Agent user's embedded runtime  (/home/baudbot_agent/opt/node/bin/npm)
+#   2. SUDO_USER's home (admin may have mise/nvm/etc.)
+#   3. Standard PATH lookup (last resort)
+# ---------------------------------------------------------------------------
+resolve_npm_bin() {
+  local candidate=""
+
+  # 1) Agent's embedded runtime
+  local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
+  candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
+  if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
+    echo "$candidate/npm"
+    return 0
+  fi
+
+  # 2) SUDO_USER's home (admin's local node install — mise, nvm, etc.)
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    local sudo_home=""
+    sudo_home="$(bb_resolve_user_home "$SUDO_USER" 2>/dev/null || true)"
+    if [ -n "$sudo_home" ]; then
+      local dir=""
+      for dir in \
+        "$sudo_home/.local/share/mise/shims" \
+        "$sudo_home/.nvm/versions/node"/*/bin \
+        "$sudo_home/.local/bin"; do
+        # Skip unexpanded globs.
+        case "$dir" in *\**) continue ;; esac
+        if [ -x "$dir/npm" ]; then
+          echo "$dir/npm"
+          return 0
+        fi
+      done
+    fi
+  fi
+
+  # 3) PATH (may work in non-sudo environments or CI)
+  if command -v npm >/dev/null 2>&1; then
+    command -v npm
+    return 0
+  fi
+
+  return 1
+}
+
 cleanup() {
   if [ -n "$CHECKOUT_DIR" ] && [ -d "$CHECKOUT_DIR" ]; then
     rm -rf "$CHECKOUT_DIR"
@@ -221,14 +268,11 @@ install_release_bridge_dependencies() {
   log "installing production Slack bridge dependencies in release"
   rm -rf "$bridge_dir/node_modules"
 
-  # Resolve npm from the agent's embedded node runtime, falling back to PATH.
-  local npm_bin="npm"
-  local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
-  local node_bin_dir=""
-  node_bin_dir="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
-  if [ -n "$node_bin_dir" ] && [ -x "$node_bin_dir/npm" ]; then
-    npm_bin="$node_bin_dir/npm"
-  fi
+  # Resolve npm via the embedded Node runtime.  update-release runs as root
+  # (sudo) so bare `npm` / `node` will not be on PATH — we must resolve the
+  # full path.  Try: agent home → SUDO_USER home → PATH (last resort).
+  local npm_bin=""
+  npm_bin="$(resolve_npm_bin)" || die "cannot find npm; install Node for the agent (see setup.sh) or ensure npm is on PATH"
 
   if [ -f "$bridge_dir/package-lock.json" ]; then
     (cd "$bridge_dir" && "$npm_bin" ci --omit=dev)
