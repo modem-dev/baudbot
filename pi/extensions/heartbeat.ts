@@ -15,7 +15,7 @@
  *   HEARTBEAT_INTERVAL_MS   — interval between heartbeats (default: 600000 = 10 min)
  *   HEARTBEAT_ENABLED        — set to "0" or "false" to disable (default: enabled)
  *   HEARTBEAT_EXPECTED_SESSIONS — comma-separated session aliases to check (default: "sentry-agent")
- *   HEARTBEAT_CHECK_UNANSWERED_MENTIONS — set to "1" or "true" to enable (default: enabled)
+ *   HEARTBEAT_CHECK_UNANSWERED_MENTIONS — enabled by default, set to "0", "false", or "no" to disable
  *
  * When all checks pass, zero LLM tokens are consumed. When something fails,
  * a targeted prompt is injected describing only the failures so the control-agent
@@ -326,7 +326,7 @@ function checkUnansweredMentions(): CheckResult[] {
     const mentionPattern = /\[([^\]]+)\].*app_mention.*ts: (\d+\.\d+)/g;
     const mentions: Array<{ timestamp: string; ts: string }> = [];
     
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = mentionPattern.exec(logTail)) !== null) {
       mentions.push({
         timestamp: match[1],
@@ -365,10 +365,9 @@ function checkUnansweredMentions(): CheckResult[] {
         });
       }
     }
-  } catch (err: unknown) {
-    // Log read failure or exec error - non-fatal, but log it
-    const msg = err instanceof Error ? err.message : String(err);
-    // Don't report this as a failure unless we have a specific problem to report
+  } catch {
+    // Log read failure or exec error - non-fatal.
+    // Don't report this as a failure unless we have a specific problem to report.
   }
 
   return results;
@@ -384,22 +383,35 @@ function hasRepliedToThread(threadTs: string): boolean {
   if (existsSync(replyLogPath)) {
     try {
       const content = readFileSync(replyLogPath, "utf-8");
-      if (content.includes(threadTs)) return true;
+      const lines = content.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const entry = JSON.parse(trimmed);
+          if (entry?.thread_ts === threadTs) {
+            return true;
+          }
+        } catch {
+          // Ignore malformed JSONL lines and keep scanning.
+        }
+      }
     } catch {
       // File read error — fall through to other checks
     }
   }
 
-  // 2. Check control-agent session logs for the thread_ts.
+  // 2. Check recent control-agent session logs for explicit outbound /send calls.
   //    Session files are in ~/.pi/agent/sessions/--home-baudbot_agent--/
   //    and named <timestamp>_<uuid>.jsonl.
-  //    If the agent processed a thread_ts (via curl /send with thread_ts),
-  //    the JSONL will contain it in the tool call arguments.
   const controlAgentSessionDir = join(SESSION_DIR, "--home-baudbot_agent--");
   if (existsSync(controlAgentSessionDir)) {
+    const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const threadTsPattern = new RegExp(`["']thread_ts["']\\s*:\\s*["']${escapeRegExp(threadTs)}["']`);
+
     try {
       const sessionFiles = readdirSync(controlAgentSessionDir)
-        .filter(f => f.endsWith(".jsonl"))
+        .filter((f) => f.endsWith(".jsonl"))
         .sort()
         .reverse()
         .slice(0, 3); // Check last 3 sessions
@@ -407,14 +419,36 @@ function hasRepliedToThread(threadTs: string): boolean {
       for (const file of sessionFiles) {
         try {
           const content = readFileSync(join(controlAgentSessionDir, file), "utf-8");
-          // Look for evidence of a reply: the thread_ts appearing in a curl /send command
-          // or in a send_to_session message. The thread_ts in an outbound context
-          // (not just the inbound mention) indicates we replied.
-          if (content.includes(`"thread_ts":"${threadTs}"`) || 
-              content.includes(`"thread_ts": "${threadTs}"`) ||
-              content.includes(`\\"thread_ts\\":\\"${threadTs}\\"`) ||
-              content.includes(`\\"thread_ts\\":\\"${threadTs}\\"`)) {
-            return true;
+          const lines = content.split("\n");
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            let parsed: any;
+            try {
+              parsed = JSON.parse(trimmed);
+            } catch {
+              continue;
+            }
+
+            if (parsed?.type !== "message") continue;
+            if (parsed?.message?.role !== "assistant") continue;
+
+            const items = parsed?.message?.content;
+            if (!Array.isArray(items)) continue;
+
+            for (const item of items) {
+              if (item?.type !== "toolCall") continue;
+              if (item?.name !== "bash") continue;
+
+              const command = typeof item?.arguments?.command === "string" ? item.arguments.command : "";
+              if (!command.includes("curl")) continue;
+              if (!command.includes("/send")) continue;
+              if (!threadTsPattern.test(command)) continue;
+
+              return true;
+            }
           }
         } catch {
           // File read error - skip
@@ -424,14 +458,6 @@ function hasRepliedToThread(threadTs: string): boolean {
       // Dir read error
     }
   }
-
-  // 3. Check the bridge log for the ✅ check reaction resolving this thread.
-  //    The bridge logs failures like "✅ check reaction failed" but successful
-  //    ack reactions are silent. Still worth checking for the thread_ts in
-  //    any outbound context (e.g., reaction calls).
-  //    Also check for the 👀 eyes reaction — if we reacted with eyes AND
-  //    the thread_ts appears in an outbound /send context, we likely replied.
-  //    (This is a weak signal but better than nothing.)
 
   return false;
 }
