@@ -108,6 +108,44 @@ assert_no_git_dirs() {
   return 0
 }
 
+define_test_resolve_npm_bin() {
+  resolve_npm_bin() {
+    local candidate=""
+
+    local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
+    candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
+    if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
+      echo "$candidate/npm"
+      return 0
+    fi
+
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+      local sudo_home=""
+      sudo_home="$(bb_resolve_user_home "$SUDO_USER" 2>/dev/null || true)"
+      if [ -n "$sudo_home" ]; then
+        local dir=""
+        for dir in \
+          "$sudo_home/.local/share/mise/shims" \
+          "$sudo_home/.nvm/versions/node"/*/bin \
+          "$sudo_home/.local/bin"; do
+          case "$dir" in *\**) continue ;; esac
+          if [ -x "$dir/npm" ]; then
+            echo "$dir/npm"
+            return 0
+          fi
+        done
+      fi
+    fi
+
+    if command -v npm >/dev/null 2>&1; then
+      command -v npm
+      return 0
+    fi
+
+    return 1
+  }
+}
+
 test_publish_git_free_release() {
   (
     set -euo pipefail
@@ -231,9 +269,7 @@ test_resolve_npm_from_fake_agent_home() {
     printf '#!/bin/sh\ntrue\n' > "$fake_home/opt/node/bin/node"
     chmod +x "$fake_home/opt/node/bin/node"
 
-    # Source the helpers and the resolve_npm_bin function from the script.
-    # We extract the function by sourcing with BAUDBOT_AGENT_USER set so the
-    # resolution targets our fake home.
+    # Source shared helpers and define a test copy of resolve_npm_bin.
     npm_path="$(
       source "$REPO_ROOT/bin/lib/shell-common.sh"
       source "$REPO_ROOT/bin/lib/paths-common.sh"
@@ -241,31 +277,55 @@ test_resolve_npm_from_fake_agent_home() {
       source "$REPO_ROOT/bin/lib/release-common.sh"
       source "$REPO_ROOT/bin/lib/release-runtime-common.sh"
       source "$REPO_ROOT/bin/lib/json-common.sh"
-
-      # Define the function inline (extracted from update-release.sh).
-      resolve_npm_bin() {
-        local candidate=""
-        local agent_home="/home/${BAUDBOT_AGENT_USER:-baudbot_agent}"
-        candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
-        if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
-          echo "$candidate/npm"
-          return 0
-        fi
-        if command -v npm >/dev/null 2>&1; then
-          command -v npm
-          return 0
-        fi
-        return 1
-      }
+      define_test_resolve_npm_bin
 
       BAUDBOT_AGENT_USER="baudbot_agent"
       BAUDBOT_HOME="$fake_home"
+      unset SUDO_USER
       # Point the resolution at our fake tree.
       BAUDBOT_RUNTIME_NODE_BIN_DIR="$fake_home/opt/node/bin"
       resolve_npm_bin
     )"
 
     [ "$npm_path" = "$fake_home/opt/node/bin/npm" ]
+  )
+}
+
+test_resolve_npm_from_fake_sudo_user_home() {
+  (
+    set -euo pipefail
+    local tmp fake_sudo_home npm_path
+
+    tmp="$(mktemp -d /tmp/baudbot-update-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    fake_sudo_home="$tmp/home/baudbot_admin"
+    mkdir -p "$fake_sudo_home/.local/share/mise/shims"
+    printf '#!/bin/sh\necho fake-sudo-npm\n' > "$fake_sudo_home/.local/share/mise/shims/npm"
+    chmod +x "$fake_sudo_home/.local/share/mise/shims/npm"
+
+    npm_path="$(
+      source "$REPO_ROOT/bin/lib/shell-common.sh"
+      source "$REPO_ROOT/bin/lib/paths-common.sh"
+      source "$REPO_ROOT/bin/lib/runtime-node.sh"
+      source "$REPO_ROOT/bin/lib/release-common.sh"
+      source "$REPO_ROOT/bin/lib/release-runtime-common.sh"
+      source "$REPO_ROOT/bin/lib/json-common.sh"
+      define_test_resolve_npm_bin
+
+      bb_resolve_user_home() {
+        [ "$1" = "baudbot_admin" ] || return 1
+        echo "$fake_sudo_home"
+      }
+
+      BAUDBOT_AGENT_USER="missing-agent"
+      BAUDBOT_HOME="$tmp/home/missing-agent"
+      unset BAUDBOT_RUNTIME_NODE_BIN BAUDBOT_RUNTIME_NODE_DIR BAUDBOT_RUNTIME_NODE_BIN_DIR
+      SUDO_USER="baudbot_admin"
+      resolve_npm_bin
+    )"
+
+    [ "$npm_path" = "$fake_sudo_home/.local/share/mise/shims/npm" ]
   )
 }
 
@@ -283,20 +343,14 @@ test_resolve_npm_fails_when_missing() {
       source "$REPO_ROOT/bin/lib/shell-common.sh"
       source "$REPO_ROOT/bin/lib/paths-common.sh"
       source "$REPO_ROOT/bin/lib/runtime-node.sh"
+      define_test_resolve_npm_bin
 
-      resolve_npm_bin() {
-        local candidate=""
-        local agent_home="$tmp/home/nobody"
-        candidate="$(bb_resolve_runtime_node_bin_dir "$agent_home" 2>/dev/null || true)"
-        if [ -n "$candidate" ] && [ -x "$candidate/npm" ]; then
-          echo "$candidate/npm"
-          return 0
-        fi
-        # Don't check PATH here — we want to verify the function fails.
-        return 1
-      }
-
-      resolve_npm_bin
+      BAUDBOT_AGENT_USER="nobody"
+      BAUDBOT_HOME="$tmp/home/nobody"
+      unset BAUDBOT_RUNTIME_NODE_BIN BAUDBOT_RUNTIME_NODE_DIR BAUDBOT_RUNTIME_NODE_BIN_DIR
+      unset SUDO_USER
+      mkdir -p "$tmp/empty-path"
+      PATH="$tmp/empty-path" resolve_npm_bin
     ) && result=1
 
     [ "$result" -eq 0 ]
@@ -311,6 +365,7 @@ run_test "preflight failure keeps current release" test_preflight_failure_keeps_
 run_test "deploy failure keeps current release" test_deploy_failure_keeps_current
 run_test "release root overrides stale source env" test_release_root_overrides_stale_source_path_env
 run_test "resolves npm from agent embedded runtime" test_resolve_npm_from_fake_agent_home
+run_test "resolves npm from sudo user home" test_resolve_npm_from_fake_sudo_user_home
 run_test "resolve_npm_bin fails when npm missing" test_resolve_npm_fails_when_missing
 
 echo ""
