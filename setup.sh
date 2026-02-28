@@ -274,14 +274,18 @@ echo "=== Protecting source repo ==="
 #   mount --bind "$REPO_DIR" "$REPO_DIR" && mount -o remount,bind,ro "$REPO_DIR"
 echo "Source repo at $REPO_DIR is admin-owned (not writable by baudbot_agent)"
 
-echo "=== Setting up firewall ==="
-"$REPO_DIR/bin/setup-firewall.sh"
+if [ "${BAUDBOT_SKIP_FIREWALL:-0}" = "1" ]; then
+  echo "=== Skipping firewall setup (BAUDBOT_SKIP_FIREWALL=1) ==="
+else
+  echo "=== Setting up firewall ==="
+  "$REPO_DIR/bin/setup-firewall.sh"
 
-echo "=== Making firewall persistent ==="
-sed "s|__REPO_DIR__|$REPO_DIR|g" "$REPO_DIR/bin/baudbot-firewall.service" > /etc/systemd/system/baudbot-firewall.service
-systemctl daemon-reload
-systemctl enable baudbot-firewall
-echo "Firewall will be restored on boot via systemd"
+  echo "=== Making firewall persistent ==="
+  sed "s|__REPO_DIR__|$REPO_DIR|g" "$REPO_DIR/bin/baudbot-firewall.service" > /etc/systemd/system/baudbot-firewall.service
+  systemctl daemon-reload
+  systemctl enable baudbot-firewall
+  echo "Firewall will be restored on boot via systemd"
+fi
 
 echo "=== Verifying baudbot CLI path ==="
 if [ -x /usr/local/bin/baudbot ]; then

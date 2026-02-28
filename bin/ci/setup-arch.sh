@@ -46,8 +46,10 @@ BAUDBOT_BOOTSTRAP_TARGET="/usr/local/bin/baudbot" \
 # Prompts: admin user, LLM choice(1=Anthropic), Anthropic key,
 # Slack mode(2=advanced), Slack bot, Slack app, Slack users,
 # Browser?(n), Sentry?(n), launch(n)
+# Arch CI droplets frequently lack netfilter modules required by setup-firewall;
+# skip firewall bootstrap here to keep install/integration coverage stable.
 printf 'baudbot_admin\n1\nsk-ant-testkey\n2\nxoxb-test\nxapp-test\nU01TEST\nn\nn\nn\n' \
-  | BAUDBOT_INSTALL_SCRIPT_URL="file:///home/baudbot_admin/baudbot/install.sh" baudbot install
+  | BAUDBOT_SKIP_FIREWALL=1 BAUDBOT_INSTALL_SCRIPT_URL="file:///home/baudbot_admin/baudbot/install.sh" baudbot install
 
 echo "=== Verifying install ==="
 # .env exists with correct permissions
