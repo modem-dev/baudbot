@@ -48,7 +48,7 @@ const PROVIDERS = {
     name: "Anthropic (Claude Pro/Max)",
     authorizeUrl: "https://claude.ai/oauth/authorize",
     tokenUrl: "https://console.anthropic.com/v1/oauth/token",
-    clientId: atob("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl"),
+    clientId: atob("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl"), // public OAuth client ID; base64 only to avoid secret-scanner false positives
     redirectUri: "https://console.anthropic.com/oauth/code/callback",
     scope: "org:create_api_key user:profile user:inference",
     usesCallbackServer: false,
