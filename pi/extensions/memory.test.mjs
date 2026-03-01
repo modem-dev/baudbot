@@ -300,6 +300,27 @@ describe("memory: skill file integration", () => {
     );
   });
 
+  it("control-agent SKILL.md references agent_spawn", () => {
+    assert.ok(
+      controlSkill.includes("agent_spawn"),
+      "control-agent runbook should use agent_spawn for worker launches"
+    );
+  });
+
+  it("control-agent SKILL.md forbids pi session spawn", () => {
+    assert.ok(
+      controlSkill.includes("`pi session spawn`"),
+      "control-agent runbook should explicitly forbid pi session spawn"
+    );
+  });
+
+  it("control-agent SKILL.md states send_to_session is a tool call", () => {
+    assert.ok(
+      controlSkill.includes("`send_to_session` is a tool call, not a shell command."),
+      "control-agent runbook should prevent shell-style send_to_session usage"
+    );
+  });
+
   it("dev-agent SKILL.md has Memory section", () => {
     assert.ok(devSkill.includes("## Memory"), "should have Memory section");
   });

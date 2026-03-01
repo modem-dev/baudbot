@@ -1,0 +1,191 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import net from "node:net";
+import { homedir, tmpdir } from "node:os";
+import path from "node:path";
+import agentSpawnExtension from "./agent-spawn.ts";
+
+const CONTROL_DIR = path.join(homedir(), ".pi", "session-control");
+
+function randomId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function createExtensionHarness(execImpl) {
+  let registeredTool = null;
+  const pi = {
+    registerTool(tool) {
+      registeredTool = tool;
+    },
+    exec: execImpl,
+  };
+  agentSpawnExtension(pi);
+  if (!registeredTool) throw new Error("agent_spawn tool was not registered");
+  return registeredTool;
+}
+
+function startUnixSocketServer(socketPath) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer((client) => {
+      client.end();
+    });
+
+    const onError = (err) => {
+      server.close();
+      reject(err);
+    };
+
+    server.once("error", onError);
+    server.listen(socketPath, () => {
+      server.off("error", onError);
+      resolve(server);
+    });
+  });
+}
+
+describe("agent_spawn extension tool", () => {
+  const tempDirs = [];
+  const servers = [];
+  const cleanupPaths = [];
+
+  afterEach(async () => {
+    for (const server of servers) {
+      await new Promise((resolve) => server.close(() => resolve(undefined)));
+    }
+    servers.length = 0;
+
+    for (const p of cleanupPaths) {
+      try {
+        if (existsSync(p)) unlinkSync(p);
+      } catch {
+        // Ignore cleanup failures.
+      }
+    }
+    cleanupPaths.length = 0;
+
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs.length = 0;
+  });
+
+  it("spawns and reports ready when alias/socket becomes available", async () => {
+    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    tempDirs.push(root);
+    const worktree = path.join(root, "worktree");
+    const skillPath = path.join(root, "dev-skill");
+    mkdirSync(worktree, { recursive: true });
+    mkdirSync(skillPath, { recursive: true });
+    mkdirSync(CONTROL_DIR, { recursive: true });
+
+    const sessionName = `dev-agent-test-${randomId()}`;
+    const aliasPath = path.join(CONTROL_DIR, `${sessionName}.alias`);
+    const socketPath = path.join(CONTROL_DIR, `${sessionName}-${randomId()}.sock`);
+    cleanupPaths.push(aliasPath, socketPath);
+
+    const execSpy = vi.fn(async (command, args) => {
+      expect(command).toBe("tmux");
+      expect(args.slice(0, 4)).toEqual(["new-session", "-d", "-s", sessionName]);
+      expect(args[4]).toContain(`export PI_SESSION_NAME='${sessionName}'`);
+      expect(args[4]).toContain("--session-control");
+      expect(args[4]).toContain(`--skill '${skillPath}'`);
+      expect(args[4]).toContain("--model 'anthropic/claude-opus-4-6'");
+
+      const server = await startUnixSocketServer(socketPath);
+      servers.push(server);
+      symlinkSync(path.basename(socketPath), aliasPath);
+      return { stdout: "", stderr: "", code: 0, killed: false };
+    });
+
+    const tool = createExtensionHarness(execSpy);
+    const result = await tool.execute(
+      "tool-call-id",
+      {
+        session_name: sessionName,
+        cwd: worktree,
+        skill_path: skillPath,
+        model: "anthropic/claude-opus-4-6",
+        ready_timeout_sec: 5,
+      },
+      undefined,
+      undefined,
+      {},
+    );
+
+    expect(result.isError).not.toBe(true);
+    expect(result.details.spawned).toBe(true);
+    expect(result.details.ready).toBe(true);
+    expect(result.details.session_name).toBe(sessionName);
+    expect(result.details.ready_alias).toBe(sessionName);
+    expect(result.details.alias_path).toBe(aliasPath);
+    expect(result.details.socket_path).toBe(socketPath);
+    expect(execSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns readiness timeout and does not issue cleanup commands", async () => {
+    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    tempDirs.push(root);
+    const worktree = path.join(root, "worktree");
+    const skillPath = path.join(root, "dev-skill");
+    mkdirSync(worktree, { recursive: true });
+    mkdirSync(skillPath, { recursive: true });
+
+    const sessionName = `dev-agent-timeout-${randomId()}`;
+    const calls = [];
+    const execSpy = vi.fn(async (command, args) => {
+      calls.push([command, args]);
+      return { stdout: "", stderr: "", code: 0, killed: false };
+    });
+
+    const tool = createExtensionHarness(execSpy);
+    const result = await tool.execute(
+      "tool-call-id",
+      {
+        session_name: sessionName,
+        cwd: worktree,
+        skill_path: skillPath,
+        model: "anthropic/claude-opus-4-6",
+        ready_timeout_sec: 1,
+      },
+      undefined,
+      undefined,
+      {},
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.details.spawned).toBe(true);
+    expect(result.details.ready).toBe(false);
+    expect(result.details.error).toBe("readiness_timeout");
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe("tmux");
+    expect(String(result.content[0].text)).toContain("left intact");
+  });
+
+  it("rejects invalid session_name before executing tmux", async () => {
+    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    tempDirs.push(root);
+    const worktree = path.join(root, "worktree");
+    const skillPath = path.join(root, "dev-skill");
+    mkdirSync(worktree, { recursive: true });
+    mkdirSync(skillPath, { recursive: true });
+
+    const execSpy = vi.fn(async () => ({ stdout: "", stderr: "", code: 0, killed: false }));
+    const tool = createExtensionHarness(execSpy);
+    const result = await tool.execute(
+      "tool-call-id",
+      {
+        session_name: "bad name",
+        cwd: worktree,
+        skill_path: skillPath,
+        model: "anthropic/claude-opus-4-6",
+      },
+      undefined,
+      undefined,
+      {},
+    );
+
+    expect(result.isError).toBe(true);
+    expect(String(result.content[0].text)).toContain("Invalid session_name");
+    expect(execSpy).not.toHaveBeenCalled();
+  });
+});

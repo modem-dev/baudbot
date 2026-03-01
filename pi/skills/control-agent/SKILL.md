@@ -197,22 +197,21 @@ cd $REPO_PATH
 git fetch origin
 git worktree add ~/workspace/worktrees/$BRANCH -b $BRANCH origin/main
 
-# 2. Launch the agent IN the worktree
-tmux new-session -d -s $SESSION_NAME \
-  "cd ~/workspace/worktrees/$BRANCH && \
-   export PATH=\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH && \
-   export PI_SESSION_NAME=$SESSION_NAME && \
-   exec varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent --model <MODEL_FROM_TABLE_ABOVE>"
+# 2. Spawn via agent_spawn tool (preferred and required)
+# Call the tool with:
+#   session_name: $SESSION_NAME
+#   cwd: ~/workspace/worktrees/$BRANCH
+#   skill_path: ~/.pi/agent/skills/dev-agent
+#   model: <MODEL_FROM_TABLE_ABOVE>
+#   ready_alias: $SESSION_NAME
+#   ready_timeout_sec: 10
 ```
 
 **Important notes:**
-- `cd` into the worktree BEFORE launching pi — this ensures pi discovers project context from the repo's CWD
-- Use `exec` so the tmux session exits when pi exits
-- Use `varlock run --path ~/.config/` to validate and inject env vars
-- Set `PI_SESSION_NAME` so the auto-name extension registers it
-- Include `--session-control` for `send_to_session` / `list_sessions`
-- Wait **~10 seconds** after spawning before sending messages (agent needs time to initialize)
-- Do NOT use `--name` (not a real pi CLI flag)
+- `agent_spawn` performs a bounded readiness check against `~/.pi/session-control/<ready_alias>.alias` before returning.
+- Do not use ad-hoc shell spawn commands or pipes for readiness checks (`tail -5`, socket polling loops, etc.).
+- `send_to_session` is a tool call, not a shell command.
+- `pi session spawn` and `--name` are not valid in this runtime.
 
 **Model note**: Dev agents use the top-tier model from the table above. For cheaper tasks (e.g. read-only analysis), use the cheap model from the sentry-agent table instead.
 
