@@ -70,6 +70,21 @@ sudo baudbot update
 sudo baudbot rollback previous
 ```
 
+## Real Linux verification (DigitalOcean)
+
+When you have a DigitalOcean API credential available, you are encouraged to validate behavior on a real Linux VPS (not only local/sandbox runs), especially for runtime, process, tmux/session-control, networking, firewall, installer, or permissions-related changes.
+
+- Treat `DO_API_KEY` as a DigitalOcean token alias. This repo's scripts use `DO_API_TOKEN` as the canonical variable.
+- Prefer **Arch Linux** for first-pass verification when possible (lighter/faster CI baseline in this repo).
+- Reuse existing droplet helpers instead of ad-hoc scripts:
+  - `bin/ci/droplet.sh create ...`
+  - `bin/ci/droplet.sh wait-ssh ...`
+  - `bin/ci/droplet.sh run ... bin/ci/setup-arch.sh`
+  - `bin/ci/droplet.sh destroy ...`
+- For Arch image defaults, use the same image/version strategy as `.github/workflows/integration.yml`.
+- Always destroy temporary droplets/SSH keys/images after verification to avoid cost leaks.
+- Never print or persist DigitalOcean credentials in logs, commits, or memory files.
+
 ## Non-negotiable guardrails
 
 **Hard constraints (enforced by pre-commit hook or CI):**
