@@ -90,7 +90,7 @@ jobs:
 
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
-      - name: Decide release bump with Claude Sonnet
+      - name: Decide release bump with Claude Haiku 4.5
         id: decide
         if: steps.prs.outputs.has_changes == 'true'
         env:
@@ -122,7 +122,7 @@ jobs:
           PROMPT=$(echo "$PROMPT" | sed 's/^          //')
 
           jq -n \
-            --arg model "claude-3-5-sonnet-latest" \
+            --arg model "claude-haiku-4-5" \
             --arg system "You are precise and must output strict JSON only." \
             --arg prompt "$PROMPT" \
             --arg last_tag "$LAST_TAG" \
@@ -151,7 +151,45 @@ jobs:
           fi
 
           echo "$TEXT" > /tmp/decision-raw.txt
-          jq . /tmp/decision-raw.txt > /tmp/decision.json
+          python3 - <<'PY'
+          import json
+          import re
+          import sys
+
+          text = open('/tmp/decision-raw.txt', encoding='utf-8').read().strip()
+
+          def parse_json(candidate: str):
+              try:
+                  return json.loads(candidate)
+              except Exception:
+                  return None
+
+          decision = parse_json(text)
+          if decision is None:
+              fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+              if fenced:
+                  decision = parse_json(fenced.group(1).strip())
+
+          if decision is None:
+              decoder = json.JSONDecoder()
+              for index, ch in enumerate(text):
+                  if ch != '{':
+                      continue
+                  try:
+                      decision, _ = decoder.raw_decode(text[index:])
+                      break
+                  except Exception:
+                      continue
+
+          if decision is None:
+              print("Failed to parse release decision JSON from model response", file=sys.stderr)
+              print(text, file=sys.stderr)
+              sys.exit(1)
+
+          with open('/tmp/decision.json', 'w', encoding='utf-8') as fh:
+              json.dump(decision, fh)
+              fh.write('\n')
+          PY
 
           DECISION=$(jq -r '.decision' /tmp/decision.json)
           REASON=$(jq -r '.reason' /tmp/decision.json)
