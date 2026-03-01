@@ -133,6 +133,14 @@ function formatBlockContent(block: any, indent = 0): string {
 	}
 }
 
+function parseNotionId(rawId: string, fieldName: "page_id" | "database_id") {
+	const normalizedId = rawId.replace(/-/g, "").trim();
+	if (!/^[a-f0-9]{32}$/i.test(normalizedId)) {
+		return { error: `❌ ${fieldName} must be a valid Notion ID (32 hex characters).` };
+	}
+	return { value: normalizedId };
+}
+
 // ── Action handlers ───────────────────────────────────────────────────────────
 
 async function handleSearch(params: any): Promise<string> {
@@ -177,8 +185,9 @@ async function handleSearch(params: any): Promise<string> {
 async function handleGet(params: any): Promise<string> {
 	if (!params.page_id) return "❌ page_id is required for get action.";
 
-	// Remove hyphens from page_id if present (Notion accepts both formats)
-	const pageId = params.page_id.replace(/-/g, "");
+	const parsedPageId = parseNotionId(params.page_id, "page_id");
+	if (parsedPageId.error) return parsedPageId.error;
+	const pageId = parsedPageId.value;
 
 	// Get page metadata
 	const page = await notionRequest(`/pages/${pageId}`);
@@ -223,7 +232,9 @@ async function handleGet(params: any): Promise<string> {
 async function handleList(params: any): Promise<string> {
 	if (!params.database_id) return "❌ database_id is required for list action.";
 
-	const databaseId = params.database_id.replace(/-/g, "");
+	const parsedDatabaseId = parseNotionId(params.database_id, "database_id");
+	if (parsedDatabaseId.error) return parsedDatabaseId.error;
+	const databaseId = parsedDatabaseId.value;
 	const limit = Math.min(params.limit || 20, 100);
 
 	const body: any = {
@@ -314,7 +325,9 @@ async function handleList(params: any): Promise<string> {
 async function handleDatabase(params: any): Promise<string> {
 	if (!params.database_id) return "❌ database_id is required for database action.";
 
-	const databaseId = params.database_id.replace(/-/g, "");
+	const parsedDatabaseId = parseNotionId(params.database_id, "database_id");
+	if (parsedDatabaseId.error) return parsedDatabaseId.error;
+	const databaseId = parsedDatabaseId.value;
 
 	const db = await notionRequest(`/databases/${databaseId}`);
 
