@@ -271,7 +271,7 @@ async function loginOpenAICodex(rl) {
   return {
     access: tokens.access_token,
     refresh: tokens.refresh_token,
-    expires: Date.now() + tokens.expires_in * 1000,
+    expires: Date.now() + tokens.expires_in * 1000 - 5 * 60 * 1000, // refresh 5 min early to avoid edge-of-expiry 401s
     accountId,
   };
 }
@@ -334,7 +334,7 @@ async function loginAnthropic(rl) {
   return {
     access: tokens.access_token,
     refresh: tokens.refresh_token,
-    expires: Date.now() + tokens.expires_in * 1000 - 5 * 60 * 1000,
+    expires: Date.now() + tokens.expires_in * 1000 - 5 * 60 * 1000, // refresh 5 min early to avoid edge-of-expiry 401s
   };
 }
 
