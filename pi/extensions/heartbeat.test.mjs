@@ -112,6 +112,22 @@ function hasOutboundSendCommand(sessionJsonlContent, threadTs) {
   return false;
 }
 
+function slackTsToMs(ts) {
+  const parsed = Number.parseFloat(ts);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed * 1000);
+}
+
+function extractMentionThreadTs(logTail) {
+  const mentionPattern = /app_mention[^\n]*\bts:\s*(\d+\.\d+)/g;
+  const mentionTs = new Set();
+  let match;
+  while ((match = mentionPattern.exec(logTail)) !== null) {
+    mentionTs.add(match[1]);
+  }
+  return [...mentionTs];
+}
+
 // ── Test helpers ────────────────────────────────────────────────────────────
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -358,6 +374,33 @@ Not part of JSON.`;
     const result = parseTodo(content);
     assert.equal(result.id, "extra");
     assert.equal(result.status, "open");
+  });
+});
+
+describe("heartbeat v2: unanswered mention log parsing", () => {
+  it("extracts app_mention ts from broker-bridge log format", () => {
+    const log = "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: app_mention, ts: 1772313000.123456)";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.123456"]);
+  });
+
+  it("extracts app_mention ts from socket-mode bridge log format", () => {
+    const log = "📣 app_mention from <@U123> in C123 ts: 1772313001.654321";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313001.654321"]);
+  });
+
+  it("ignores non-app_mention log lines", () => {
+    const log = [
+      "💬 from <@U123>: hello",
+      "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: message, ts: 1772313000.123456)",
+      "🧵 Registered thread-1 → channel=C123 thread_ts=1772313000.123456",
+    ].join("\n");
+    assert.deepEqual(extractMentionThreadTs(log), []);
+  });
+
+  it("converts slack ts to milliseconds", () => {
+    assert.equal(slackTsToMs("1772313000.123456"), 1772313000123);
+    assert.equal(slackTsToMs("0"), null);
+    assert.equal(slackTsToMs("not-a-ts"), null);
   });
 });
 

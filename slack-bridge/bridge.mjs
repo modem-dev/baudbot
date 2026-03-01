@@ -346,6 +346,8 @@ async function handleMessage(userMessage, event, say) {
 
 // Handle @mentions
 app.event("app_mention", async ({ event, say }) => {
+  console.log(`📣 app_mention from <@${event.user || "unknown"}> in ${event.channel || "n/a"} ts: ${event.ts}`);
+
   const userMessage = cleanMessage(event.text);
   if (!userMessage) {
     await say({ text: "👋 I'm here! Send me a message.", thread_ts: event.ts });

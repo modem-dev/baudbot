@@ -318,50 +318,43 @@ function checkUnansweredMentions(): CheckResult[] {
   if (!existsSync(BRIDGE_LOG)) return results;
 
   try {
-    // Read the last 500 lines of the bridge log to find recent app_mention events
+    // Read the last 500 lines of the bridge log to find recent app_mention events.
+    // Support both bridge implementations:
+    //   - broker-bridge.mjs: "... (type: app_mention, ts: 1234.5678)"
+    //   - bridge.mjs:        "app_mention ... ts: 1234.5678"
     const { execSync } = require("node:child_process");
     const logTail = execSync(`tail -500 "${BRIDGE_LOG}"`, { encoding: "utf-8" });
-    
-    // Parse log lines looking for app_mention events
-    const mentionPattern = /\[([^\]]+)\].*app_mention.*ts: (\d+\.\d+)/g;
-    const mentions: Array<{ timestamp: string; ts: string }> = [];
-    
+
+    // Capture the Slack event ts value from app_mention log lines.
+    const mentionPattern = /app_mention[^\n]*\bts:\s*(\d+\.\d+)/g;
+    const mentionThreadTsSet = new Set<string>();
+
     let match: RegExpExecArray | null;
     while ((match = mentionPattern.exec(logTail)) !== null) {
-      mentions.push({
-        timestamp: match[1],
-        ts: match[2],
-      });
+      mentionThreadTsSet.add(match[1]);
     }
 
-    // Filter to recent mentions (within last hour)
     const oneHourAgo = now - 60 * 60 * 1000;
-    const recentMentions = mentions.filter(m => {
-      try {
-        const mentionTime = new Date(m.timestamp).getTime();
-        return mentionTime > oneHourAgo;
-      } catch {
-        return false;
-      }
-    });
 
-    // For each recent mention, check if we replied to it
-    for (const mention of recentMentions) {
-      const mentionTime = new Date(mention.timestamp).getTime();
+    // For each recent mention, check if we replied to it.
+    for (const threadTs of mentionThreadTsSet) {
+      const mentionTime = slackTsToMs(threadTs);
+      if (mentionTime == null || mentionTime <= oneHourAgo) continue;
+
       const age = now - mentionTime;
-      
-      // Skip very recent mentions (< 5 min) - agent might still be processing
+
+      // Skip very recent mentions (< 5 min) - agent might still be processing.
       if (age < UNANSWERED_MENTION_THRESHOLD_MS) continue;
 
-      // Check if we sent a reply to this thread_ts
-      const replied = hasRepliedToThread(mention.ts);
-      
+      // Check if we sent a reply to this thread_ts.
+      const replied = hasRepliedToThread(threadTs);
+
       if (!replied) {
         const minutesAgo = Math.round(age / (60 * 1000));
         results.push({
-          name: `unanswered:${mention.ts}`,
+          name: `unanswered:${threadTs}`,
           ok: false,
-          detail: `Slack mention at ts ${mention.ts} (${minutesAgo} min ago) has no reply — may have been lost during restart`,
+          detail: `Slack mention at ts ${threadTs} (${minutesAgo} min ago) has no reply — may have been lost during restart`,
         });
       }
     }
@@ -371,6 +364,12 @@ function checkUnansweredMentions(): CheckResult[] {
   }
 
   return results;
+}
+
+function slackTsToMs(ts: string): number | null {
+  const parsed = Number.parseFloat(ts);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed * 1000);
 }
 
 function hasRepliedToThread(threadTs: string): boolean {
