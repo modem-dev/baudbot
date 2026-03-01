@@ -13,18 +13,22 @@ import { StringEnum } from "@mariozechner/pi-ai";
  * Investigation: Sentry API for deep-dive on flagged issues
  *
  * Requires:
- *   SLACK_BOT_TOKEN    — Slack bot OAuth token
- *   SENTRY_AUTH_TOKEN  — Sentry API bearer token
- *   SENTRY_ORG         — Sentry organization slug
- *   SENTRY_CHANNEL_ID  — Slack channel ID for #bots-sentry
+ *   GATEWAY_BOT_TOKEN or SLACK_BOT_TOKEN — Slack bot OAuth token
+ *   SENTRY_AUTH_TOKEN                     — Sentry API bearer token
+ *   SENTRY_ORG                            — Sentry organization slug
+ *   SENTRY_CHANNEL_ID                     — Slack channel ID for #bots-sentry
  */
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const SENTRY_ORG = process.env.SENTRY_ORG || "";
 const SENTRY_AUTH_TOKEN = process.env.SENTRY_AUTH_TOKEN || "";
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
+const SLACK_BOT_TOKEN = process.env.GATEWAY_BOT_TOKEN || process.env.SLACK_BOT_TOKEN || "";
 let SENTRY_CHANNEL_ID = process.env.SENTRY_CHANNEL_ID || "";
+
+if (!process.env.GATEWAY_BOT_TOKEN && process.env.SLACK_BOT_TOKEN) {
+  console.warn("⚠️  SLACK_BOT_TOKEN is deprecated; set GATEWAY_BOT_TOKEN instead (legacy fallback still supported).");
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -113,7 +117,7 @@ export default function (pi: ExtensionAPI) {
   // ── Slack API ───────────────────────────────────────────────────────────
 
   async function slackGet(method: string, params: Record<string, string> = {}): Promise<any> {
-    if (!SLACK_BOT_TOKEN) throw new Error("SLACK_BOT_TOKEN not set");
+    if (!SLACK_BOT_TOKEN) throw new Error("GATEWAY_BOT_TOKEN/SLACK_BOT_TOKEN not set");
     const qs = new URLSearchParams(params).toString();
     const url = `https://slack.com/api/${method}${qs ? `?${qs}` : ""}`;
     const res = await fetch(url, {
@@ -125,7 +129,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function slackPost(method: string, body: Record<string, any>): Promise<any> {
-    if (!SLACK_BOT_TOKEN) throw new Error("SLACK_BOT_TOKEN not set");
+    if (!SLACK_BOT_TOKEN) throw new Error("GATEWAY_BOT_TOKEN/SLACK_BOT_TOKEN not set");
     const res = await fetch(`https://slack.com/api/${method}`, {
       method: "POST",
       headers: {
@@ -389,7 +393,7 @@ export default function (pi: ExtensionAPI) {
       switch (params.action) {
         case "start": {
           if (!SLACK_BOT_TOKEN) {
-            text = "❌ SLACK_BOT_TOKEN not set. Add it to ~/.config/.env and restart.";
+            text = "❌ GATEWAY_BOT_TOKEN/SLACK_BOT_TOKEN not set. Add one to ~/.config/.env and restart.";
             break;
           }
           if (params.interval_minutes) {
@@ -420,7 +424,7 @@ export default function (pi: ExtensionAPI) {
             `  Baseline: ${state.baselineComplete ? "complete" : "pending"}`,
             `  Tracked messages: ${state.seenTs.size}`,
             `  Channel ID: ${SENTRY_CHANNEL_ID || "(will resolve on start)"}`,
-            `  Slack token: ${SLACK_BOT_TOKEN ? "✅ set" : "❌ missing"}`,
+            `  Gateway/Slack token: ${SLACK_BOT_TOKEN ? "✅ set" : "❌ missing"}`,
             `  Sentry token: ${SENTRY_AUTH_TOKEN ? "✅ set" : "❌ missing"}`,
             `  Org: ${SENTRY_ORG}`,
           ].join("\n");
@@ -429,7 +433,7 @@ export default function (pi: ExtensionAPI) {
 
         case "check": {
           if (!SLACK_BOT_TOKEN) {
-            text = "❌ SLACK_BOT_TOKEN not set.";
+            text = "❌ GATEWAY_BOT_TOKEN/SLACK_BOT_TOKEN not set.";
             break;
           }
           try {
@@ -467,7 +471,7 @@ export default function (pi: ExtensionAPI) {
 
         case "list": {
           if (!SLACK_BOT_TOKEN) {
-            text = "❌ SLACK_BOT_TOKEN not set.";
+            text = "❌ GATEWAY_BOT_TOKEN/SLACK_BOT_TOKEN not set.";
             break;
           }
           try {

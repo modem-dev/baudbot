@@ -50,6 +50,7 @@ JS_TEST_FILES=(
   pi/extensions/heartbeat.test.mjs
   pi/extensions/memory.test.mjs
   slack-bridge/security.test.mjs
+  slack-bridge/env-aliases.test.mjs
   bin/scan-extensions.test.mjs
   bin/broker-register.test.mjs
 )
@@ -59,6 +60,7 @@ JS_TEST_NAMES=(
   "heartbeat"
   "memory"
   "bridge security"
+  "gateway env aliases"
   "extension scanner"
   "broker register"
 )

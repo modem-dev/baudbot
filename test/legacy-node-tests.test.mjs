@@ -27,6 +27,10 @@ describe("legacy node:test suites", () => {
     expect(() => runNodeTest("slack-bridge/security.test.mjs")).not.toThrow();
   });
 
+  it("gateway env aliases", () => {
+    expect(() => runNodeTest("slack-bridge/env-aliases.test.mjs")).not.toThrow();
+  });
+
   it("extension scanner", () => {
     expect(() => runNodeTest("bin/scan-extensions.test.mjs")).not.toThrow();
   });

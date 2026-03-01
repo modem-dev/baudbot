@@ -274,27 +274,33 @@ fi
 HAS_SOCKET=false
 HAS_BROKER=false
 
-if grep -q '^SLACK_BOT_TOKEN=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_APP_TOKEN=.\+' "$ENV_FILE" 2>/dev/null; then
+has_env_any() {
+  local preferred_key="$1"
+  local legacy_key="$2"
+  grep -q "^${preferred_key}=.\+" "$ENV_FILE" 2>/dev/null || grep -q "^${legacy_key}=.\+" "$ENV_FILE" 2>/dev/null
+}
+
+if has_env_any GATEWAY_BOT_TOKEN SLACK_BOT_TOKEN \
+  && has_env_any GATEWAY_APP_TOKEN SLACK_APP_TOKEN; then
   HAS_SOCKET=true
 fi
 
-if grep -q '^SLACK_BROKER_URL=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_WORKSPACE_ID=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_SERVER_PRIVATE_KEY=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_SERVER_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null \
-  && grep -q '^SLACK_BROKER_SIGNING_PUBLIC_KEY=.\+' "$ENV_FILE" 2>/dev/null; then
+if has_env_any GATEWAY_BROKER_URL SLACK_BROKER_URL \
+  && has_env_any GATEWAY_BROKER_WORKSPACE_ID SLACK_BROKER_WORKSPACE_ID \
+  && has_env_any GATEWAY_BROKER_SERVER_PRIVATE_KEY SLACK_BROKER_SERVER_PRIVATE_KEY \
+  && has_env_any GATEWAY_BROKER_SERVER_PUBLIC_KEY SLACK_BROKER_SERVER_PUBLIC_KEY \
+  && has_env_any GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY \
+  && has_env_any GATEWAY_BROKER_PUBLIC_KEY SLACK_BROKER_PUBLIC_KEY \
+  && has_env_any GATEWAY_BROKER_SIGNING_PUBLIC_KEY SLACK_BROKER_SIGNING_PUBLIC_KEY; then
   HAS_BROKER=true
 fi
 
 if [ "$HAS_SOCKET" = false ] && [ "$HAS_BROKER" = false ]; then
-  MISSING+="  - Slack integration (either SLACK_BOT_TOKEN + SLACK_APP_TOKEN, or broker registration via 'sudo baudbot broker register')\n"
+  MISSING+="  - Gateway bridge integration (either GATEWAY_BOT_TOKEN + GATEWAY_APP_TOKEN, legacy SLACK_BOT_TOKEN + SLACK_APP_TOKEN, or broker registration via 'sudo baudbot broker register')\n"
 fi
 
-if ! grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
-  warn "SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
+if ! has_env_any GATEWAY_ALLOWED_USERS SLACK_ALLOWED_USERS; then
+  warn "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
 fi
 
 if [ -n "$MISSING" ]; then

@@ -34,6 +34,9 @@ import {
   canonicalizeProtocolRequest,
   canonicalizeSendRequest,
 } from "./crypto.mjs";
+import { applyGatewayEnvAliases } from "./env-aliases.mjs";
+
+const gatewayAliasWarnings = applyGatewayEnvAliases(process.env).warnings;
 
 const SOCKET_DIR = path.join(homedir(), ".pi", "session-control");
 const AGENT_TIMEOUT_MS = 120_000;
@@ -120,6 +123,10 @@ function logWarn(...args) {
   logWithLevel("warn", ...args);
 }
 
+for (const warning of gatewayAliasWarnings) {
+  logWarn(warning);
+}
+
 for (const key of [
   "SLACK_BROKER_URL",
   "SLACK_BROKER_WORKSPACE_ID",
@@ -131,14 +138,15 @@ for (const key of [
   "SLACK_BROKER_ACCESS_TOKEN",
 ]) {
   if (!process.env[key]) {
-    logError(`❌ Missing required env var for broker mode: ${key}`);
+    const gatewayAlias = key.replace(/^SLACK_/, "GATEWAY_");
+    logError(`❌ Missing required env var for broker mode: ${key} (or ${gatewayAlias})`);
     process.exit(1);
   }
 }
 
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 if (ALLOWED_USERS.length === 0) {
-  logWarn("⚠️  SLACK_ALLOWED_USERS not set — all workspace members can interact");
+  logWarn("⚠️  GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set — all workspace members can interact");
 }
 
 const GITHUB_IGNORED_USERS = parseIgnoredUsers(process.env.GITHUB_IGNORED_USERS);
@@ -562,7 +570,7 @@ function isBrokerAccessTokenExpired() {
   const ts = Date.parse(brokerAccessTokenExpiresAt);
   if (!Number.isFinite(ts)) {
     if (!brokerTokenExpiryFormatWarned) {
-      logWarn("⚠️ invalid SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT format; expected ISO-8601 timestamp");
+      logWarn("⚠️ invalid SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT/GATEWAY_BROKER_ACCESS_TOKEN_EXPIRES_AT format; expected ISO-8601 timestamp");
       brokerTokenExpiryFormatWarned = true;
     }
     return false;

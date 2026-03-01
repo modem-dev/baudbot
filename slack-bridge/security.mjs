@@ -226,7 +226,7 @@ export function sanitizeOutboundText(input) {
 // ── Access Control ──────────────────────────────────────────────────────────
 
 /**
- * Parse SLACK_ALLOWED_USERS env var into a list.
+ * Parse GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS env var into a list.
  */
 export function parseAllowedUsers(envValue) {
   const users = (envValue || "")

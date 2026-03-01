@@ -93,22 +93,22 @@ mkdir -p "$BRIDGE_LOG_DIR"
 # --- Detect bridge mode ---
 BRIDGE_SCRIPT=""
 if [ -f "$BRIDGE_DIR/broker-bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
-  test -n "$SLACK_BROKER_URL" &&
-  test -n "$SLACK_BROKER_WORKSPACE_ID" &&
-  test -n "$SLACK_BROKER_SERVER_PRIVATE_KEY" &&
-  test -n "$SLACK_BROKER_SERVER_PUBLIC_KEY" &&
-  test -n "$SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY" &&
-  test -n "$SLACK_BROKER_PUBLIC_KEY" &&
-  test -n "$SLACK_BROKER_SIGNING_PUBLIC_KEY"' 2>/dev/null; then
+  test -n "${GATEWAY_BROKER_URL:-${SLACK_BROKER_URL:-}}" &&
+  test -n "${GATEWAY_BROKER_WORKSPACE_ID:-${SLACK_BROKER_WORKSPACE_ID:-}}" &&
+  test -n "${GATEWAY_BROKER_SERVER_PRIVATE_KEY:-${SLACK_BROKER_SERVER_PRIVATE_KEY:-}}" &&
+  test -n "${GATEWAY_BROKER_SERVER_PUBLIC_KEY:-${SLACK_BROKER_SERVER_PUBLIC_KEY:-}}" &&
+  test -n "${GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY:-${SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY:-}}" &&
+  test -n "${GATEWAY_BROKER_PUBLIC_KEY:-${SLACK_BROKER_PUBLIC_KEY:-}}" &&
+  test -n "${GATEWAY_BROKER_SIGNING_PUBLIC_KEY:-${SLACK_BROKER_SIGNING_PUBLIC_KEY:-}}"' 2>/dev/null; then
   BRIDGE_SCRIPT="broker-bridge.mjs"
 elif [ -f "$BRIDGE_DIR/bridge.mjs" ] && varlock run --path "$HOME/.config/" -- sh -c '
-  test -n "$SLACK_BOT_TOKEN" &&
-  test -n "$SLACK_APP_TOKEN"' 2>/dev/null; then
+  test -n "${GATEWAY_BOT_TOKEN:-${SLACK_BOT_TOKEN:-}}" &&
+  test -n "${GATEWAY_APP_TOKEN:-${SLACK_APP_TOKEN:-}}"' 2>/dev/null; then
   BRIDGE_SCRIPT="bridge.mjs"
 fi
 
 if [ -z "$BRIDGE_SCRIPT" ]; then
-  echo "No Slack transport configured (missing broker keys and socket tokens); skipping bridge startup."
+  echo "No Gateway transport configured (missing broker keys and socket tokens); skipping bridge startup."
   echo ""
   echo "=== Startup Complete ==="
   exit 0
@@ -117,7 +117,7 @@ fi
 # --- Launch bridge in a tmux session with supervised restart loop ---
 # The restart loop:
 # - Re-reads .env on every restart (picks up config changes)
-# - Unsets SLACK_BROKER_* before sourcing (avoids stale parent env)
+# - Unsets SLACK_BROKER_* and GATEWAY_BROKER_* before sourcing (avoids stale parent env)
 # - Tracks consecutive fast failures (<60s runtime) and gives up after 10
 # - Backs off: 5s base + 2s per failure, capped at 60s
 # - Kills port holders before retrying (avoids EADDRINUSE spin)
@@ -156,7 +156,7 @@ tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   while true; do \
     echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT (attempt \$((consecutive_failures + 1)))\" >> $BRIDGE_LOG_FILE; \
     start_time=\$(date +%s); \
-    for v in \$(env | grep ^SLACK_BROKER_ | cut -d= -f1 || true); do unset \$v; done; \
+    for v in \$(env | grep -E '^(SLACK_BROKER_|GATEWAY_BROKER_)' | cut -d= -f1 || true); do unset \$v; done; \
     set -a; source \$HOME/.config/.env; set +a; \
     node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
     exit_code=\$?; \

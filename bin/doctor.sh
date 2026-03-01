@@ -191,59 +191,77 @@ if [ -f "$ENV_FILE" ]; then
     fail "no valid LLM API key set (need ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)"
   fi
 
-  BROKER_REQUIRED_KEYS=(
-    SLACK_BROKER_URL
-    SLACK_BROKER_WORKSPACE_ID
-    SLACK_BROKER_SERVER_PRIVATE_KEY
-    SLACK_BROKER_SERVER_PUBLIC_KEY
-    SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY
-    SLACK_BROKER_PUBLIC_KEY
-    SLACK_BROKER_SIGNING_PUBLIC_KEY
+  read_first_env_value() {
+    local preferred_key="$1"
+    local legacy_key="$2"
+    local preferred_value=""
+
+    preferred_value="$(bb_read_env_value "$ENV_FILE" "$preferred_key")"
+    if [ -n "$preferred_value" ]; then
+      printf '%s' "$preferred_value"
+      return 0
+    fi
+
+    bb_read_env_value "$ENV_FILE" "$legacy_key"
+  }
+
+  BROKER_REQUIRED_PAIRS=(
+    "GATEWAY_BROKER_URL:SLACK_BROKER_URL"
+    "GATEWAY_BROKER_WORKSPACE_ID:SLACK_BROKER_WORKSPACE_ID"
+    "GATEWAY_BROKER_SERVER_PRIVATE_KEY:SLACK_BROKER_SERVER_PRIVATE_KEY"
+    "GATEWAY_BROKER_SERVER_PUBLIC_KEY:SLACK_BROKER_SERVER_PUBLIC_KEY"
+    "GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY:SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY"
+    "GATEWAY_BROKER_PUBLIC_KEY:SLACK_BROKER_PUBLIC_KEY"
+    "GATEWAY_BROKER_SIGNING_PUBLIC_KEY:SLACK_BROKER_SIGNING_PUBLIC_KEY"
   )
 
   BROKER_MODE_READY=true
-  for key in "${BROKER_REQUIRED_KEYS[@]}"; do
-    if [ -z "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
+  for pair in "${BROKER_REQUIRED_PAIRS[@]}"; do
+    IFS=':' read -r preferred_key legacy_key <<<"$pair"
+    if [ -z "$(read_first_env_value "$preferred_key" "$legacy_key")" ]; then
       BROKER_MODE_READY=false
       break
     fi
   done
 
   SOCKET_MODE_READY=true
-  for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-    if [ -z "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
+  for pair in "GATEWAY_BOT_TOKEN:SLACK_BOT_TOKEN" "GATEWAY_APP_TOKEN:SLACK_APP_TOKEN"; do
+    IFS=':' read -r preferred_key legacy_key <<<"$pair"
+    if [ -z "$(read_first_env_value "$preferred_key" "$legacy_key")" ]; then
       SOCKET_MODE_READY=false
       break
     fi
   done
 
   if [ "$BROKER_MODE_READY" = true ]; then
-    pass "broker mode configured (SLACK_BROKER_*)"
-    for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-      if [ -n "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
-        pass "$key is set"
+    pass "broker mode configured (GATEWAY_BROKER_* preferred; SLACK_BROKER_* legacy)"
+    for pair in "GATEWAY_BOT_TOKEN:SLACK_BOT_TOKEN" "GATEWAY_APP_TOKEN:SLACK_APP_TOKEN"; do
+      IFS=':' read -r preferred_key legacy_key <<<"$pair"
+      if [ -n "$(read_first_env_value "$preferred_key" "$legacy_key")" ]; then
+        pass "$preferred_key/$legacy_key is set"
       else
-        pass "$key not required in broker mode"
+        pass "$preferred_key/$legacy_key not required in broker mode"
       fi
     done
   else
-    for key in SLACK_BOT_TOKEN SLACK_APP_TOKEN; do
-      if [ -n "$(bb_read_env_value "$ENV_FILE" "$key")" ]; then
-        pass "$key is set"
+    for pair in "GATEWAY_BOT_TOKEN:SLACK_BOT_TOKEN" "GATEWAY_APP_TOKEN:SLACK_APP_TOKEN"; do
+      IFS=':' read -r preferred_key legacy_key <<<"$pair"
+      if [ -n "$(read_first_env_value "$preferred_key" "$legacy_key")" ]; then
+        pass "$preferred_key/$legacy_key is set"
       else
-        warn "$key is not set"
+        warn "$preferred_key/$legacy_key is not set"
       fi
     done
 
     if [ "$SOCKET_MODE_READY" = false ]; then
-      warn "no Slack transport configured (set SLACK_BROKER_* for broker mode or SLACK_BOT_TOKEN+SLACK_APP_TOKEN for socket mode)"
+      warn "no Gateway transport configured (set GATEWAY_BROKER_* or SLACK_BROKER_* for broker mode, or GATEWAY_BOT_TOKEN+GATEWAY_APP_TOKEN / SLACK_BOT_TOKEN+SLACK_APP_TOKEN for socket mode)"
     fi
   fi
 
-  if grep -q '^SLACK_ALLOWED_USERS=.\+' "$ENV_FILE" 2>/dev/null; then
-    pass "SLACK_ALLOWED_USERS is set"
+  if [ -n "$(read_first_env_value GATEWAY_ALLOWED_USERS SLACK_ALLOWED_USERS)" ]; then
+    pass "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS is set"
   else
-    warn "SLACK_ALLOWED_USERS is not set (all workspace members allowed)"
+    warn "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS is not set (all workspace members allowed)"
   fi
 else
   if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME/.config" ]; then

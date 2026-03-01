@@ -37,11 +37,16 @@ The agent also uses an SSH key (`~/.ssh/id_ed25519`) for git push. Setup generat
 
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
-| `SLACK_BOT_TOKEN` | Slack bot OAuth token (required for direct Socket Mode; ignored by broker pull mode) | Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps). Under **OAuth & Permissions**, add bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `reactions:write`, `im:history`, `im:read`, `im:write`. Install the app to your workspace and copy the **Bot User OAuth Token**. |
-| `SLACK_APP_TOKEN` | Slack app-level token (required for Socket Mode; not used by broker pull mode) | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
-| `SLACK_ALLOWED_USERS` | Comma-separated Slack user IDs | **Optional** — if not set, all workspace members can interact. Find your Slack user ID: click your profile → "..." → "Copy member ID". Example: `U01ABCDEF,U02GHIJKL` |
+| `GATEWAY_BOT_TOKEN` | **Preferred** bot OAuth token for Socket Mode (ignored by broker pull mode) | Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps). Under **OAuth & Permissions**, add bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `reactions:write`, `im:history`, `im:read`, `im:write`. Install the app to your workspace and copy the **Bot User OAuth Token**. |
+| `SLACK_BOT_TOKEN` | Legacy alias for `GATEWAY_BOT_TOKEN` (still supported) | Same token as above; migrate to `GATEWAY_BOT_TOKEN` over time. |
+| `GATEWAY_APP_TOKEN` | **Preferred** app-level token for Socket Mode | In your Slack app settings → **Basic Information** → **App-Level Tokens**, create a token with `connections:write` scope. |
+| `SLACK_APP_TOKEN` | Legacy alias for `GATEWAY_APP_TOKEN` (still supported) | Same token as above; migrate to `GATEWAY_APP_TOKEN` over time. |
+| `GATEWAY_ALLOWED_USERS` | **Preferred** comma-separated Slack user IDs allowlist | **Optional** — if not set, all workspace members can interact. Find your Slack user ID: click your profile → "..." → "Copy member ID". Example: `U01ABCDEF,U02GHIJKL` |
+| `SLACK_ALLOWED_USERS` | Legacy alias for `GATEWAY_ALLOWED_USERS` (still supported) | Same value as above; migrate to `GATEWAY_ALLOWED_USERS` over time. |
 
-If you're using Slack broker mode (`SLACK_BROKER_*` vars), the runtime uses broker pull delivery and does not require Socket Mode callbacks.
+If both alias forms are present, `GATEWAY_*` takes precedence.
+
+If you're using broker mode (`GATEWAY_BROKER_*` preferred, `SLACK_BROKER_*` legacy), the runtime uses broker pull delivery and does not require Socket Mode callbacks.
 
 If you're using the Slack broker OAuth flow, register this server after install:
 
@@ -105,7 +110,8 @@ The integration token only provides read access to pages/databases explicitly sh
 
 | Variable | Description | How to get it |
 |----------|-------------|---------------|
-| `SLACK_CHANNEL_ID` | Additional monitored channel | If set, the bridge responds to all messages in this channel (not just @mentions). |
+| `GATEWAY_CHANNEL_ID` | **Preferred** additional monitored channel | If set, the bridge responds to all messages in this channel (not just @mentions). |
+| `SLACK_CHANNEL_ID` | Legacy alias for `GATEWAY_CHANNEL_ID` (still supported) | Same value as above; migrate to `GATEWAY_CHANNEL_ID` over time. |
 
 ### Slack Broker Registration (optional)
 
@@ -113,23 +119,40 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 
 | Variable | Description |
 |----------|-------------|
-| `SLACK_BROKER_URL` | Broker base URL |
-| `SLACK_BROKER_WORKSPACE_ID` | Slack workspace/team ID (`T...`) |
-| `SLACK_BROKER_SERVER_PRIVATE_KEY` | Server X25519 private key (base64) |
-| `SLACK_BROKER_SERVER_PUBLIC_KEY` | Server X25519 public key (base64) |
-| `SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY` | Server Ed25519 private signing key (base64) |
-| `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Server Ed25519 public signing key (base64) |
-| `SLACK_BROKER_PUBLIC_KEY` | Broker X25519 public key (base64) |
-| `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Broker Ed25519 public signing key (base64) |
-| `SLACK_BROKER_ACCESS_TOKEN` | Broker-issued bearer token for broker API auth (required for broker pull mode runtime) |
-| `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | ISO timestamp for broker token expiry (recommended; runtime exits if expired) |
-| `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Comma-separated broker token scopes |
+| `GATEWAY_BROKER_URL` | **Preferred** broker base URL |
+| `SLACK_BROKER_URL` | Legacy alias for `GATEWAY_BROKER_URL` (still supported) |
+| `GATEWAY_BROKER_WORKSPACE_ID` | **Preferred** Slack workspace/team ID (`T...`) |
+| `SLACK_BROKER_WORKSPACE_ID` | Legacy alias for `GATEWAY_BROKER_WORKSPACE_ID` |
+| `GATEWAY_BROKER_SERVER_PRIVATE_KEY` | **Preferred** server X25519 private key (base64) |
+| `SLACK_BROKER_SERVER_PRIVATE_KEY` | Legacy alias for `GATEWAY_BROKER_SERVER_PRIVATE_KEY` |
+| `GATEWAY_BROKER_SERVER_PUBLIC_KEY` | **Preferred** server X25519 public key (base64) |
+| `SLACK_BROKER_SERVER_PUBLIC_KEY` | Legacy alias for `GATEWAY_BROKER_SERVER_PUBLIC_KEY` |
+| `GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY` | **Preferred** server Ed25519 private signing key (base64) |
+| `SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY` | Legacy alias for `GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY` |
+| `GATEWAY_BROKER_SERVER_SIGNING_PUBLIC_KEY` | **Preferred** server Ed25519 public signing key (base64) |
+| `SLACK_BROKER_SERVER_SIGNING_PUBLIC_KEY` | Legacy alias for `GATEWAY_BROKER_SERVER_SIGNING_PUBLIC_KEY` |
+| `GATEWAY_BROKER_PUBLIC_KEY` | **Preferred** broker X25519 public key (base64) |
+| `SLACK_BROKER_PUBLIC_KEY` | Legacy alias for `GATEWAY_BROKER_PUBLIC_KEY` |
+| `GATEWAY_BROKER_SIGNING_PUBLIC_KEY` | **Preferred** broker Ed25519 public signing key (base64) |
+| `SLACK_BROKER_SIGNING_PUBLIC_KEY` | Legacy alias for `GATEWAY_BROKER_SIGNING_PUBLIC_KEY` |
+| `GATEWAY_BROKER_ACCESS_TOKEN` | **Preferred** broker-issued bearer token for broker API auth (required for broker pull mode runtime) |
+| `SLACK_BROKER_ACCESS_TOKEN` | Legacy alias for `GATEWAY_BROKER_ACCESS_TOKEN` |
+| `GATEWAY_BROKER_ACCESS_TOKEN_EXPIRES_AT` | **Preferred** ISO timestamp for broker token expiry (runtime exits if expired) |
+| `SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT` | Legacy alias for `GATEWAY_BROKER_ACCESS_TOKEN_EXPIRES_AT` |
+| `GATEWAY_BROKER_ACCESS_TOKEN_SCOPES` | **Preferred** comma-separated broker token scopes |
+| `SLACK_BROKER_ACCESS_TOKEN_SCOPES` | Legacy alias for `GATEWAY_BROKER_ACCESS_TOKEN_SCOPES` |
 | `GITHUB_IGNORED_USERS` | Optional comma-separated GitHub logins to ignore when forwarding broker GitHub events (`baudbot-agent` is always ignored) |
-| `SLACK_BROKER_POLL_INTERVAL_MS` | Inbox poll interval in milliseconds (default: `3000`) |
-| `SLACK_BROKER_MAX_MESSAGES` | Max leased messages per poll request (default: `10`) |
-| `SLACK_BROKER_WAIT_SECONDS` | Long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
-| `SLACK_BROKER_DEDUPE_TTL_MS` | Dedupe cache TTL in milliseconds (default: `1200000`) |
+| `GATEWAY_BROKER_POLL_INTERVAL_MS` | **Preferred** inbox poll interval in milliseconds (default: `3000`) |
+| `SLACK_BROKER_POLL_INTERVAL_MS` | Legacy alias for `GATEWAY_BROKER_POLL_INTERVAL_MS` |
+| `GATEWAY_BROKER_MAX_MESSAGES` | **Preferred** max leased messages per poll request (default: `10`) |
+| `SLACK_BROKER_MAX_MESSAGES` | Legacy alias for `GATEWAY_BROKER_MAX_MESSAGES` |
+| `GATEWAY_BROKER_WAIT_SECONDS` | **Preferred** long-poll wait window for `/api/inbox/pull` (default: `20`, set `0` for immediate short-poll, max `25`) |
+| `SLACK_BROKER_WAIT_SECONDS` | Legacy alias for `GATEWAY_BROKER_WAIT_SECONDS` |
+| `GATEWAY_BROKER_DEDUPE_TTL_MS` | **Preferred** dedupe cache TTL in milliseconds (default: `1200000`) |
+| `SLACK_BROKER_DEDUPE_TTL_MS` | Legacy alias for `GATEWAY_BROKER_DEDUPE_TTL_MS` |
 | `BAUDBOT_AGENT_VERSION` | Optional override for broker observability `meta.agent_version` (otherwise read from `~/.pi/agent/baudbot-version.json` when available) |
+
+If both alias forms are set, `GATEWAY_BROKER_*` takes precedence.
 
 Broker mode also emits best-effort context usage telemetry in inbox pull `meta` by reading `~/.pi/agent/context-usage.json` (written by the `context` extension on session start/turn end/tool results).
 
@@ -223,25 +246,25 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # GitHub: authenticate with `sudo -u baudbot_agent gh auth login`
 
-# Slack
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
-SLACK_ALLOWED_USERS=U01ABCDEF,U02GHIJKL
+# Gateway bridge (legacy SLACK_* aliases are still supported)
+GATEWAY_BOT_TOKEN=xoxb-...
+GATEWAY_APP_TOKEN=xapp-...
+GATEWAY_ALLOWED_USERS=U01ABCDEF,U02GHIJKL
 SENTRY_CHANNEL_ID=C0987654321
 
-# Slack broker registration (optional, set by: sudo baudbot broker register)
-SLACK_BROKER_URL=https://broker.example.com
-SLACK_BROKER_WORKSPACE_ID=T0123ABCD
+# Gateway broker registration (optional, set by: sudo baudbot broker register)
+GATEWAY_BROKER_URL=https://broker.example.com
+GATEWAY_BROKER_WORKSPACE_ID=T0123ABCD
 # Optional broker auth token fields (set by broker register when provided)
-# SLACK_BROKER_ACCESS_TOKEN=...
-# SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT=2026-02-22T22:15:00.000Z
-# SLACK_BROKER_ACCESS_TOKEN_SCOPES=slack.send,inbox.pull,inbox.ack
+# GATEWAY_BROKER_ACCESS_TOKEN=...
+# GATEWAY_BROKER_ACCESS_TOKEN_EXPIRES_AT=2026-02-22T22:15:00.000Z
+# GATEWAY_BROKER_ACCESS_TOKEN_SCOPES=slack.send,inbox.pull,inbox.ack
 # Optional GitHub bot/user filters for broker-delivered GitHub webhook events
 # GITHUB_IGNORED_USERS=dependabot[bot],renovate[bot]
-SLACK_BROKER_POLL_INTERVAL_MS=3000
-SLACK_BROKER_MAX_MESSAGES=10
-SLACK_BROKER_WAIT_SECONDS=20
-SLACK_BROKER_DEDUPE_TTL_MS=1200000
+GATEWAY_BROKER_POLL_INTERVAL_MS=3000
+GATEWAY_BROKER_MAX_MESSAGES=10
+GATEWAY_BROKER_WAIT_SECONDS=20
+GATEWAY_BROKER_DEDUPE_TTL_MS=1200000
 
 # Experimental features (required for email)
 # BAUDBOT_EXPERIMENTAL=1

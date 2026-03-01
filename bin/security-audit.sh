@@ -730,18 +730,23 @@ echo ""
 
 echo "Bridge Configuration"
 
-# Check SLACK_ALLOWED_USERS mode (without reading the actual value)
+# Check Gateway/Slack allowlist mode (without reading the actual value)
 if [ -f "$BAUDBOT_HOME/.config/.env" ]; then
-  if grep -q '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null; then
-    allowed_count=$(grep '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
+  allowed_line=$(grep '^GATEWAY_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | tail -n 1 || true)
+  if [ -z "$allowed_line" ]; then
+    allowed_line=$(grep '^SLACK_ALLOWED_USERS=' "$BAUDBOT_HOME/.config/.env" 2>/dev/null | tail -n 1 || true)
+  fi
+  if [ -n "$allowed_line" ]; then
+    allowed_key="${allowed_line%%=*}"
+    allowed_count=$(printf '%s\n' "$allowed_line" | cut -d= -f2 | tr ',' '\n' | grep -c . || echo 0)
     if [ "$allowed_count" -gt 0 ]; then
-      ok "SLACK_ALLOWED_USERS configured ($allowed_count user(s))"
+      ok "$allowed_key configured ($allowed_count user(s))"
     else
-      finding "WARN" "SLACK_ALLOWED_USERS is empty" \
+      finding "WARN" "$allowed_key is empty" \
         "Bridge will allow all workspace members"
     fi
   else
-    finding "WARN" "SLACK_ALLOWED_USERS not set in .env" \
+    finding "WARN" "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set in .env" \
       "Bridge will allow all workspace members"
   fi
 fi

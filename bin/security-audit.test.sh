@@ -126,7 +126,7 @@ HOME3="$TMPDIR/no-allowed"
 setup_base "$HOME3"
 
 output=$(run_audit "$HOME3")
-expect_contains "reports missing SLACK_ALLOWED_USERS" "$output" "SLACK_ALLOWED_USERS not set"
+expect_contains "reports missing allowlist vars" "$output" "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set"
 
 echo ""
 

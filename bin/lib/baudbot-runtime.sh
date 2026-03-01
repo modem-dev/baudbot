@@ -64,8 +64,8 @@ print_deployed_version() {
 broker_mode_configured() {
   local env_file="/home/${1:-baudbot_agent}/.config/.env"
   [ -r "$env_file" ] || return 1
-  grep -Eq '^SLACK_BROKER_URL=[^[:space:]].*$' "$env_file" || return 1
-  grep -Eq '^SLACK_BROKER_WORKSPACE_ID=[^[:space:]].*$' "$env_file" || return 1
+  grep -Eq '^(GATEWAY_BROKER_URL|SLACK_BROKER_URL)=[^[:space:]].*$' "$env_file" || return 1
+  grep -Eq '^(GATEWAY_BROKER_WORKSPACE_ID|SLACK_BROKER_WORKSPACE_ID)=[^[:space:]].*$' "$env_file" || return 1
 }
 
 print_broker_connection_status() {
