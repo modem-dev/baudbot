@@ -39,7 +39,8 @@ const SOCKET_DIR = join(homedir(), ".pi", "session-control");
 const WORKTREES_DIR = join(homedir(), "workspace", "worktrees");
 const TODOS_DIR = join(homedir(), ".pi", "todos");
 const BRIDGE_URL = "http://127.0.0.1:7890/send";
-const BRIDGE_LOG = join(homedir(), ".pi", "agent", "logs", "slack-bridge.log");
+const BRIDGE_LOG_PRIMARY = join(homedir(), ".pi", "agent", "logs", "gateway-bridge.log");
+const BRIDGE_LOG_LEGACY = join(homedir(), ".pi", "agent", "logs", "slack-bridge.log");
 const SESSION_DIR = join(homedir(), ".pi", "agent", "sessions");
 const UNANSWERED_MENTION_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -81,6 +82,12 @@ function isUnansweredMentionsCheckEnabled(): boolean {
   const val = process.env.HEARTBEAT_CHECK_UNANSWERED_MENTIONS?.trim().toLowerCase();
   // Default to enabled unless explicitly disabled
   return val !== "0" && val !== "false" && val !== "no";
+}
+
+function resolveBridgeLogPath(): string | null {
+  if (existsSync(BRIDGE_LOG_PRIMARY)) return BRIDGE_LOG_PRIMARY;
+  if (existsSync(BRIDGE_LOG_LEGACY)) return BRIDGE_LOG_LEGACY;
+  return null;
 }
 
 // ── Health Check Functions ──────────────────────────────────────────────────
@@ -314,8 +321,9 @@ function checkStuckTodos(): CheckResult[] {
 function checkUnansweredMentions(): CheckResult[] {
   const results: CheckResult[] = [];
   const now = Date.now();
+  const bridgeLogPath = resolveBridgeLogPath();
 
-  if (!existsSync(BRIDGE_LOG)) return results;
+  if (!bridgeLogPath) return results;
 
   try {
     // Read the last 500 lines of the bridge log to find recent app_mention events.
@@ -323,7 +331,7 @@ function checkUnansweredMentions(): CheckResult[] {
     //   - broker-bridge.mjs: "... (type: app_mention, ts: 1234.5678)"
     //   - bridge.mjs:        "app_mention ... ts: 1234.5678"
     const { execSync } = require("node:child_process");
-    const logTail = execSync(`tail -500 "${BRIDGE_LOG}"`, { encoding: "utf-8" });
+    const logTail = execSync(`tail -500 "${bridgeLogPath}"`, { encoding: "utf-8" });
 
     const mentionThreadTsSet = new Set<string>(extractMentionThreadTs(logTail));
 
@@ -792,7 +800,8 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
                   `  Unanswered mention threshold: ${UNANSWERED_MENTION_THRESHOLD_MS / (60 * 1000)} min`,
                   `  Stuck todo threshold: ${STUCK_TODO_THRESHOLD_MS / (60 * 60 * 1000)}h`,
                   `  Bridge URL: ${BRIDGE_URL}`,
-                  `  Bridge log: ${BRIDGE_LOG}`,
+                  `  Bridge log (primary): ${BRIDGE_LOG_PRIMARY}`,
+                  `  Bridge log (legacy fallback): ${BRIDGE_LOG_LEGACY}`,
                   `  Socket dir: ${SOCKET_DIR}`,
                   `  Worktrees dir: ${WORKTREES_DIR}`,
                   `  Todos dir: ${TODOS_DIR}`,

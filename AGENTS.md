@@ -5,7 +5,7 @@ Baudbot is hardened infrastructure for running always-on AI agents.
 Use this file for **repo-wide** guidance. For directory-specific rules, use the nearest nested `AGENTS.md`:
 - [`bin/AGENTS.md`](bin/AGENTS.md)
 - [`pi/extensions/AGENTS.md`](pi/extensions/AGENTS.md)
-- [`slack-bridge/AGENTS.md`](slack-bridge/AGENTS.md)
+- [`gateway-bridge/AGENTS.md`](gateway-bridge/AGENTS.md)
 
 ## How Baudbot works
 
@@ -16,7 +16,7 @@ Baudbot is a persistent, team-facing coding agent system. It connects to Slack, 
 ```text
 Slack
    ↓
-Gateway bridge (slack-bridge dir; broker pull-mode or legacy Socket Mode)
+Gateway bridge (gateway-bridge dir; broker pull-mode or legacy Socket Mode)
    ↓
 control-agent (always-on, manages todo/routing/Slack threads)
    ├── dev-agent(s) — ephemeral coding workers in isolated worktrees
@@ -47,7 +47,8 @@ There are two startup phases with distinct ownership:
   - `dev-agent/` — coding worker persona
   - `sentry-agent/` — incident triage persona
 - `pi/settings.json` — pi agent settings
-- `slack-bridge/` — Gateway bridge runtime + security module
+- `gateway-bridge/` — Gateway bridge runtime + security module
+- `slack-bridge` → symlink to `gateway-bridge/` (legacy compatibility shim)
 - `docs/` — architecture/operations/security documentation
 - `test/` — vitest wrappers for shell scripts, integration, and legacy Node tests
 - `hooks/` — git hooks (security-critical `pre-commit` protecting admin-managed files)

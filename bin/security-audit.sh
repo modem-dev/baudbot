@@ -220,13 +220,17 @@ else
   ok "~/.pi/agent/skills/ is a real directory"
 fi
 
-BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/gateway-bridge"
+BRIDGE_DIR_LEGACY="$BAUDBOT_CURRENT_LINK/slack-bridge"
 # shellcheck disable=SC2088
 if [ -d "$BRIDGE_DIR" ]; then
   ok "Release bridge directory exists ($BRIDGE_DIR)"
+elif [ -d "$BRIDGE_DIR_LEGACY" ]; then
+  ok "Release bridge directory exists via legacy path ($BRIDGE_DIR_LEGACY)"
+  BRIDGE_DIR="$BRIDGE_DIR_LEGACY"
 else
   finding "WARN" "release bridge directory not found" \
-    "Expected: $BRIDGE_DIR (run: sudo baudbot update)"
+    "Expected: $BRIDGE_DIR or $BRIDGE_DIR_LEGACY (run: sudo baudbot update)"
 fi
 
 # Check version stamp exists
@@ -252,21 +256,34 @@ if [ -f "$MANIFEST_FILE" ]; then
   for critical_file in \
     ".pi/agent/extensions/tool-guard.ts" \
     ".pi/agent/extensions/tool-guard.test.mjs" \
-    "release/slack-bridge/security.mjs" \
-    "release/slack-bridge/security.test.mjs"; do
+    "release/gateway-bridge/security.mjs" \
+    "release/gateway-bridge/security.test.mjs"; do
 
     if [[ "$critical_file" == release/* ]]; then
       full_path="$BAUDBOT_CURRENT_LINK/${critical_file#release/}"
     else
       full_path="$BAUDBOT_HOME/$critical_file"
     fi
+
+    expected_hash=$(grep "\"$critical_file\"" "$MANIFEST_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "")
+
+    # Legacy compatibility: manifests from older releases used release/slack-bridge/* keys.
+    if [[ "$critical_file" == "release/gateway-bridge/security.mjs" ]] && [ -z "$expected_hash" ]; then
+      critical_file="release/slack-bridge/security.mjs"
+      full_path="$BAUDBOT_CURRENT_LINK/slack-bridge/security.mjs"
+      expected_hash=$(grep "\"$critical_file\"" "$MANIFEST_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "")
+    elif [[ "$critical_file" == "release/gateway-bridge/security.test.mjs" ]] && [ -z "$expected_hash" ]; then
+      critical_file="release/slack-bridge/security.test.mjs"
+      full_path="$BAUDBOT_CURRENT_LINK/slack-bridge/security.test.mjs"
+      expected_hash=$(grep "\"$critical_file\"" "$MANIFEST_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "")
+    fi
+
     if [ ! -f "$full_path" ]; then
       finding "WARN" "Missing critical file: $critical_file" "Run deploy.sh"
       missing=$((missing + 1))
       continue
     fi
 
-    expected_hash=$(grep "\"$critical_file\"" "$MANIFEST_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "")
     if [ -z "$expected_hash" ]; then
       finding "WARN" "$critical_file not in manifest" "Run deploy.sh to regenerate"
       continue

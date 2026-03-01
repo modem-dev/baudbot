@@ -24,11 +24,11 @@ describe("legacy node:test suites", () => {
   });
 
   it("bridge security", () => {
-    expect(() => runNodeTest("slack-bridge/security.test.mjs")).not.toThrow();
+    expect(() => runNodeTest("gateway-bridge/security.test.mjs")).not.toThrow();
   });
 
   it("gateway env aliases", () => {
-    expect(() => runNodeTest("slack-bridge/env-aliases.test.mjs")).not.toThrow();
+    expect(() => runNodeTest("gateway-bridge/env-aliases.test.mjs")).not.toThrow();
   });
 
   it("extension scanner", () => {

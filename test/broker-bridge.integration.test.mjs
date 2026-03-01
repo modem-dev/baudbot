@@ -10,7 +10,7 @@ import sodium from "libsodium-wrappers-sumo";
 import {
   canonicalizeEnvelope,
   canonicalizeProtocolRequest,
-} from "../slack-bridge/crypto.mjs";
+} from "../gateway-bridge/crypto.mjs";
 
 function b64(bytes = 32, fill = 1) {
   return Buffer.alloc(bytes, fill).toString("base64");
@@ -120,8 +120,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -240,8 +240,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -378,8 +378,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -446,8 +446,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const tempHome = mkdtempSync(path.join(tmpdir(), "baudbot-broker-test-"));
     tempDirs.push(tempHome);
@@ -698,8 +698,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
@@ -803,8 +803,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
@@ -891,8 +891,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
@@ -975,8 +975,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const bridge = spawn("node", [bridgePath], {
       cwd: bridgeCwd,
@@ -1026,8 +1026,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -1074,8 +1074,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     let bridgeStdout = "";
     let bridgeStderr = "";
@@ -1121,8 +1121,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const tempHome = mkdtempSync(path.join(tmpdir(), "baudbot-broker-test-"));
     tempDirs.push(tempHome);
@@ -1306,8 +1306,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const serverBox = sodium.crypto_box_keypair();
     const brokerBox = sodium.crypto_box_keypair();
@@ -1446,8 +1446,8 @@ describe("broker pull bridge semi-integration", () => {
 
     const testFileDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.dirname(testFileDir);
-    const bridgePath = path.join(repoRoot, "slack-bridge", "broker-bridge.mjs");
-    const bridgeCwd = path.join(repoRoot, "slack-bridge");
+    const bridgePath = path.join(repoRoot, "gateway-bridge", "broker-bridge.mjs");
+    const bridgeCwd = path.join(repoRoot, "gateway-bridge");
 
     const serverBox = sodium.crypto_box_keypair();
     const brokerBox = sodium.crypto_box_keypair();

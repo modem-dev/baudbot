@@ -10,7 +10,8 @@
 # Pass the live session UUIDs (from list_sessions) as arguments.
 # Any .sock file whose UUID is NOT in the live set gets removed.
 # Stale .alias symlinks pointing to removed sockets also get cleaned.
-# Then starts the Gateway bridge process (from slack-bridge/) with the current control-agent UUID.
+# Then starts the Gateway bridge process (from gateway-bridge/, with legacy
+# slack-bridge/ shim support) with the current control-agent UUID.
 #
 # Process lifecycle is managed via process groups (see runtime/start.sh).
 # When start.sh kills the old control-agent PGID, all spawned services
@@ -84,11 +85,25 @@ else
 fi
 
 BRIDGE_LOG_DIR="$HOME/.pi/agent/logs"
-BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
-BRIDGE_DIR="/opt/baudbot/current/slack-bridge"
-BRIDGE_TMUX_SESSION="baudbot-slack-bridge"
+BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/gateway-bridge.log"
+LEGACY_BRIDGE_LOG_FILE="$BRIDGE_LOG_DIR/slack-bridge.log"
+BRIDGE_DIR="/opt/baudbot/current/gateway-bridge"
+BRIDGE_DIR_LEGACY="/opt/baudbot/current/slack-bridge"
+BRIDGE_TMUX_SESSION="baudbot-gateway-bridge"
 
 mkdir -p "$BRIDGE_LOG_DIR"
+
+# Migrate legacy bridge log to new filename and keep a compat symlink.
+if [ -f "$LEGACY_BRIDGE_LOG_FILE" ] && [ ! -e "$BRIDGE_LOG_FILE" ]; then
+  mv "$LEGACY_BRIDGE_LOG_FILE" "$BRIDGE_LOG_FILE"
+fi
+if [ "$LEGACY_BRIDGE_LOG_FILE" != "$BRIDGE_LOG_FILE" ]; then
+  ln -sfn "$(basename "$BRIDGE_LOG_FILE")" "$LEGACY_BRIDGE_LOG_FILE" 2>/dev/null || true
+fi
+
+if [ ! -d "$BRIDGE_DIR" ] && [ -d "$BRIDGE_DIR_LEGACY" ]; then
+  BRIDGE_DIR="$BRIDGE_DIR_LEGACY"
+fi
 
 # --- Detect bridge mode ---
 BRIDGE_SCRIPT=""
@@ -137,7 +152,7 @@ if [ -n "$AGENT_SESSIONS" ]; then
   sleep 1
 fi
 
-echo "Starting Gateway bridge (slack-bridge/$BRIDGE_SCRIPT) via tmux..."
+echo "Starting Gateway bridge ($(basename "$BRIDGE_DIR")/$BRIDGE_SCRIPT) via tmux..."
 NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
 if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
   NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"

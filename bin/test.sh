@@ -49,8 +49,8 @@ JS_TEST_FILES=(
   pi/extensions/tool-guard.test.mjs
   pi/extensions/heartbeat.test.mjs
   pi/extensions/memory.test.mjs
-  slack-bridge/security.test.mjs
-  slack-bridge/env-aliases.test.mjs
+  gateway-bridge/security.test.mjs
+  gateway-bridge/env-aliases.test.mjs
   bin/scan-extensions.test.mjs
   bin/broker-register.test.mjs
 )

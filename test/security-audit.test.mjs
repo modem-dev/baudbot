@@ -13,7 +13,7 @@ function setupFixture(homeDir) {
   fs.mkdirSync(path.join(homeDir, ".config"), { recursive: true });
   fs.mkdirSync(path.join(homeDir, ".ssh"), { recursive: true });
   fs.mkdirSync(path.join(homeDir, ".pi/agent"), { recursive: true });
-  fs.mkdirSync(path.join(homeDir, "opt/baudbot/current/slack-bridge"), { recursive: true });
+  fs.mkdirSync(path.join(homeDir, "opt/baudbot/current/gateway-bridge"), { recursive: true });
   fs.mkdirSync(path.join(homeDir, "baudbot/.git/hooks"), { recursive: true });
   fs.mkdirSync(path.join(homeDir, "logs"), { recursive: true });
 
@@ -29,8 +29,8 @@ function setupFixture(homeDir) {
     path.join(homeDir, ".pi/agent/baudbot-version.json"),
     JSON.stringify({ short: "testsha", deployed_at: "2026-01-01T00:00:00Z" }),
   );
-  fs.writeFileSync(path.join(homeDir, "opt/baudbot/current/slack-bridge/security.mjs"), "// security\n");
-  fs.writeFileSync(path.join(homeDir, "opt/baudbot/current/slack-bridge/security.test.mjs"), "// tests\n");
+  fs.writeFileSync(path.join(homeDir, "opt/baudbot/current/gateway-bridge/security.mjs"), "// security\n");
+  fs.writeFileSync(path.join(homeDir, "opt/baudbot/current/gateway-bridge/security.test.mjs"), "// tests\n");
   fs.writeFileSync(path.join(homeDir, "logs/commands.log"), "");
 }
 

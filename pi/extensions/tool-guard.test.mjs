@@ -46,7 +46,7 @@ const BASH_DENY_RULES = [
   { id: "chmod-baudbot-source", pattern: new RegExp(`chmod\\b.*${escapeRegex(BAUDBOT_SOURCE_DIR)}`), label: "chmod on baudbot source repo", severity: "block" },
   { id: "chown-baudbot-source", pattern: new RegExp(`chown\\b.*${escapeRegex(BAUDBOT_SOURCE_DIR)}`), label: "chown on baudbot source repo", severity: "block" },
   { id: "tee-baudbot-source", pattern: new RegExp(`tee\\s+.*${escapeRegex(BAUDBOT_SOURCE_DIR)}/`), label: "tee write to baudbot source repo", severity: "block" },
-  { id: "chmod-runtime-security", pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/slack-bridge\/security|opt\/baudbot\/current\/slack-bridge\/security)\./, label: "chmod on protected runtime security file", severity: "block" },
+  { id: "chmod-runtime-security", pattern: /chmod\b.*\/(\.pi\/agent\/extensions\/tool-guard|runtime\/(?:gateway|slack)-bridge\/security|opt\/baudbot\/current\/(?:gateway|slack)-bridge\/security)\./, label: "chmod on protected runtime security file", severity: "block" },
   // Credential exfiltration
   { id: "env-exfil-curl", pattern: /\benv\b.*\|\s*(curl|wget|nc)\b/, label: "Piping environment to network tool", severity: "block" },
   { id: "cat-env-curl", pattern: /cat\s+.*\.env.*\|\s*(curl|wget|nc)\b/, label: "Exfiltrating .env via network", severity: "block" },
@@ -77,6 +77,9 @@ function isAllowedWritePath(filePath) {
 const PROTECTED_RUNTIME_FILES = [
   `${AGENT_HOME}/.pi/agent/extensions/tool-guard.ts`,
   `${AGENT_HOME}/.pi/agent/extensions/tool-guard.test.mjs`,
+  `/opt/baudbot/current/gateway-bridge/security.mjs`,
+  `/opt/baudbot/current/gateway-bridge/security.test.mjs`,
+  // Legacy compat path
   `/opt/baudbot/current/slack-bridge/security.mjs`,
   `/opt/baudbot/current/slack-bridge/security.test.mjs`,
 ];
@@ -307,6 +310,9 @@ describe("tool-guard: source repo protection (bash)", () => {
     assert.equal(checkBashCommand(`chmod a+w ${AGENT_HOME}/.pi/agent/extensions/tool-guard.ts`).blocked, true);
   });
   it("blocks chmod on runtime security.mjs", () => {
+    assert.equal(checkBashCommand("chmod 777 /opt/baudbot/current/gateway-bridge/security.mjs").blocked, true);
+  });
+  it("blocks chmod on runtime security.mjs via legacy path", () => {
     assert.equal(checkBashCommand("chmod 777 /opt/baudbot/current/slack-bridge/security.mjs").blocked, true);
   });
 });
@@ -358,8 +364,8 @@ describe("tool-guard: workspace confinement (allow-list)", () => {
   it(`allows write to ${AGENT_HOME}/.pi/agent/skills/new-skill/SKILL.md`, () => {
     assert.equal(checkWritePath(`${AGENT_HOME}/.pi/agent/skills/new-skill/SKILL.md`), false);
   });
-  it("blocks write to /opt/baudbot/current/slack-bridge/bridge.mjs", () => {
-    assert.equal(checkWritePath("/opt/baudbot/current/slack-bridge/bridge.mjs"), true);
+  it("blocks write to /opt/baudbot/current/gateway-bridge/bridge.mjs", () => {
+    assert.equal(checkWritePath("/opt/baudbot/current/gateway-bridge/bridge.mjs"), true);
   });
 
   // BLOCKED: outside agent home
@@ -418,6 +424,9 @@ describe("tool-guard: source repo is fully read-only (write/edit)", () => {
     assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/.git/hooks/pre-commit`), true);
   });
   it("blocks write to source repo bridge", () => {
+    assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/gateway-bridge/bridge.mjs`), true);
+  });
+  it("blocks write to source repo bridge via legacy shim path", () => {
     assert.equal(checkWritePath(`${BAUDBOT_SOURCE_DIR}/slack-bridge/bridge.mjs`), true);
   });
 });
@@ -430,12 +439,21 @@ describe("tool-guard: protected runtime security files", () => {
     assert.equal(checkWritePath(`${AGENT_HOME}/.pi/agent/extensions/tool-guard.test.mjs`), true);
   });
   it("blocks write to runtime security.mjs", () => {
+    assert.equal(checkWritePath("/opt/baudbot/current/gateway-bridge/security.mjs"), true);
+  });
+  it("blocks write to runtime security.mjs via legacy path", () => {
     assert.equal(checkWritePath("/opt/baudbot/current/slack-bridge/security.mjs"), true);
   });
   it("blocks write to runtime security.test.mjs", () => {
+    assert.equal(checkWritePath("/opt/baudbot/current/gateway-bridge/security.test.mjs"), true);
+  });
+  it("blocks write to runtime security.test.mjs via legacy path", () => {
     assert.equal(checkWritePath("/opt/baudbot/current/slack-bridge/security.test.mjs"), true);
   });
   it("blocks write to runtime bridge.mjs (immutable release path)", () => {
+    assert.equal(checkWritePath("/opt/baudbot/current/gateway-bridge/bridge.mjs"), true);
+  });
+  it("blocks write to runtime bridge.mjs via legacy path", () => {
     assert.equal(checkWritePath("/opt/baudbot/current/slack-bridge/bridge.mjs"), true);
   });
   it("allows write to runtime non-security extensions", () => {

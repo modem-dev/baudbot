@@ -5,7 +5,7 @@
       "bin/**/*.mjs",
       "pi/extensions/**/*.ts",
       "pi/extensions/**/*.mjs",
-      "slack-bridge/**/*.mjs"
+      "gateway-bridge/**/*.mjs"
     ]
   },
   "linter": {

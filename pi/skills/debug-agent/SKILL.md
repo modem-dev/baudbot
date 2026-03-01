@@ -25,7 +25,7 @@ The activity feed tails the control-agent's session JSONL file — it updates au
 
 ## What you can do
 
-- **Read logs**: `~/.pi/agent/logs/slack-bridge.log`, `journalctl -u baudbot`
+- **Read logs**: `~/.pi/agent/logs/gateway-bridge.log` (legacy fallback: `~/.pi/agent/logs/slack-bridge.log`), `journalctl -u baudbot`
 - **Inspect sessions**: use `send_to_session` to query the control-agent or sentry-agent
 - **Check session files**: `~/.pi/agent/sessions/` contains full conversation history as JSONL
 - **Review todos**: use the `todo` tool to see work items
@@ -43,8 +43,8 @@ The activity feed tails the control-agent's session JSONL file — it updates au
 | What | Where |
 |------|-------|
 | Control-agent socket | `~/.pi/session-control/control-agent.alias` |
-| Bridge logs | `~/.pi/agent/logs/slack-bridge.log` |
-| Bridge tmux | `tmux attach -t slack-bridge` |
+| Bridge logs | `~/.pi/agent/logs/gateway-bridge.log` (legacy: `~/.pi/agent/logs/slack-bridge.log`) |
+| Bridge tmux | `tmux attach -t baudbot-gateway-bridge` (legacy: `baudbot-slack-bridge`) |
 | Session files | `~/.pi/agent/sessions/--home-baudbot_agent--/` |
 | Todos | `~/.pi/todos/` |
 | Deploy dir | `/opt/baudbot/current` → releases/SHA |

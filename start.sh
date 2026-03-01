@@ -5,7 +5,7 @@
 # The agent runs entirely from deployed copies — no source repo access needed:
 #   ~/.pi/agent/extensions/          ← pi extensions
 #   ~/.pi/agent/skills/              ← operational skills
-#   /opt/baudbot/current/slack-bridge/ ← bridge process
+#   /opt/baudbot/current/gateway-bridge/ ← bridge process (legacy shim: /opt/baudbot/current/slack-bridge/)
 #   ~/runtime/bin/                   ← utility scripts
 #
 # To update, admin edits source and runs deploy.sh.

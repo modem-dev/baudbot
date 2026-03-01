@@ -307,14 +307,17 @@ else
   fi
 fi
 
-BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
+BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/gateway-bridge"
+BRIDGE_DIR_LEGACY="$BAUDBOT_CURRENT_LINK/slack-bridge"
 if [ -d "$BRIDGE_DIR" ] && [ -f "$BRIDGE_DIR/bridge.mjs" ]; then
   pass "gateway bridge deployed ($BRIDGE_DIR)"
+elif [ -d "$BRIDGE_DIR_LEGACY" ] && [ -f "$BRIDGE_DIR_LEGACY/bridge.mjs" ]; then
+  pass "gateway bridge deployed via legacy path ($BRIDGE_DIR_LEGACY)"
 else
   if [ "$IS_ROOT" -ne 1 ] && { [ -d "$BAUDBOT_CURRENT_LINK" ] || [ -e "$BAUDBOT_CURRENT_LINK" ]; }; then
     warn "cannot verify gateway bridge files as non-root (run: sudo baudbot doctor)"
   else
-    fail "gateway bridge not deployed (expected: $BRIDGE_DIR; run: sudo baudbot update)"
+    fail "gateway bridge not deployed (expected: $BRIDGE_DIR or $BRIDGE_DIR_LEGACY; run: sudo baudbot update)"
   fi
 fi
 

@@ -24,7 +24,7 @@ You **can** update your own skills (`pi/skills/`) and non-security extensions. C
 You **cannot** modify these protected files (enforced by file ownership, tool-guard, and pre-commit hook):
 - `bin/`, `hooks/`, `setup.sh`, `start.sh`, `SECURITY.md`
 - `pi/extensions/tool-guard.ts` (and its tests)
-- `slack-bridge/security.mjs` (and its tests)
+- `gateway-bridge/security.mjs` (and its tests; legacy shim path: `slack-bridge/security.mjs`)
 
 Do NOT attempt to fix permissions on protected files. If you need changes, report to the admin.
 
@@ -351,8 +351,11 @@ The `startup-pi.sh` script handles bridge (re)start automatically — it detects
 If you need to restart the bridge manually, rerun startup cleanup and then inspect logs:
 ```bash
 bash ~/.pi/agent/skills/control-agent/startup-pi.sh UUID1 UUID2 UUID3
-tail -n 200 ~/.pi/agent/logs/slack-bridge.log
-cat ~/.pi/agent/slack-bridge-supervisor.json
+tail -n 200 ~/.pi/agent/logs/gateway-bridge.log
+cat ~/.pi/agent/gateway-bridge-supervisor.json
+# Legacy fallback paths (during migration):
+# tail -n 200 ~/.pi/agent/logs/slack-bridge.log
+# cat ~/.pi/agent/slack-bridge-supervisor.json
 ```
 
 Verify: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}'` → should return `400`.
@@ -370,7 +373,7 @@ If you need to check manually, use `heartbeat trigger` to run all checks immedia
 When the heartbeat reports a failure, take the appropriate action:
 1. **Missing sentry-agent**: Respawn with `agent_spawn` and re-send role assignment.
 2. **Orphaned dev-agents**: Kill tmux session and remove worktree.
-3. **Bridge down**: Restart via `startup-pi.sh`, then check `~/.pi/agent/logs/slack-bridge.log`.
+3. **Bridge down**: Restart via `startup-pi.sh`, then check `~/.pi/agent/logs/gateway-bridge.log` (fallback: `~/.pi/agent/logs/slack-bridge.log`).
 4. **Stale worktrees**: `git worktree remove --force` + `rmdir` empty parents.
 5. **Stuck todos**: Escalate to user via Slack.
 

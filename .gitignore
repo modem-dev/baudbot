@@ -3,6 +3,9 @@
 *.pem
 node_modules/
 # Gateway bridge
+gateway-bridge/node_modules/
+gateway-bridge/.env
+# Legacy compat path (symlink)
 slack-bridge/node_modules/
 slack-bridge/.env
 .pi/

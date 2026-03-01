@@ -258,14 +258,18 @@ EOF
 
 install_release_bridge_dependencies() {
   local release_dir="$1"
-  local bridge_dir="$release_dir/slack-bridge"
+  local bridge_dir="$release_dir/gateway-bridge"
 
   if [ ! -d "$bridge_dir" ] || [ ! -f "$bridge_dir/package.json" ]; then
-    log "slack-bridge package.json missing; skipping bridge dependency install"
+    bridge_dir="$release_dir/slack-bridge"
+  fi
+
+  if [ ! -d "$bridge_dir" ] || [ ! -f "$bridge_dir/package.json" ]; then
+    log "gateway-bridge/slack-bridge package.json missing; skipping bridge dependency install"
     return 0
   fi
 
-  log "installing production Gateway bridge dependencies in release"
+  log "installing production Gateway bridge dependencies in release ($bridge_dir)"
   rm -rf "$bridge_dir/node_modules"
 
   # Resolve npm via the embedded Node runtime.  update-release runs as root

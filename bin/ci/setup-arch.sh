@@ -96,7 +96,7 @@ echo "=== Installing test dependencies ==="
 export PATH="/home/baudbot_agent/opt/node/bin:$PATH"
 cd /home/baudbot_admin/baudbot
 npm install --ignore-scripts 2>&1 | tail -1
-cd slack-bridge && npm install 2>&1 | tail -1
+cd gateway-bridge && npm install 2>&1 | tail -1
 cd ..
 
 echo "=== Running tests ==="

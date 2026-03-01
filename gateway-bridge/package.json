@@ -1,5 +1,5 @@
 {
-  "name": "slack-bridge",
+  "name": "gateway-bridge",
   "version": "1.0.0",
   "description": "Gateway bridge runtimes (Socket Mode + broker pull mode)",
   "main": "bridge.mjs",

@@ -195,7 +195,8 @@ PY
 
 print_bridge_supervisor_status() {
   local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
-  local status_file="/home/$agent_user/.pi/agent/slack-bridge-supervisor.json"
+  local status_file="/home/$agent_user/.pi/agent/gateway-bridge-supervisor.json"
+  local legacy_status_file="/home/$agent_user/.pi/agent/slack-bridge-supervisor.json"
   local summary=""
   local mode=""
   local state=""
@@ -203,7 +204,11 @@ print_bridge_supervisor_status() {
   local threshold=""
 
   if [ ! -r "$status_file" ]; then
-    return 0
+    if [ -r "$legacy_status_file" ]; then
+      status_file="$legacy_status_file"
+    else
+      return 0
+    fi
   fi
 
   summary="$(python3 - "$status_file" <<'PY'

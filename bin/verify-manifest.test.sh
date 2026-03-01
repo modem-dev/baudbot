@@ -43,7 +43,7 @@ make_manifest() {
 
   local ext_file="$home_dir/.pi/agent/extensions/test.ts"
   local runtime_file="$home_dir/runtime/bin/helper.sh"
-  local bridge_file="$release_dir/slack-bridge/bridge.mjs"
+  local bridge_file="$release_dir/gateway-bridge/bridge.mjs"
   local log_file="$home_dir/.pi/agent/logs/bridge.log"
 
   cat >"$manifest_file" <<EOF
@@ -52,7 +52,7 @@ make_manifest() {
   "files": {
     ".pi/agent/extensions/test.ts": "$(hash_file "$ext_file")",
     "runtime/bin/helper.sh": "$(hash_file "$runtime_file")",
-    "release/slack-bridge/bridge.mjs": "$(hash_file "$bridge_file")",
+    "release/gateway-bridge/bridge.mjs": "$(hash_file "$bridge_file")",
     ".pi/agent/logs/bridge.log": "$(hash_file "$log_file")"
   }
 }
@@ -72,11 +72,11 @@ echo ""
 
 HOME1="$TMPDIR/home1"
 RELEASE1="$TMPDIR/release1"
-mkdir -p "$HOME1/.pi/agent/extensions" "$HOME1/runtime/bin" "$HOME1/.pi/agent/logs" "$RELEASE1/slack-bridge"
+mkdir -p "$HOME1/.pi/agent/extensions" "$HOME1/runtime/bin" "$HOME1/.pi/agent/logs" "$RELEASE1/gateway-bridge"
 
 printf 'console.log("ok");\n' > "$HOME1/.pi/agent/extensions/test.ts"
 printf '#!/bin/bash\necho helper\n' > "$HOME1/runtime/bin/helper.sh"
-printf 'export const bridge = true;\n' > "$RELEASE1/slack-bridge/bridge.mjs"
+printf 'export const bridge = true;\n' > "$RELEASE1/gateway-bridge/bridge.mjs"
 printf 'mutable log\n' > "$HOME1/.pi/agent/logs/bridge.log"
 
 MANIFEST1="$HOME1/.pi/agent/baudbot-manifest.json"

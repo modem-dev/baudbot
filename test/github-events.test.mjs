@@ -20,6 +20,6 @@ function runNodeTest(relativePath) {
 
 describe("github-events node:test suite", () => {
   it("github-events", () => {
-    expect(() => runNodeTest("slack-bridge/github-events.test.mjs")).not.toThrow();
+    expect(() => runNodeTest("gateway-bridge/github-events.test.mjs")).not.toThrow();
   });
 });

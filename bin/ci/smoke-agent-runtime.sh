@@ -15,7 +15,8 @@ readonly AGENT_USER="baudbot_agent"
 readonly AGENT_HOME="/home/${AGENT_USER}"
 readonly CONTROL_DIR="${AGENT_HOME}/.pi/session-control"
 readonly CONTROL_ALIAS="${CONTROL_DIR}/control-agent.alias"
-readonly BRIDGE_STATUS_FILE="${AGENT_HOME}/.pi/agent/slack-bridge-supervisor.json"
+readonly BRIDGE_STATUS_FILE="${AGENT_HOME}/.pi/agent/gateway-bridge-supervisor.json"
+readonly BRIDGE_STATUS_FILE_LEGACY="${AGENT_HOME}/.pi/agent/slack-bridge-supervisor.json"
 readonly START_TIMEOUT_SECONDS=60
 readonly STABILIZE_SECONDS=20
 
@@ -143,7 +144,7 @@ main() {
   # start.sh. In CI the agent doesn't run long enough for startup-pi.sh
   # to execute, so the status file may not exist. Log but don't fail.
   log "checking bridge supervisor status file"
-  if [[ -f "$BRIDGE_STATUS_FILE" ]]; then
+  if [[ -f "$BRIDGE_STATUS_FILE" ]] || [[ -f "$BRIDGE_STATUS_FILE_LEGACY" ]]; then
     log "bridge supervisor status file exists"
   else
     log "bridge supervisor status file not found (expected — bridge starts inside agent)"
