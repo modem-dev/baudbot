@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+$/;
+const SESSION_CONTROL_DIR_ENV = "PI_SESSION_CONTROL_DIR";
 
 const MIN_READY_TIMEOUT_SEC = 1;
 const MAX_READY_TIMEOUT_SEC = 60;
@@ -14,10 +15,11 @@ const READINESS_POLL_MS = 200;
 const SOCKET_PROBE_TIMEOUT_MS = 300;
 const TMUX_SPAWN_TIMEOUT_MS = 15_000;
 
-type SpawnStage = "spawn" | "wait_alias" | "wait_socket" | "probe";
+type SpawnStage = "spawn" | "wait_alias" | "wait_socket" | "probe" | "aborted";
 
 type ReadinessResult = {
   ready: boolean;
+  aborted: boolean;
   stage: SpawnStage;
   aliasPath: string;
   socketPath: string | null;
@@ -25,6 +27,8 @@ type ReadinessResult = {
 };
 
 function controlDir(): string {
+  const configured = process.env[SESSION_CONTROL_DIR_ENV]?.trim();
+  if (configured) return resolve(expandHomePath(configured));
   return join(homedir(), ".pi", "session-control");
 }
 
@@ -43,8 +47,27 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolveSleep) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      resolveSleep();
+    };
+    const onAbort = () => finish();
+    const timer = setTimeout(finish, ms);
+    if (signal) {
+      if (signal.aborted) {
+        finish();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
 }
 
 function isSafeName(value: string): boolean {
@@ -67,7 +90,8 @@ function resolveSocketPathFromAlias(aliasPath: string, socketDir: string): strin
   }
 }
 
-async function isSocketAlive(socketPath: string, timeoutMs: number): Promise<boolean> {
+async function isSocketAlive(socketPath: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
   return await new Promise((resolveAlive) => {
     let settled = false;
     const client = net.createConnection(socketPath);
@@ -76,6 +100,7 @@ async function isSocketAlive(socketPath: string, timeoutMs: number): Promise<boo
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (signal) signal.removeEventListener("abort", onAbort);
       client.removeAllListeners();
       client.destroy();
       resolveAlive(value);
@@ -87,10 +112,17 @@ async function isSocketAlive(socketPath: string, timeoutMs: number): Promise<boo
 
     client.once("connect", () => finish(true));
     client.once("error", () => finish(false));
+
+    const onAbort = () => finish(false);
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 
-async function waitForSessionReadiness(readyAlias: string, timeoutSec: number): Promise<ReadinessResult> {
+async function waitForSessionReadiness(
+  readyAlias: string,
+  timeoutSec: number,
+  signal?: AbortSignal,
+): Promise<ReadinessResult> {
   const socketDir = controlDir();
   const aliasPath = join(socketDir, `${readyAlias}.alias`);
   const startedAt = Date.now();
@@ -98,14 +130,30 @@ async function waitForSessionReadiness(readyAlias: string, timeoutSec: number): 
   let stage: SpawnStage = "wait_alias";
   let socketPath: string | null = null;
 
-  while (Date.now() <= deadline) {
+  while (true) {
+    if (signal?.aborted) {
+      return {
+        ready: false,
+        aborted: true,
+        stage: "aborted",
+        aliasPath,
+        socketPath,
+        readyAfterMs: Date.now() - startedAt,
+      };
+    }
+    if (Date.now() > deadline) break;
+
     if (existsSync(aliasPath)) {
       socketPath = resolveSocketPathFromAlias(aliasPath, socketDir);
       if (socketPath && existsSync(socketPath)) {
         stage = "probe";
-        if (await isSocketAlive(socketPath, SOCKET_PROBE_TIMEOUT_MS)) {
+        const remainingProbeMs = deadline - Date.now();
+        if (remainingProbeMs <= 0) break;
+        const probeTimeoutMs = Math.min(SOCKET_PROBE_TIMEOUT_MS, remainingProbeMs);
+        if (await isSocketAlive(socketPath, probeTimeoutMs, signal)) {
           return {
             ready: true,
+            aborted: false,
             stage,
             aliasPath,
             socketPath,
@@ -118,11 +166,14 @@ async function waitForSessionReadiness(readyAlias: string, timeoutSec: number): 
     } else {
       stage = "wait_alias";
     }
-    await sleep(READINESS_POLL_MS);
+    const remainingPollMs = deadline - Date.now();
+    if (remainingPollMs <= 0) break;
+    await sleep(Math.min(READINESS_POLL_MS, remainingPollMs), signal);
   }
 
   return {
     ready: false,
+    aborted: false,
     stage,
     aliasPath,
     socketPath,
@@ -203,7 +254,24 @@ export default function agentSpawnExtension(pi: ExtensionAPI): void {
       const logPath = input.log_path?.trim()
         ? absolutePath(input.log_path)
         : join(homedir(), ".pi", "agent", "logs", `spawn-${sessionName}.log`);
-      mkdirSync(dirname(logPath), { recursive: true });
+      try {
+        mkdirSync(dirname(logPath), { recursive: true });
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Failed to prepare log path: ${logPath}` }],
+          isError: true,
+          details: {
+            spawned: false,
+            ready: false,
+            stage: "spawn",
+            error: "log_path_prepare_failed",
+            session_name: sessionName,
+            ready_alias: readyAlias,
+            log_path: logPath,
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
 
       const tmuxCommand = [
         `cd ${shellQuote(cwdPath)}`,
@@ -240,10 +308,11 @@ export default function agentSpawnExtension(pi: ExtensionAPI): void {
         };
       }
 
-      const readiness = await waitForSessionReadiness(readyAlias, readyTimeoutSec);
+      const readiness = await waitForSessionReadiness(readyAlias, readyTimeoutSec, signal);
       const details = {
         spawned: true,
         ready: readiness.ready,
+        aborted: readiness.aborted,
         session_name: sessionName,
         ready_alias: readyAlias,
         alias_path: readiness.aliasPath,
@@ -251,8 +320,19 @@ export default function agentSpawnExtension(pi: ExtensionAPI): void {
         log_path: logPath,
         ready_after_ms: readiness.readyAfterMs,
         stage: readiness.stage,
-        error: readiness.ready ? null : "readiness_timeout",
+        error: readiness.ready ? null : readiness.aborted ? "readiness_aborted" : "readiness_timeout",
       };
+
+      if (readiness.aborted) {
+        return {
+          content: [{
+            type: "text",
+            text: `Spawned ${sessionName}, but readiness check was cancelled. Session/logs were left intact at ${logPath}.`,
+          }],
+          isError: true,
+          details,
+        };
+      }
 
       if (!readiness.ready) {
         return {

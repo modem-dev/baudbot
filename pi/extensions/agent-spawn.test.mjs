@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
 import net from "node:net";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import agentSpawnExtension from "./agent-spawn.ts";
 
-const CONTROL_DIR = path.join(homedir(), ".pi", "session-control");
+const CONTROL_DIR_ENV = "PI_SESSION_CONTROL_DIR";
+const ORIGINAL_CONTROL_DIR = process.env[CONTROL_DIR_ENV];
 
 function randomId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  return Math.random().toString(16).slice(2, 10);
 }
 
 function createExtensionHarness(execImpl) {
@@ -67,20 +68,28 @@ describe("agent_spawn extension tool", () => {
       rmSync(dir, { recursive: true, force: true });
     }
     tempDirs.length = 0;
+
+    if (ORIGINAL_CONTROL_DIR === undefined) {
+      delete process.env[CONTROL_DIR_ENV];
+    } else {
+      process.env[CONTROL_DIR_ENV] = ORIGINAL_CONTROL_DIR;
+    }
   });
 
   it("spawns and reports ready when alias/socket becomes available", async () => {
-    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    const root = mkdtempSync(path.join(tmpdir(), "agent-spawn-test-"));
     tempDirs.push(root);
     const worktree = path.join(root, "worktree");
     const skillPath = path.join(root, "dev-skill");
+    const controlDir = path.join(root, "session-control");
+    process.env[CONTROL_DIR_ENV] = controlDir;
     mkdirSync(worktree, { recursive: true });
     mkdirSync(skillPath, { recursive: true });
-    mkdirSync(CONTROL_DIR, { recursive: true });
+    mkdirSync(controlDir, { recursive: true });
 
     const sessionName = `dev-agent-test-${randomId()}`;
-    const aliasPath = path.join(CONTROL_DIR, `${sessionName}.alias`);
-    const socketPath = path.join(CONTROL_DIR, `${sessionName}-${randomId()}.sock`);
+    const aliasPath = path.join(controlDir, `${sessionName}.alias`);
+    const socketPath = path.join(controlDir, `${sessionName}.sock`);
     cleanupPaths.push(aliasPath, socketPath);
 
     const execSpy = vi.fn(async (command, args) => {
@@ -123,12 +132,15 @@ describe("agent_spawn extension tool", () => {
   });
 
   it("returns readiness timeout and does not issue cleanup commands", async () => {
-    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    const root = mkdtempSync(path.join(tmpdir(), "agent-spawn-test-"));
     tempDirs.push(root);
     const worktree = path.join(root, "worktree");
     const skillPath = path.join(root, "dev-skill");
+    const controlDir = path.join(root, "session-control");
+    process.env[CONTROL_DIR_ENV] = controlDir;
     mkdirSync(worktree, { recursive: true });
     mkdirSync(skillPath, { recursive: true });
+    mkdirSync(controlDir, { recursive: true });
 
     const sessionName = `dev-agent-timeout-${randomId()}`;
     const calls = [];
@@ -162,12 +174,15 @@ describe("agent_spawn extension tool", () => {
   });
 
   it("rejects invalid session_name before executing tmux", async () => {
-    const root = path.join(tmpdir(), `agent-spawn-test-${randomId()}`);
+    const root = mkdtempSync(path.join(tmpdir(), "agent-spawn-test-"));
     tempDirs.push(root);
     const worktree = path.join(root, "worktree");
     const skillPath = path.join(root, "dev-skill");
+    const controlDir = path.join(root, "session-control");
+    process.env[CONTROL_DIR_ENV] = controlDir;
     mkdirSync(worktree, { recursive: true });
     mkdirSync(skillPath, { recursive: true });
+    mkdirSync(controlDir, { recursive: true });
 
     const execSpy = vi.fn(async () => ({ stdout: "", stderr: "", code: 0, killed: false }));
     const tool = createExtensionHarness(execSpy);
@@ -187,5 +202,44 @@ describe("agent_spawn extension tool", () => {
     expect(result.isError).toBe(true);
     expect(String(result.content[0].text)).toContain("Invalid session_name");
     expect(execSpy).not.toHaveBeenCalled();
+  });
+
+  it("honors abort signal while waiting for readiness", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "agent-spawn-test-"));
+    tempDirs.push(root);
+    const worktree = path.join(root, "worktree");
+    const skillPath = path.join(root, "dev-skill");
+    const controlDir = path.join(root, "session-control");
+    process.env[CONTROL_DIR_ENV] = controlDir;
+    mkdirSync(worktree, { recursive: true });
+    mkdirSync(skillPath, { recursive: true });
+    mkdirSync(controlDir, { recursive: true });
+
+    const sessionName = `dev-agent-abort-${randomId()}`;
+    const execSpy = vi.fn(async () => ({ stdout: "", stderr: "", code: 0, killed: false }));
+    const tool = createExtensionHarness(execSpy);
+
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 25);
+    const startedAt = Date.now();
+    const result = await tool.execute(
+      "tool-call-id",
+      {
+        session_name: sessionName,
+        cwd: worktree,
+        skill_path: skillPath,
+        model: "anthropic/claude-opus-4-6",
+        ready_timeout_sec: 60,
+      },
+      controller.signal,
+      undefined,
+      {},
+    );
+    clearTimeout(abortTimer);
+
+    expect(result.isError).toBe(true);
+    expect(result.details.error).toBe("readiness_aborted");
+    expect(result.details.aborted).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(1000);
   });
 });

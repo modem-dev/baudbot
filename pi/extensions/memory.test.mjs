@@ -321,6 +321,20 @@ describe("memory: skill file integration", () => {
     );
   });
 
+  it("control-agent SKILL.md uses agent_spawn for sentry-agent startup", () => {
+    assert.ok(
+      controlSkill.includes("session_name: sentry-agent"),
+      "control-agent runbook should define sentry-agent startup via agent_spawn arguments"
+    );
+  });
+
+  it("control-agent SKILL.md does not use raw tmux sentry-agent spawn", () => {
+    assert.ok(
+      !controlSkill.includes("tmux new-session -d -s sentry-agent"),
+      "control-agent runbook should avoid raw tmux spawn commands for sentry-agent startup"
+    );
+  });
+
   it("dev-agent SKILL.md has Memory section", () => {
     assert.ok(devSkill.includes("## Memory"), "should have Memory section");
   });
