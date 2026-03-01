@@ -133,6 +133,28 @@ expect_file_not_contains "advanced clears broker URL" "$ENV6" "SLACK_BROKER_URL=
 expect_file_not_contains "advanced clears broker workspace" "$ENV6" "SLACK_BROKER_WORKSPACE_ID="
 expect_file_contains "advanced retains socket bot token" "$ENV6" "SLACK_BOT_TOKEN=xoxb-new"
 
+# Test 7: Subscription login tier with existing auth.json skips OAuth flow
+# Input: 2=Subscription tier, n=don't re-auth, 1=easy Slack, n=kernel, n=sentry
+HOME7="$TMPDIR/subscription"
+mkdir -p "$HOME7/.pi/agent"
+echo '{"anthropic":{"type":"oauth","access":"tok","refresh":"ref","expires":9999999999999}}' \
+  > "$HOME7/.pi/agent/auth.json"
+config_user="$(id -un)"
+printf "%b" '2\nn\n1\n\nn\nn\n' \
+  | HOME="$HOME7" BAUDBOT_HOME="$HOME7" BAUDBOT_CONFIG_USER="$config_user" BAUDBOT_TRY_INSTALL_GUM=0 \
+    bash "$CONFIG_SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE"
+ENV7="$HOME7/.baudbot/.env"
+expect_file_not_contains "subscription path omits ANTHROPIC_API_KEY" "$ENV7" "ANTHROPIC_API_KEY="
+expect_file_not_contains "subscription path omits OPENAI_API_KEY" "$ENV7" "OPENAI_API_KEY="
+# Verify subscription was detected in output
+if grep -q "Subscription" "$OUT_FILE"; then
+  echo "  PASS: subscription tier shown in summary"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: subscription tier shown in summary"
+  FAIL=$((FAIL + 1))
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 
