@@ -76,12 +76,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Gate external fork PRs
+        id: gate
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip integration for external fork PRs
+        if: steps.gate.outputs.enabled != 'true'
+        run: |
+          echo "Skipping droplet integration for external fork pull requests (secrets are unavailable)."
+
       - name: Generate ephemeral SSH key
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           mkdir -p ~/.ssh
           ssh-keygen -t ed25519 -f ~/.ssh/ci_key -N "" -q
 
       - name: Create droplet
+        if: steps.gate.outputs.enabled == 'true'
         id: droplet
         env:
           DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
@@ -94,6 +111,7 @@ jobs:
           echo "$output"
 
       - name: Wait for SSH
+        if: steps.gate.outputs.enabled == 'true'
         env:
           DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: |
@@ -102,6 +120,7 @@ jobs:
             ~/.ssh/ci_key
 
       - name: Upload source
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           tar czf /tmp/baudbot-src.tar.gz \
             --exclude=node_modules --exclude=.git .
@@ -111,6 +130,7 @@ jobs:
             "root@${{ steps.droplet.outputs.DROPLET_IP }}:/tmp/baudbot-src.tar.gz"
 
       - name: Setup and test
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           bash bin/ci/droplet.sh run \
             "${{ steps.droplet.outputs.DROPLET_IP }}" \
@@ -119,7 +139,7 @@ jobs:
             "CI_ANTHROPIC_API_KEY=${{ secrets.CI_ANTHROPIC_API_KEY }}"
 
       - name: Cleanup
-        if: always()
+        if: always() && steps.gate.outputs.enabled == 'true'
         env:
           DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: |
