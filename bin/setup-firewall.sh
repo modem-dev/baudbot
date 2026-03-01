@@ -86,7 +86,7 @@ fw -A "$CHAIN" -o lo -p tcp --dport 27017 -j ACCEPT
 fw -A "$CHAIN" -o lo -p tcp --dport 54322 -j ACCEPT
 
 # ── Infrastructure ───────────────────────────────────────────────────────
-# 7890: Slack bridge
+# 7890: Gateway bridge
 # 8000-9999: Wrangler (8787), Django/FastAPI (8000), inspector (9229+), MinIO (9000)
 # 11434: Ollama
 # 24678: Vite HMR websocket
@@ -144,7 +144,7 @@ echo ""
 fw -L "$CHAIN" -n -v --line-numbers
 echo ""
 echo "Localhost allowed: 3000-5999 (dev servers), 5432 (pg), 6006 (storybook),"
-echo "                   6379 (redis), 7890 (bridge), 8000-9999 (wrangler/inspector),"
+echo "                   6379 (redis), 7890 (gateway bridge), 8000-9999 (wrangler/inspector),"
 echo "                   11434 (ollama), 24678 (vite hmr), 27017 (mongo),"
 echo "                   54322 (pg docker), 53 (dns)"
 echo "Internet allowed:  22 (ssh), 53 (dns), 80/443 (http/s),"

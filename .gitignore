@@ -2,7 +2,7 @@
 *.key
 *.pem
 node_modules/
-# Slack bridge
+# Gateway bridge
 slack-bridge/node_modules/
 slack-bridge/.env
 .pi/

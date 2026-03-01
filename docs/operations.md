@@ -103,7 +103,7 @@ npm run typecheck
 
 ## Common runbook actions
 
-- verify Slack bridge responsiveness
+- verify Gateway bridge responsiveness
 - verify control/sentry/dev sessions are healthy
 - clean stale worktrees
 - prune old session logs if needed (`sudo -u baudbot_agent ~/runtime/bin/prune-session-logs.sh --days 14`)

@@ -6,7 +6,7 @@
  *
  * Checks performed:
  *   1. Session liveness — expected aliases exist in ~/.pi/session-control/
- *   2. Slack bridge — HTTP POST to localhost:7890/send returns 400
+ *   2. Gateway bridge — HTTP POST to localhost:7890/send returns 400
  *   3. Stale worktrees — ~/workspace/worktrees/ has dirs with no matching in-progress todo
  *   4. Stuck todos — in-progress for >2 hours with no matching dev-agent session
  *   5. Unanswered Slack mentions — app_mention events in bridge log with no reply within 5 min
@@ -170,13 +170,13 @@ async function checkBridge(): Promise<CheckResult> {
     return {
       name: "bridge",
       ok: false,
-      detail: `Slack bridge returned HTTP ${response.status} (expected 400)`,
+      detail: `Gateway bridge returned HTTP ${response.status} (expected 400)`,
     };
   } catch (err: any) {
     return {
       name: "bridge",
       ok: false,
-      detail: `Slack bridge unreachable: ${err.message || err}`,
+      detail: `Gateway bridge unreachable: ${err.message || err}`,
     };
   }
 }

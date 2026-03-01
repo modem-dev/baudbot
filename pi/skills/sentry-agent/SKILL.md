@@ -13,7 +13,7 @@ Triage and investigate Sentry alerts on demand. You receive alerts forwarded by 
 
 ## How It Works
 
-1. **Trigger**: The Slack bridge receives real-time events from `#bots-sentry` via Socket Mode and delivers them to the control-agent. The control-agent forwards relevant alerts to you via `send_to_session`.
+1. **Trigger**: The Gateway bridge receives real-time events from `#bots-sentry` via Socket Mode and delivers them to the control-agent. The control-agent forwards relevant alerts to you via `send_to_session`.
 2. **Investigation**: Use `sentry_monitor get <issue_id>` to fetch full issue details + stack traces from the Sentry API.
 3. **Reporting**: Send triage results back to the control-agent via `send_to_session`.
 

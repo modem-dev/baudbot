@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Slack ↔ Pi Control Agent Bridge
+ * Gateway bridge (Slack Socket Mode)
  *
  * Bridges @mentions in Slack to a pi session via its Unix domain socket.
  * Uses Socket Mode (no public URL needed).
@@ -576,7 +576,7 @@ function startApiServer() {
 (async () => {
   await app.start();
   startApiServer();
-  console.log("⚡ Slack bridge is running!");
+  console.log("⚡ Gateway bridge is running!");
   console.log("   • @mention the bot in any channel");
   console.log("   • DM the bot directly");
   if (process.env.SLACK_CHANNEL_ID) {

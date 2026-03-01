@@ -1,5 +1,5 @@
 /**
- * Security utilities for the Slack bridge.
+ * Security utilities for the Gateway bridge.
  *
  * Pure functions — no side effects, no env vars, no I/O.
  * Extracted from bridge.mjs for testability.

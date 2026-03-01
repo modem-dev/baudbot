@@ -16,7 +16,7 @@ Baudbot is a persistent, team-facing coding agent system. It connects to Slack, 
 ```text
 Slack
    ↓
-slack-bridge (broker pull-mode or legacy Socket Mode)
+Gateway bridge (slack-bridge dir; broker pull-mode or legacy Socket Mode)
    ↓
 control-agent (always-on, manages todo/routing/Slack threads)
    ├── dev-agent(s) — ephemeral coding workers in isolated worktrees
@@ -34,7 +34,7 @@ There are two startup phases with distinct ownership:
 | Phase | Owner | Scope |
 |-------|-------|-------|
 | **OS boot** (`start.sh`) | Admin | Env validation, permissions, secrets, socket cleanup, launch `pi` |
-| **Agent boot** (`startup-pi.sh`) | Agent | Slack bridge, sentry-agent, dev-agents, session wiring |
+| **Agent boot** (`startup-pi.sh`) | Agent | Gateway bridge, sentry-agent, dev-agents, session wiring |
 
 **Rule: `start.sh` must never spawn tmux sessions or background processes that need pi runtime state** (session UUIDs, socket paths, etc.). Those only exist after pi starts. All tmux sessions (bridge, sentry-agent, dev-agents) are owned and managed by the agent via `startup-pi.sh` or extensions. `start.sh` may only *kill* stale processes as pre-cleanup.
 
@@ -47,7 +47,7 @@ There are two startup phases with distinct ownership:
   - `dev-agent/` — coding worker persona
   - `sentry-agent/` — incident triage persona
 - `pi/settings.json` — pi agent settings
-- `slack-bridge/` — Slack integration bridges + security module
+- `slack-bridge/` — Gateway bridge runtime + security module
 - `docs/` — architecture/operations/security documentation
 - `test/` — vitest wrappers for shell scripts, integration, and legacy Node tests
 - `hooks/` — git hooks (security-critical `pre-commit` protecting admin-managed files)

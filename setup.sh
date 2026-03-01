@@ -245,7 +245,7 @@ while IFS= read -r dir; do
   (cd "$dir" && npm install)
 done < <(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_modules/*' -exec dirname {} \;)
 
-echo "=== Installing Slack bridge dependencies ==="
+echo "=== Installing Gateway bridge dependencies ==="
 (cd "$REPO_DIR/slack-bridge" && npm install)
 
 echo "=== Installing varlock ==="

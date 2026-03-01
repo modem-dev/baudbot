@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared Slack bridge restart policy helpers.
+# Shared Gateway bridge restart policy helpers.
 
 bb_bridge_policy_mode() {
   if [ -n "${BAUDBOT_BRIDGE_RESTART_POLICY:-}" ]; then

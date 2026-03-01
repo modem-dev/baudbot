@@ -32,7 +32,7 @@ Live execution runs from release snapshots under `/opt/baudbot`.
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               BOUNDARY 1: Access Control                         │
-│   Slack bridge: SLACK_ALLOWED_USERS allowlist                    │
+│   Gateway bridge: SLACK_ALLOWED_USERS allowlist                  │
 │   Email: allowed senders + shared secret (BAUDBOT_SECRET)         │
 │   Content wrapping: external messages get security boundaries    │
 └──────────────────────────────┬──────────────────────────────────┘

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Slack broker pull bridge.
+ * Gateway bridge (Slack broker pull mode).
  *
  * Polls broker inbox, decrypts inbound Slack events, forwards them to the pi
  * agent, then sends replies back through broker /api/send.
@@ -1319,7 +1319,7 @@ async function startPollLoop() {
   refreshSocket();
   startApiServer();
   persistBrokerHealth();
-  logInfo("⚡ Slack broker pull bridge is running!");
+  logInfo("⚡ Gateway bridge (broker pull mode) is running!");
   logInfo(`   outbound mode: ${outboundMode} (via broker)`);
   logInfo(`   broker: ${brokerBaseUrl}`);
   logInfo(`   workspace: ${workspaceId}`);

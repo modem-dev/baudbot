@@ -265,7 +265,7 @@ install_release_bridge_dependencies() {
     return 0
   fi
 
-  log "installing production Slack bridge dependencies in release"
+  log "installing production Gateway bridge dependencies in release"
   rm -rf "$bridge_dir/node_modules"
 
   # Resolve npm via the embedded Node runtime.  update-release runs as root

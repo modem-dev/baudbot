@@ -1,6 +1,6 @@
-# slack-bridge/ — Agent Guidelines
+# slack-bridge/ (Gateway bridge) — Agent Guidelines
 
-Scope: Slack bridge runtime and security modules under `slack-bridge/`.
+Scope: Gateway bridge runtime and security modules under `slack-bridge/`.
 
 ## Focus areas
 

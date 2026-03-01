@@ -472,13 +472,13 @@ echo "Network"
 bridge_bind=$(ss -tlnp 2>/dev/null | grep ':7890' | awk '{print $4}' | head -1 || true)
 if [ -n "$bridge_bind" ]; then
   if echo "$bridge_bind" | grep -q '127.0.0.1'; then
-    ok "Slack bridge bound to 127.0.0.1:7890"
+    ok "Gateway bridge bound to 127.0.0.1:7890"
   else
-    finding "CRITICAL" "Slack bridge bound to $bridge_bind (not localhost!)" \
+    finding "CRITICAL" "Gateway bridge bound to $bridge_bind (not localhost!)" \
       "Should bind to 127.0.0.1 only"
   fi
 else
-  finding "INFO" "Slack bridge not running" ""
+  finding "INFO" "Gateway bridge not running" ""
 fi
 
 # Check firewall rules

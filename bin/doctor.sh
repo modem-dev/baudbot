@@ -291,12 +291,12 @@ fi
 
 BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/slack-bridge"
 if [ -d "$BRIDGE_DIR" ] && [ -f "$BRIDGE_DIR/bridge.mjs" ]; then
-  pass "slack bridge deployed ($BRIDGE_DIR)"
+  pass "gateway bridge deployed ($BRIDGE_DIR)"
 else
   if [ "$IS_ROOT" -ne 1 ] && { [ -d "$BAUDBOT_CURRENT_LINK" ] || [ -e "$BAUDBOT_CURRENT_LINK" ]; }; then
-    warn "cannot verify slack bridge files as non-root (run: sudo baudbot doctor)"
+    warn "cannot verify gateway bridge files as non-root (run: sudo baudbot doctor)"
   else
-    fail "slack bridge not deployed (expected: $BRIDGE_DIR; run: sudo baudbot update)"
+    fail "gateway bridge not deployed (expected: $BRIDGE_DIR; run: sudo baudbot update)"
   fi
 fi
 
@@ -457,11 +457,11 @@ fi
 echo ""
 echo "Runtime health:"
 
-# Slack bridge
+# Gateway bridge
 if curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null | grep -q "400"; then
-  pass "slack bridge responding (port 7890)"
+  pass "gateway bridge responding (port 7890)"
 else
-  warn "slack bridge not responding on port 7890"
+  warn "gateway bridge not responding on port 7890"
 fi
 
 # Disk usage

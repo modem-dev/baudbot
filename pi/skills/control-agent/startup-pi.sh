@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# startup-pi.sh — Agent-side startup: clean stale sockets + start Slack bridge.
+# startup-pi.sh — Agent-side startup: clean stale sockets + start Gateway bridge.
 #
 # Called automatically by the control-agent on every session start (Step 0 in
 # SKILL.md). start.sh launches pi, pi loads the control-agent skill, and the
@@ -10,7 +10,7 @@
 # Pass the live session UUIDs (from list_sessions) as arguments.
 # Any .sock file whose UUID is NOT in the live set gets removed.
 # Stale .alias symlinks pointing to removed sockets also get cleaned.
-# Then starts the slack-bridge process with the current control-agent UUID.
+# Then starts the Gateway bridge process (from slack-bridge/) with the current control-agent UUID.
 #
 # Process lifecycle is managed via process groups (see runtime/start.sh).
 # When start.sh kills the old control-agent PGID, all spawned services
@@ -69,9 +69,9 @@ done
 
 echo "Cleaned $cleaned stale socket(s)."
 
-# Restart Slack bridge with current control-agent UUID
+# Restart Gateway bridge with current control-agent UUID
 echo ""
-echo "=== Slack Bridge Startup ==="
+echo "=== Gateway Bridge Startup ==="
 
 # Find control-agent UUID from alias
 CONTROL_ALIAS="$SOCKET_DIR/control-agent.alias"
@@ -79,7 +79,7 @@ if [ -L "$CONTROL_ALIAS" ]; then
   MY_UUID=$(readlink "$CONTROL_ALIAS" | sed 's/.sock$//')
   echo "Control-agent UUID: $MY_UUID"
 else
-  echo "ERROR: control-agent.alias not found. Cannot start Slack bridge."
+  echo "ERROR: control-agent.alias not found. Cannot start Gateway bridge."
   exit 1
 fi
 
@@ -137,7 +137,7 @@ if [ -n "$AGENT_SESSIONS" ]; then
   sleep 1
 fi
 
-echo "Starting slack-bridge ($BRIDGE_SCRIPT) via tmux..."
+echo "Starting Gateway bridge (slack-bridge/$BRIDGE_SCRIPT) via tmux..."
 NODE_BIN_DIR="${NODE_BIN_DIR:-$HOME/opt/node/bin}"
 if command -v bb_resolve_runtime_node_bin_dir >/dev/null 2>&1; then
   NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
@@ -190,7 +190,7 @@ echo "Bridge logs: $BRIDGE_LOG_FILE"
 sleep 3
 HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "400" ]; then
-  echo "✅ Slack bridge is up (HTTP $HTTP_CODE)"
+  echo "✅ Gateway bridge is up (HTTP $HTTP_CODE)"
 else
   echo "⚠️  Bridge may not be ready yet (HTTP $HTTP_CODE). Check: tmux attach -t $BRIDGE_TMUX_SESSION"
 fi
