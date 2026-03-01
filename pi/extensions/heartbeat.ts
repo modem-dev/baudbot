@@ -325,14 +325,7 @@ function checkUnansweredMentions(): CheckResult[] {
     const { execSync } = require("node:child_process");
     const logTail = execSync(`tail -500 "${BRIDGE_LOG}"`, { encoding: "utf-8" });
 
-    // Capture the Slack event ts value from app_mention log lines.
-    const mentionPattern = /app_mention[^\n]*\bts:\s*(\d+\.\d+)/g;
-    const mentionThreadTsSet = new Set<string>();
-
-    let match: RegExpExecArray | null;
-    while ((match = mentionPattern.exec(logTail)) !== null) {
-      mentionThreadTsSet.add(match[1]);
-    }
+    const mentionThreadTsSet = new Set<string>(extractMentionThreadTs(logTail));
 
     const oneHourAgo = now - 60 * 60 * 1000;
 
@@ -364,6 +357,27 @@ function checkUnansweredMentions(): CheckResult[] {
   }
 
   return results;
+}
+
+function extractMentionThreadTs(logTail: string): string[] {
+  const mentionThreadTsSet = new Set<string>();
+
+  for (const line of logTail.split("\n")) {
+    if (!line.includes("app_mention")) continue;
+
+    const threadMatch = line.match(/\bthread_ts:\s*(\d+\.\d+)/);
+    if (threadMatch?.[1]) {
+      mentionThreadTsSet.add(threadMatch[1]);
+      continue;
+    }
+
+    const tsMatch = line.match(/\bts:\s*(\d+\.\d+)/);
+    if (tsMatch?.[1]) {
+      mentionThreadTsSet.add(tsMatch[1]);
+    }
+  }
+
+  return [...mentionThreadTsSet];
 }
 
 function slackTsToMs(ts: string): number | null {

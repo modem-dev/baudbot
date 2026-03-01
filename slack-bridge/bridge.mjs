@@ -304,8 +304,10 @@ async function handleMessage(userMessage, event, say) {
     console.warn(`👀 eyes reaction failed: ${err.message}`);
   });
 
+  const threadTs = event.thread_ts || event.ts;
+
   // Track this message so we can add ✅ when the agent replies.
-  const threadKey = `${event.channel}:${event.thread_ts || event.ts}`;
+  const threadKey = `${event.channel}:${threadTs}`;
   pendingAckReactions.set(threadKey, {
     channel: event.channel,
     messageTs: event.ts,
@@ -328,11 +330,11 @@ async function handleMessage(userMessage, event, say) {
       source: "Slack",
       user: event.user,
       channel: event.channel,
-      threadTs: event.ts,
+      threadTs,
     });
 
     // Enrich with friendly thread ID so the agent can use /reply endpoint
-    const threadId = getThreadId(event.channel, event.thread_ts || event.ts);
+    const threadId = getThreadId(event.channel, threadTs);
     const contextMessage = `${wrappedMessage}\n[Bridge-Thread-ID: ${threadId}]`;
 
     // Fire-and-forget: deliver to agent, which will reply to Slack itself via /send API.
@@ -346,7 +348,10 @@ async function handleMessage(userMessage, event, say) {
 
 // Handle @mentions
 app.event("app_mention", async ({ event, say }) => {
-  console.log(`📣 app_mention from <@${event.user || "unknown"}> in ${event.channel || "n/a"} ts: ${event.ts}`);
+  const threadTs = event.thread_ts || event.ts;
+  console.log(
+    `📣 app_mention from <@${event.user || "unknown"}> in ${event.channel || "n/a"} thread_ts: ${threadTs} ts: ${event.ts}`
+  );
 
   const userMessage = cleanMessage(event.text);
   if (!userMessage) {

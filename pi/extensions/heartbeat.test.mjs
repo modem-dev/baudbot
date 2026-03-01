@@ -119,13 +119,24 @@ function slackTsToMs(ts) {
 }
 
 function extractMentionThreadTs(logTail) {
-  const mentionPattern = /app_mention[^\n]*\bts:\s*(\d+\.\d+)/g;
-  const mentionTs = new Set();
-  let match;
-  while ((match = mentionPattern.exec(logTail)) !== null) {
-    mentionTs.add(match[1]);
+  const mentionThreadTs = new Set();
+
+  for (const line of logTail.split("\n")) {
+    if (!line.includes("app_mention")) continue;
+
+    const threadMatch = line.match(/\bthread_ts:\s*(\d+\.\d+)/);
+    if (threadMatch?.[1]) {
+      mentionThreadTs.add(threadMatch[1]);
+      continue;
+    }
+
+    const tsMatch = line.match(/\bts:\s*(\d+\.\d+)/);
+    if (tsMatch?.[1]) {
+      mentionThreadTs.add(tsMatch[1]);
+    }
   }
-  return [...mentionTs];
+
+  return [...mentionThreadTs];
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -379,6 +390,12 @@ Not part of JSON.`;
 
 describe("heartbeat v2: unanswered mention log parsing", () => {
   it("extracts app_mention ts from broker-bridge log format", () => {
+    const log =
+      "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: app_mention, thread_ts: 1772313000.000001, ts: 1772313000.123456)";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.000001"]);
+  });
+
+  it("falls back to message ts when thread_ts is absent", () => {
     const log = "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: app_mention, ts: 1772313000.123456)";
     assert.deepEqual(extractMentionThreadTs(log), ["1772313000.123456"]);
   });
@@ -386,6 +403,12 @@ describe("heartbeat v2: unanswered mention log parsing", () => {
   it("extracts app_mention ts from socket-mode bridge log format", () => {
     const log = "📣 app_mention from <@U123> in C123 ts: 1772313001.654321";
     assert.deepEqual(extractMentionThreadTs(log), ["1772313001.654321"]);
+  });
+
+  it("prefers thread_ts over message ts when both are present", () => {
+    const log =
+      "📣 app_mention from <@U123> in C123 thread_ts: 1772313000.000001 ts: 1772313001.654321";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.000001"]);
   });
 
   it("ignores non-app_mention log lines", () => {

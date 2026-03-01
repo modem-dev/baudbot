@@ -716,7 +716,10 @@ function sanitizeOutboundMessage(text, contextLabel) {
 }
 
 async function handleUserMessage(userMessage, event) {
-  logInfo(`👤 message from <@${event.user}> in ${event.channel} (type: ${event.type}, ts: ${event.ts})`);
+  const threadTs = event.thread_ts || event.ts;
+  logInfo(
+    `👤 message from <@${event.user}> in ${event.channel} (type: ${event.type}, thread_ts: ${threadTs}, ts: ${event.ts})`
+  );
 
   if (!isAllowed(event.user, ALLOWED_USERS)) {
     logWarn(`🚫 user <@${event.user}> not in allowed list — rejecting`);
@@ -742,7 +745,7 @@ async function handleUserMessage(userMessage, event) {
   });
 
   // Track this message so we can add ✅ when the agent replies.
-  const threadKey = `${ackChannel}:${event.thread_ts || ackMessageTs}`;
+  const threadKey = `${ackChannel}:${threadTs}`;
   pendingAckReactions.set(threadKey, {
     channel: ackChannel,
     messageTs: ackMessageTs,
@@ -763,10 +766,10 @@ async function handleUserMessage(userMessage, event) {
     source: "Slack (broker)",
     user: event.user,
     channel: event.channel,
-    threadTs: event.ts,
+    threadTs,
   });
 
-  const threadId = getThreadId(event.channel, event.thread_ts || event.ts);
+  const threadId = getThreadId(event.channel, threadTs);
   const contextMessage = `${wrappedMessage}\n[Bridge-Thread-ID: ${threadId}]`;
 
   // Fire-and-forget: deliver to agent, which will reply to Slack itself via /send API.
