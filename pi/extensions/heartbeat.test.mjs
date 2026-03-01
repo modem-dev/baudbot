@@ -63,6 +63,82 @@ function parseTodo(content) {
   }
 }
 
+function hasReplyLogEntry(replyLogContent, threadTs) {
+  const lines = replyLogContent.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const entry = JSON.parse(trimmed);
+      if (entry?.thread_ts === threadTs) return true;
+    } catch {
+      // Ignore malformed JSONL lines.
+    }
+  }
+  return false;
+}
+
+function hasOutboundSendCommand(sessionJsonlContent, threadTs) {
+  const escapedThreadTs = threadTs.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const threadTsPattern = new RegExp(`["']thread_ts["']\\s*:\\s*["']${escapedThreadTs}["']`);
+
+  for (const line of sessionJsonlContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+
+    if (parsed?.type !== "message") continue;
+    if (parsed?.message?.role !== "assistant") continue;
+    const items = parsed?.message?.content;
+    if (!Array.isArray(items)) continue;
+
+    for (const item of items) {
+      if (item?.type !== "toolCall") continue;
+      if (item?.name !== "bash") continue;
+      const command = typeof item?.arguments?.command === "string" ? item.arguments.command : "";
+      if (!command.includes("curl")) continue;
+      if (!command.includes("/send")) continue;
+      if (!threadTsPattern.test(command)) continue;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function slackTsToMs(ts) {
+  const parsed = Number.parseFloat(ts);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed * 1000);
+}
+
+function extractMentionThreadTs(logTail) {
+  const mentionThreadTs = new Set();
+
+  for (const line of logTail.split("\n")) {
+    if (!line.includes("app_mention")) continue;
+
+    const threadMatch = line.match(/\bthread_ts:\s*(\d+\.\d+)/);
+    if (threadMatch?.[1]) {
+      mentionThreadTs.add(threadMatch[1]);
+      continue;
+    }
+
+    const tsMatch = line.match(/\bts:\s*(\d+\.\d+)/);
+    if (tsMatch?.[1]) {
+      mentionThreadTs.add(tsMatch[1]);
+    }
+  }
+
+  return [...mentionThreadTs];
+}
+
 // ── Test helpers ────────────────────────────────────────────────────────────
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -309,6 +385,95 @@ Not part of JSON.`;
     const result = parseTodo(content);
     assert.equal(result.id, "extra");
     assert.equal(result.status, "open");
+  });
+});
+
+describe("heartbeat v2: unanswered mention log parsing", () => {
+  it("extracts app_mention ts from broker-bridge log format", () => {
+    const log =
+      "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: app_mention, thread_ts: 1772313000.000001, ts: 1772313000.123456)";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.000001"]);
+  });
+
+  it("falls back to message ts when thread_ts is absent", () => {
+    const log = "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: app_mention, ts: 1772313000.123456)";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.123456"]);
+  });
+
+  it("extracts app_mention ts from socket-mode bridge log format", () => {
+    const log = "📣 app_mention from <@U123> in C123 ts: 1772313001.654321";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313001.654321"]);
+  });
+
+  it("prefers thread_ts over message ts when both are present", () => {
+    const log =
+      "📣 app_mention from <@U123> in C123 thread_ts: 1772313000.000001 ts: 1772313001.654321";
+    assert.deepEqual(extractMentionThreadTs(log), ["1772313000.000001"]);
+  });
+
+  it("ignores non-app_mention log lines", () => {
+    const log = [
+      "💬 from <@U123>: hello",
+      "[2026-02-28T21:10:00.000Z] 👤 message from <@U123> in C123 (type: message, ts: 1772313000.123456)",
+      "🧵 Registered thread-1 → channel=C123 thread_ts=1772313000.123456",
+    ].join("\n");
+    assert.deepEqual(extractMentionThreadTs(log), []);
+  });
+
+  it("converts slack ts to milliseconds", () => {
+    assert.equal(slackTsToMs("1772313000.123456"), 1772313000123);
+    assert.equal(slackTsToMs("0"), null);
+    assert.equal(slackTsToMs("not-a-ts"), null);
+  });
+});
+
+describe("heartbeat v2: unanswered mention reply detection", () => {
+  it("matches exact thread_ts entries in reply log jsonl", () => {
+    const log = [
+      '{"thread_ts":"1234.5678","replied_at":"2026-02-27T00:00:00Z"}',
+      '{"thread_ts":"2345.6789","replied_at":"2026-02-27T00:05:00Z"}',
+    ].join("\n");
+
+    assert.equal(hasReplyLogEntry(log, "1234.5678"), true);
+    assert.equal(hasReplyLogEntry(log, "9999.0000"), false);
+  });
+
+  it("ignores malformed reply-log lines", () => {
+    const log = ['{"thread_ts":"1234.5678"}', 'not-json', '{"thread_ts":"2345.6789"}'].join("\n");
+    assert.equal(hasReplyLogEntry(log, "2345.6789"), true);
+  });
+
+  it("detects outbound curl /send with matching thread_ts", () => {
+    const session = JSON.stringify({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            name: "bash",
+            arguments: {
+              command:
+                "curl -s -X POST http://127.0.0.1:7890/send -H 'Content-Type: application/json' -d '{\"channel\":\"C123\",\"text\":\"hi\",\"thread_ts\":\"1234.5678\"}'",
+            },
+          },
+        ],
+      },
+    });
+
+    assert.equal(hasOutboundSendCommand(session, "1234.5678"), true);
+  });
+
+  it("does not treat inbound text containing thread_ts as a reply", () => {
+    const inboundOnly = JSON.stringify({
+      type: "message",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "inbound event metadata: thread_ts=1234.5678" }],
+      },
+    });
+
+    assert.equal(hasOutboundSendCommand(inboundOnly, "1234.5678"), false);
   });
 });
 

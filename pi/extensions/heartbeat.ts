@@ -9,11 +9,13 @@
  *   2. Slack bridge — HTTP POST to localhost:7890/send returns 400
  *   3. Stale worktrees — ~/workspace/worktrees/ has dirs with no matching in-progress todo
  *   4. Stuck todos — in-progress for >2 hours with no matching dev-agent session
+ *   5. Unanswered Slack mentions — app_mention events in bridge log with no reply within 5 min
  *
  * Configuration (env vars):
  *   HEARTBEAT_INTERVAL_MS   — interval between heartbeats (default: 600000 = 10 min)
  *   HEARTBEAT_ENABLED        — set to "0" or "false" to disable (default: enabled)
  *   HEARTBEAT_EXPECTED_SESSIONS — comma-separated session aliases to check (default: "sentry-agent")
+ *   HEARTBEAT_CHECK_UNANSWERED_MENTIONS — enabled by default, set to "0", "false", or "no" to disable
  *
  * When all checks pass, zero LLM tokens are consumed. When something fails,
  * a targeted prompt is injected describing only the failures so the control-agent
@@ -37,6 +39,9 @@ const SOCKET_DIR = join(homedir(), ".pi", "session-control");
 const WORKTREES_DIR = join(homedir(), "workspace", "worktrees");
 const TODOS_DIR = join(homedir(), ".pi", "todos");
 const BRIDGE_URL = "http://127.0.0.1:7890/send";
+const BRIDGE_LOG = join(homedir(), ".pi", "agent", "logs", "slack-bridge.log");
+const SESSION_DIR = join(homedir(), ".pi", "agent", "sessions");
+const UNANSWERED_MENTION_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 type HeartbeatState = {
   enabled: boolean;
@@ -70,6 +75,12 @@ function getExpectedSessions(): string[] {
   const env = process.env.HEARTBEAT_EXPECTED_SESSIONS?.trim();
   if (env) return env.split(",").map((s) => s.trim()).filter(Boolean);
   return ["sentry-agent"];
+}
+
+function isUnansweredMentionsCheckEnabled(): boolean {
+  const val = process.env.HEARTBEAT_CHECK_UNANSWERED_MENTIONS?.trim().toLowerCase();
+  // Default to enabled unless explicitly disabled
+  return val !== "0" && val !== "false" && val !== "no";
 }
 
 // ── Health Check Functions ──────────────────────────────────────────────────
@@ -300,6 +311,170 @@ function checkStuckTodos(): CheckResult[] {
   return results;
 }
 
+function checkUnansweredMentions(): CheckResult[] {
+  const results: CheckResult[] = [];
+  const now = Date.now();
+
+  if (!existsSync(BRIDGE_LOG)) return results;
+
+  try {
+    // Read the last 500 lines of the bridge log to find recent app_mention events.
+    // Support both bridge implementations:
+    //   - broker-bridge.mjs: "... (type: app_mention, ts: 1234.5678)"
+    //   - bridge.mjs:        "app_mention ... ts: 1234.5678"
+    const { execSync } = require("node:child_process");
+    const logTail = execSync(`tail -500 "${BRIDGE_LOG}"`, { encoding: "utf-8" });
+
+    const mentionThreadTsSet = new Set<string>(extractMentionThreadTs(logTail));
+
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    // For each recent mention, check if we replied to it.
+    for (const threadTs of mentionThreadTsSet) {
+      const mentionTime = slackTsToMs(threadTs);
+      if (mentionTime == null || mentionTime <= oneHourAgo) continue;
+
+      const age = now - mentionTime;
+
+      // Skip very recent mentions (< 5 min) - agent might still be processing.
+      if (age < UNANSWERED_MENTION_THRESHOLD_MS) continue;
+
+      // Check if we sent a reply to this thread_ts.
+      const replied = hasRepliedToThread(threadTs);
+
+      if (!replied) {
+        const minutesAgo = Math.round(age / (60 * 1000));
+        results.push({
+          name: `unanswered:${threadTs}`,
+          ok: false,
+          detail: `Slack mention at ts ${threadTs} (${minutesAgo} min ago) has no reply — may have been lost during restart`,
+        });
+      }
+    }
+  } catch {
+    // Log read failure or exec error - non-fatal.
+    // Don't report this as a failure unless we have a specific problem to report.
+  }
+
+  return results;
+}
+
+function extractMentionThreadTs(logTail: string): string[] {
+  const mentionThreadTsSet = new Set<string>();
+
+  for (const line of logTail.split("\n")) {
+    if (!line.includes("app_mention")) continue;
+
+    const threadMatch = line.match(/\bthread_ts:\s*(\d+\.\d+)/);
+    if (threadMatch?.[1]) {
+      mentionThreadTsSet.add(threadMatch[1]);
+      continue;
+    }
+
+    const tsMatch = line.match(/\bts:\s*(\d+\.\d+)/);
+    if (tsMatch?.[1]) {
+      mentionThreadTsSet.add(tsMatch[1]);
+    }
+  }
+
+  return [...mentionThreadTsSet];
+}
+
+function slackTsToMs(ts: string): number | null {
+  const parsed = Number.parseFloat(ts);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed * 1000);
+}
+
+function hasRepliedToThread(threadTs: string): boolean {
+  // Check multiple sources for evidence of a reply to this thread_ts.
+
+  // 1. Check the reply tracking log (most reliable — written by the agent).
+  //    File: ~/.pi/agent/slack-reply-log.jsonl
+  //    Each line: {"thread_ts":"...","replied_at":"..."}
+  const replyLogPath = join(homedir(), ".pi", "agent", "slack-reply-log.jsonl");
+  if (existsSync(replyLogPath)) {
+    try {
+      const content = readFileSync(replyLogPath, "utf-8");
+      const lines = content.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const entry = JSON.parse(trimmed);
+          if (entry?.thread_ts === threadTs) {
+            return true;
+          }
+        } catch {
+          // Ignore malformed JSONL lines and keep scanning.
+        }
+      }
+    } catch {
+      // File read error — fall through to other checks
+    }
+  }
+
+  // 2. Check recent control-agent session logs for explicit outbound /send calls.
+  //    Session files are in ~/.pi/agent/sessions/--home-baudbot_agent--/
+  //    and named <timestamp>_<uuid>.jsonl.
+  const controlAgentSessionDir = join(SESSION_DIR, "--home-baudbot_agent--");
+  if (existsSync(controlAgentSessionDir)) {
+    const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const threadTsPattern = new RegExp(`["']thread_ts["']\\s*:\\s*["']${escapeRegExp(threadTs)}["']`);
+
+    try {
+      const sessionFiles = readdirSync(controlAgentSessionDir)
+        .filter((f) => f.endsWith(".jsonl"))
+        .sort()
+        .reverse()
+        .slice(0, 3); // Check last 3 sessions
+
+      for (const file of sessionFiles) {
+        try {
+          const content = readFileSync(join(controlAgentSessionDir, file), "utf-8");
+          const lines = content.split("\n");
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            let parsed: any;
+            try {
+              parsed = JSON.parse(trimmed);
+            } catch {
+              continue;
+            }
+
+            if (parsed?.type !== "message") continue;
+            if (parsed?.message?.role !== "assistant") continue;
+
+            const items = parsed?.message?.content;
+            if (!Array.isArray(items)) continue;
+
+            for (const item of items) {
+              if (item?.type !== "toolCall") continue;
+              if (item?.name !== "bash") continue;
+
+              const command = typeof item?.arguments?.command === "string" ? item.arguments.command : "";
+              if (!command.includes("curl")) continue;
+              if (!command.includes("/send")) continue;
+              if (!threadTsPattern.test(command)) continue;
+
+              return true;
+            }
+          }
+        } catch {
+          // File read error - skip
+        }
+      }
+    } catch {
+      // Dir read error
+    }
+  }
+
+  return false;
+}
+
 // ── Helper Functions ────────────────────────────────────────────────────────
 
 function hasMatchingTodo(devAgentName: string): boolean {
@@ -412,12 +587,16 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
       const bridgeResult = await checkBridge();
       const worktreeResults = checkWorktrees();
       const stuckTodoResults = checkStuckTodos();
+      const unansweredMentionResults = isUnansweredMentionsCheckEnabled() 
+        ? checkUnansweredMentions() 
+        : [];
 
       const allResults: CheckResult[] = [
         ...sessionResults,
         bridgeResult,
         ...worktreeResults,
         ...stuckTodoResults,
+        ...unansweredMentionResults,
       ];
 
       const failures = allResults.filter((r) => !r.ok);
@@ -550,12 +729,16 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
           const bridgeResult = await checkBridge();
           const worktreeResults = checkWorktrees();
           const stuckTodoResults = checkStuckTodos();
+          const unansweredMentionResults = isUnansweredMentionsCheckEnabled()
+            ? checkUnansweredMentions()
+            : [];
 
           const allResults: CheckResult[] = [
             ...sessionResults,
             bridgeResult,
             ...worktreeResults,
             ...stuckTodoResults,
+            ...unansweredMentionResults,
           ];
 
           const failures = allResults.filter((r) => !r.ok);
@@ -592,6 +775,7 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
 
         case "config": {
           const expected = getExpectedSessions();
+          const checkUnanswered = isUnansweredMentionsCheckEnabled();
           return {
             content: [
               {
@@ -604,11 +788,15 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
                   `  Backoff multiplier: ${BACKOFF_MULTIPLIER}x per error`,
                   `  Max backoff: ${MAX_BACKOFF_MS / 1000}s`,
                   `  Expected sessions: ${expected.join(", ")} (env: HEARTBEAT_EXPECTED_SESSIONS)`,
+                  `  Check unanswered mentions: ${checkUnanswered ? "enabled" : "disabled"} (env: HEARTBEAT_CHECK_UNANSWERED_MENTIONS)`,
+                  `  Unanswered mention threshold: ${UNANSWERED_MENTION_THRESHOLD_MS / (60 * 1000)} min`,
                   `  Stuck todo threshold: ${STUCK_TODO_THRESHOLD_MS / (60 * 60 * 1000)}h`,
                   `  Bridge URL: ${BRIDGE_URL}`,
+                  `  Bridge log: ${BRIDGE_LOG}`,
                   `  Socket dir: ${SOCKET_DIR}`,
                   `  Worktrees dir: ${WORKTREES_DIR}`,
                   `  Todos dir: ${TODOS_DIR}`,
+                  `  Session dir: ${SESSION_DIR}`,
                 ].join("\n"),
               },
             ],
