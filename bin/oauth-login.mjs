@@ -123,6 +123,13 @@ function parseAuthorizationInput(input) {
   return { code: value };
 }
 
+function extractCode(input, expectedState) {
+  const parsed = parseAuthorizationInput(input);
+  // State is optional — users may paste a bare authorization code with no state param
+  if (parsed.state && parsed.state !== expectedState) throw new Error("State mismatch");
+  return parsed.code;
+}
+
 function startLocalCallbackServer(expectedState) {
   let lastCode = null;
   let cancelled = false;
@@ -209,47 +216,24 @@ async function loginOpenAICodex(rl) {
   info("  complete automatically. Otherwise, paste the redirect URL below.");
   info("");
 
-  // Race: callback server vs manual paste
+  // User either pastes a redirect URL or presses Enter to wait for browser callback
+  const input = await ask(rl, "  Paste redirect URL (or press Enter to wait for browser): ");
+
   let code;
-  const manualPromise = ask(rl, "  Paste redirect URL (or press Enter to wait for browser): ");
-
-  const serverCode = await Promise.race([
-    server.waitForCode(),
-    manualPromise.then((input) => {
-      if (input.trim()) {
-        server.cancel();
-        return "manual:" + input;
-      }
-      return null;
-    }),
-  ]);
-
-  if (typeof serverCode === "string" && serverCode.startsWith("manual:")) {
-    const parsed = parseAuthorizationInput(serverCode.slice(7));
-    if (parsed.state && parsed.state !== state) throw new Error("State mismatch");
-    code = parsed.code;
-  } else if (serverCode) {
-    code = serverCode;
+  if (input.trim()) {
+    server.cancel();
+    code = extractCode(input, state);
+  } else {
+    // User pressed Enter — wait for the browser callback (polls lastCode, resolves
+    // immediately if the callback already arrived while the prompt was open)
+    const serverCode = await server.waitForCode();
+    if (serverCode) code = serverCode;
   }
 
   if (!code) {
-    // Wait for the remaining promise
-    const remaining = await (typeof serverCode === "string" ? server.waitForCode() : manualPromise);
-    if (typeof remaining === "string" && remaining.trim()) {
-      const parsed = parseAuthorizationInput(remaining);
-      if (parsed.state && parsed.state !== state) throw new Error("State mismatch");
-      code = parsed.code;
-    } else if (remaining) {
-      code = remaining;
-    }
-  }
-
-  if (!code) {
-    // Final fallback prompt
-    const input = await ask(rl, "  Paste the authorization code (or full redirect URL): ");
-    const parsed = parseAuthorizationInput(input);
-    if (parsed.state && parsed.state !== state) throw new Error("State mismatch");
-    code = parsed.code;
+    // Neither path produced a code — one final prompt
+    const fallback = await ask(rl, "  Paste the authorization code (or full redirect URL): ");
+    code = extractCode(fallback, state);
   }
 
   server.close();
