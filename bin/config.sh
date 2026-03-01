@@ -574,8 +574,8 @@ fi
 
 # ── Validation ───────────────────────────────────────────────────────────────
 
-if [ -z "${ENV_VARS[SLACK_ALLOWED_USERS]:-}" ]; then
-  warn "SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
+if [ -z "${ENV_VARS[GATEWAY_ALLOWED_USERS]:-${ENV_VARS[SLACK_ALLOWED_USERS]:-}}" ]; then
+  warn "GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set — all workspace members will be allowed"
 fi
 
 # ── Write config ─────────────────────────────────────────────────────────────

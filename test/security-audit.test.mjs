@@ -87,11 +87,11 @@ describe("security-audit.sh", () => {
     }
   });
 
-  it("reports missing SLACK_ALLOWED_USERS when unset", async () => {
+  it("reports missing allowlist vars when unset", async () => {
     setupFixture(tmpRoot);
 
     const { output } = await runAuditWithLocalBridge(tmpRoot);
-    expect(output).toContain("SLACK_ALLOWED_USERS not set");
+    expect(output).toContain("GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set");
   });
 
   it("reports configured SLACK_ALLOWED_USERS when set", async () => {

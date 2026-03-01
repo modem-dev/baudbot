@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node bridge.mjs",
-    "test": "node --test security.test.mjs"
+    "test": "node --test security.test.mjs env-aliases.test.mjs"
   },
   "dependencies": {
     "@slack/bolt": "^4.6.0",

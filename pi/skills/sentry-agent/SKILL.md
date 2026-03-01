@@ -110,4 +110,4 @@ Required env vars (injected via `varlock` at launch):
 - `SENTRY_AUTH_TOKEN` — Sentry API bearer token
 - `SENTRY_CHANNEL_ID` — Slack channel ID for Sentry alerts
 - `SENTRY_ORG` — Sentry organization slug
-- `SLACK_BOT_TOKEN` — Slack bot OAuth token (required by `list` action)
+- `GATEWAY_BOT_TOKEN` (preferred) or `SLACK_BOT_TOKEN` (legacy) — Slack bot OAuth token (required by `list` action)

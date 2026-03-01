@@ -6,15 +6,15 @@
  * Uses Socket Mode (no public URL needed).
  *
  * Required env vars:
- *   SLACK_BOT_TOKEN        - Slack bot OAuth token
- *   SLACK_APP_TOKEN        - Slack app-level token (for Socket Mode)
- *   SLACK_ALLOWED_USERS    - comma-separated Slack user IDs (optional — allow all if unset)
+ *   GATEWAY_BOT_TOKEN or SLACK_BOT_TOKEN  - Slack bot OAuth token
+ *   GATEWAY_APP_TOKEN or SLACK_APP_TOKEN  - Slack app-level token (for Socket Mode)
+ *   GATEWAY_ALLOWED_USERS or SLACK_ALLOWED_USERS - comma-separated Slack user IDs (optional — allow all if unset)
  *
  * Optional:
- *   PI_SESSION_ID          - target pi session ID (defaults to auto-detect control-agent)
- *   SLACK_CHANNEL_ID       - if set, also responds to all messages in this channel (not just @mentions)
- *   SENTRY_CHANNEL_ID      - Slack channel ID for Sentry alerts (forwarded to agent)
- *   BRIDGE_API_PORT        - outbound API port (default: 7890)
+ *   PI_SESSION_ID                        - target pi session ID (defaults to auto-detect control-agent)
+ *   GATEWAY_CHANNEL_ID or SLACK_CHANNEL_ID - if set, also responds to all messages in this channel (not just @mentions)
+ *   SENTRY_CHANNEL_ID                    - Slack channel ID for Sentry alerts (forwarded to agent)
+ *   BRIDGE_API_PORT                      - outbound API port (default: 7890)
  */
 
 // Env vars loaded and validated by varlock (via `varlock run` or `start.sh`).
@@ -35,6 +35,12 @@ import {
   validateReactParams,
   createRateLimiter,
 } from "./security.mjs";
+import { applyGatewayEnvAliases } from "./env-aliases.mjs";
+
+const gatewayAliasWarnings = applyGatewayEnvAliases(process.env).warnings;
+for (const warning of gatewayAliasWarnings) {
+  console.warn(warning);
+}
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +51,8 @@ const API_PORT = parseInt(process.env.BRIDGE_API_PORT || "7890", 10);
 // Validate required env vars
 for (const key of ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]) {
   if (!process.env[key]) {
-    console.error(`❌ Missing required env var: ${key}`);
+    const gatewayAlias = key.replace(/^SLACK_/, "GATEWAY_");
+    console.error(`❌ Missing required env var: ${key} (or ${gatewayAlias})`);
     process.exit(1);
   }
 }
@@ -55,7 +62,7 @@ for (const key of ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]) {
 const ALLOWED_USERS = parseAllowedUsers(process.env.SLACK_ALLOWED_USERS);
 
 if (ALLOWED_USERS.length === 0) {
-  console.warn("⚠️  SLACK_ALLOWED_USERS not set — all workspace members can interact");
+  console.warn("⚠️  GATEWAY_ALLOWED_USERS/SLACK_ALLOWED_USERS not set — all workspace members can interact");
 }
 
 console.log(`🔒 Access control: ${ALLOWED_USERS.length || 'all'} allowed user(s)`);
