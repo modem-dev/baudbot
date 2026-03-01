@@ -300,6 +300,41 @@ describe("memory: skill file integration", () => {
     );
   });
 
+  it("control-agent SKILL.md references agent_spawn", () => {
+    assert.ok(
+      controlSkill.includes("agent_spawn"),
+      "control-agent runbook should use agent_spawn for worker launches"
+    );
+  });
+
+  it("control-agent SKILL.md forbids pi session spawn", () => {
+    assert.ok(
+      controlSkill.includes("`pi session spawn`"),
+      "control-agent runbook should explicitly forbid pi session spawn"
+    );
+  });
+
+  it("control-agent SKILL.md states send_to_session is a tool call", () => {
+    assert.ok(
+      controlSkill.includes("`send_to_session` is a tool call, not a shell command."),
+      "control-agent runbook should prevent shell-style send_to_session usage"
+    );
+  });
+
+  it("control-agent SKILL.md uses agent_spawn for sentry-agent startup", () => {
+    assert.ok(
+      controlSkill.includes("session_name: sentry-agent"),
+      "control-agent runbook should define sentry-agent startup via agent_spawn arguments"
+    );
+  });
+
+  it("control-agent SKILL.md does not use raw tmux sentry-agent spawn", () => {
+    assert.ok(
+      !controlSkill.includes("tmux new-session -d -s sentry-agent"),
+      "control-agent runbook should avoid raw tmux spawn commands for sentry-agent startup"
+    );
+  });
+
   it("dev-agent SKILL.md has Memory section", () => {
     assert.ok(devSkill.includes("## Memory"), "should have Memory section");
   });

@@ -197,22 +197,21 @@ cd $REPO_PATH
 git fetch origin
 git worktree add ~/workspace/worktrees/$BRANCH -b $BRANCH origin/main
 
-# 2. Launch the agent IN the worktree
-tmux new-session -d -s $SESSION_NAME \
-  "cd ~/workspace/worktrees/$BRANCH && \
-   export PATH=\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH && \
-   export PI_SESSION_NAME=$SESSION_NAME && \
-   exec varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/dev-agent --model <MODEL_FROM_TABLE_ABOVE>"
+# 2. Spawn via agent_spawn tool (preferred and required)
+# Call the tool with:
+#   session_name: $SESSION_NAME
+#   cwd: ~/workspace/worktrees/$BRANCH
+#   skill_path: ~/.pi/agent/skills/dev-agent
+#   model: <MODEL_FROM_TABLE_ABOVE>
+#   ready_alias: $SESSION_NAME
+#   ready_timeout_sec: 10
 ```
 
 **Important notes:**
-- `cd` into the worktree BEFORE launching pi — this ensures pi discovers project context from the repo's CWD
-- Use `exec` so the tmux session exits when pi exits
-- Use `varlock run --path ~/.config/` to validate and inject env vars
-- Set `PI_SESSION_NAME` so the auto-name extension registers it
-- Include `--session-control` for `send_to_session` / `list_sessions`
-- Wait **~10 seconds** after spawning before sending messages (agent needs time to initialize)
-- Do NOT use `--name` (not a real pi CLI flag)
+- `agent_spawn` performs a bounded readiness check against `~/.pi/session-control/<ready_alias>.alias` before returning.
+- Do not use ad-hoc shell spawn commands or pipes for readiness checks (`tail -5`, socket polling loops, etc.).
+- `send_to_session` is a tool call, not a shell command.
+- `pi session spawn` and `--name` are not valid in this runtime.
 
 **Model note**: Dev agents use the top-tier model from the table above. For cheaper tasks (e.g. read-only analysis), use the cheap model from the sentry-agent table instead.
 
@@ -309,8 +308,8 @@ This removes stale `.sock` files, cleans dead aliases, and restarts the Gateway 
 - [ ] Find or create sentry-agent:
   1. Use `list_sessions` to look for a session named `sentry-agent`
   2. If found, use that session
-  3. If not found, launch with tmux (see Sentry Agent section)
-  4. Wait ~8 seconds, then send role assignment
+  3. If not found, launch with `agent_spawn` (see Sentry Agent section)
+  4. If launched, continue after `agent_spawn` reports readiness
 - [ ] Send role assignment to the `sentry-agent` session
 - [ ] Clean up any stale dev-agent worktrees/tmux sessions from previous runs
 
@@ -330,10 +329,18 @@ The sentry-agent triages Sentry alerts and investigates critical issues via the 
 | `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-haiku-4-5` |
 
 ```bash
-tmux new-session -d -s sentry-agent "export PATH=\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH && export PI_SESSION_NAME=sentry-agent && varlock run --path ~/.config/ -- pi --session-control --skill ~/.pi/agent/skills/sentry-agent --model <MODEL_FROM_TABLE_ABOVE>"
+# Spawn via agent_spawn tool
+# Call the tool with:
+#   session_name: sentry-agent
+#   cwd: ~
+#   skill_path: ~/.pi/agent/skills/sentry-agent
+#   model: <MODEL_FROM_TABLE_ABOVE>
+#   ready_alias: sentry-agent
+#   ready_timeout_sec: 10
 ```
 
 **Model note**: `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
+**Spawn note**: Do not use raw `tmux new-session` shell commands for sentry-agent startup; use `agent_spawn`.
 
 The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry alerts arrive via the Gateway bridge in real-time and are forwarded by you. The sentry-agent uses `sentry_monitor get <issue_id>` to investigate when asked.
 
@@ -361,7 +368,7 @@ Health checks run automatically every ~10 minutes via the `heartbeat.ts` extensi
 If you need to check manually, use `heartbeat trigger` to run all checks immediately.
 
 When the heartbeat reports a failure, take the appropriate action:
-1. **Missing sentry-agent**: Respawn with tmux and re-send role assignment.
+1. **Missing sentry-agent**: Respawn with `agent_spawn` and re-send role assignment.
 2. **Orphaned dev-agents**: Kill tmux session and remove worktree.
 3. **Bridge down**: Restart via `startup-pi.sh`, then check `~/.pi/agent/logs/slack-bridge.log`.
 4. **Stale worktrees**: `git worktree remove --force` + `rmdir` empty parents.
