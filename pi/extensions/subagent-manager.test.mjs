@@ -151,6 +151,52 @@ describe("subagent_manage extension tool", () => {
     expect(state.agents["sentry-agent"].enabled).toBe(true);
   });
 
+  it("install action reenables and clears autostart to match shell behavior", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "subagent-manager-test-"));
+    tempDirs.push(root);
+
+    const subagentsDir = path.join(root, "subagents");
+    const statePath = path.join(root, "subagents-state.json");
+    mkdirSync(subagentsDir, { recursive: true });
+
+    writeManifest(subagentsDir, {
+      id: "sentry-agent",
+      name: "Sentry Agent",
+      description: "Incident triage agent",
+      session_name: "sentry-agent",
+      model_profile: "cheap_tier",
+    });
+
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      agents: {
+        "sentry-agent": {
+          installed: false,
+          enabled: false,
+          autostart: true,
+        },
+      },
+    }, null, 2), "utf-8");
+
+    process.env[SUBAGENTS_DIR_ENV] = subagentsDir;
+    process.env[SUBAGENTS_STATE_FILE_ENV] = statePath;
+
+    const tool = createHarness(async () => ({ stdout: "", stderr: "", code: 0, killed: false }));
+    const result = await tool.execute(
+      "tool-call",
+      { action: "install", id: "sentry-agent" },
+      undefined,
+      undefined,
+      {},
+    );
+
+    expect(result.isError).not.toBe(true);
+    const state = JSON.parse(readFileSync(statePath, "utf-8"));
+    expect(state.agents["sentry-agent"].installed).toBe(true);
+    expect(state.agents["sentry-agent"].enabled).toBe(true);
+    expect(state.agents["sentry-agent"].autostart).toBe(false);
+  });
+
   it("reconcile starts missing autostart-enabled subagent", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "subagent-manager-test-"));
     tempDirs.push(root);

@@ -485,7 +485,8 @@ export default function subagentManagerExtension(pi: ExtensionAPI): void {
 
         case "install": {
           stateEntry.installed = true;
-          if (stateEntry.enabled === undefined) stateEntry.enabled = true;
+          stateEntry.enabled = true;
+          stateEntry.autostart = false;
           writeSubagentState(state);
           return {
             content: [{ type: "text", text: `Installed ${pkg.id}.` }],

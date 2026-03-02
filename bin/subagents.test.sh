@@ -161,7 +161,7 @@ server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 server.bind(sock_path)
 server.listen(1)
 
-end = time.time() + 60
+end = time.time() + 10
 while time.time() < end:
     server.settimeout(1)
     try:
@@ -318,6 +318,45 @@ test_start_rejects_injected_cwd() {
   )
 }
 
+test_start_handles_single_quote_path() {
+  (
+    set -euo pipefail
+    local tmp agent_home fakebin control_dir socket_path alias_path sock_pid real_user manifest quoted_cwd output_file
+    tmp="$(mktemp -d /tmp/baudbot-subagents-test.XXXXXX)"
+    trap 'kill "$sock_pid" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+
+    agent_home="$(setup_fixture "$tmp")"
+    fakebin="$tmp/fakebin"
+    real_user="$(/usr/bin/id -un)"
+    control_dir="$agent_home/.pi/session-control"
+    socket_path="$control_dir/sentry-agent.sock"
+    alias_path="$control_dir/sentry-agent.alias"
+    manifest="$agent_home/.pi/agent/subagents/sentry-agent/subagent.json"
+    quoted_cwd="$tmp/cwd-with-quote's"
+    output_file="$tmp/start.out"
+
+    mkdir -p "$quoted_cwd"
+    jq --arg cwd "$quoted_cwd" '.cwd = $cwd' "$manifest" > "$manifest.tmp"
+    mv "$manifest.tmp" "$manifest"
+
+    sock_pid="$(start_unix_socket "$socket_path")"
+    for _i in $(seq 1 20); do
+      [ -S "$socket_path" ] && break
+      sleep 0.1
+    done
+    ln -sf "$(basename "$socket_path")" "$alias_path"
+
+    export PATH="$fakebin:$PATH"
+    export BAUDBOT_TEST_ID_U="0"
+    export BAUDBOT_AGENT_USER="$real_user"
+    export BAUDBOT_AGENT_HOME="$agent_home"
+    export BAUDBOT_TEST_TMUX_FILE="$tmp/tmux-sessions"
+
+    bash "$SCRIPT" start sentry-agent >"$output_file" 2>&1
+    grep -q "started sentry-agent" "$output_file"
+  )
+}
+
 echo "=== subagents cli tests ==="
 echo ""
 
@@ -325,6 +364,7 @@ run_test "requires root guard" test_requires_root
 run_test "list/install/enable/autostart state" test_list_and_state_toggles
 run_test "reconcile/status/stop lifecycle" test_reconcile_status_stop
 run_test "start rejects injected cwd payload" test_start_rejects_injected_cwd
+run_test "start handles single-quote cwd path" test_start_handles_single_quote_path
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="
