@@ -10,6 +10,10 @@
 
 **Always-on, multiplayer dev-assistant for eng teams - write code, act on alerts, and more**
 
+💬 _Join us on the Modem Discord: https://discord.gg/MKkTFvQ4_
+
+---
+
 Baudbot runs a persistent AI control agent on Linux, connected to Slack, with worker agents that take tasks from request to PR. It works on real repositories with real tools (git, test runners, Docker wrapper, cloud browser automation), keeps persistent memory, and reports progress back in-thread.
 
 Built for teams that want autonomous execution speed **without giving up operational control**.
