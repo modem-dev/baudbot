@@ -79,17 +79,15 @@ function getExpectedSessions(): string[] {
   try {
     const discovery = discoverSubagentPackages();
     const state = readSubagentState();
-    const fromSubagents = discovery.packages
-      .map((pkg) => ({
-        effective: resolveEffectiveState(pkg, state),
-        alias: pkg.manifest.ready_alias,
-      }))
-      .filter((entry) => entry.effective.installed && entry.effective.enabled && entry.effective.autostart)
-      .map((entry) => entry.alias)
-      .filter(Boolean);
-
-    if (fromSubagents.length > 0) {
-      return fromSubagents;
+    if (discovery.packages.length > 0) {
+      return discovery.packages
+        .map((pkg) => ({
+          effective: resolveEffectiveState(pkg, state),
+          alias: pkg.manifest.ready_alias,
+        }))
+        .filter((entry) => entry.effective.installed && entry.effective.enabled && entry.effective.autostart)
+        .map((entry) => entry.alias)
+        .filter(Boolean);
     }
   } catch {
     // fall back to historical default

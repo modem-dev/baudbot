@@ -29,8 +29,13 @@ function clampInt(value, min, max, fallback) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-function getExpectedSessions(envValue) {
+function getExpectedSessions(envValue, discovered = null) {
   if (envValue) return envValue.split(",").map((s) => s.trim()).filter(Boolean);
+  if (discovered && discovered.success === true) {
+    if (discovered.packagesCount > 0) {
+      return discovered.autostartAliases;
+    }
+  }
   return ["sentry-agent"];
 }
 
@@ -247,6 +252,33 @@ describe("heartbeat v2: getExpectedSessions", () => {
   it("filters empty entries", () => {
     const result = getExpectedSessions("sentry-agent,,monitor,");
     assert.deepEqual(result, ["sentry-agent", "monitor"]);
+  });
+
+  it("returns discovered autostart aliases when discovery succeeds", () => {
+    const result = getExpectedSessions(undefined, {
+      success: true,
+      packagesCount: 2,
+      autostartAliases: ["sentry-agent"],
+    });
+    assert.deepEqual(result, ["sentry-agent"]);
+  });
+
+  it("returns empty when discovery succeeds and all subagents are non-autostart", () => {
+    const result = getExpectedSessions(undefined, {
+      success: true,
+      packagesCount: 2,
+      autostartAliases: [],
+    });
+    assert.deepEqual(result, []);
+  });
+
+  it("falls back to default when discovery succeeds but no packages exist", () => {
+    const result = getExpectedSessions(undefined, {
+      success: true,
+      packagesCount: 0,
+      autostartAliases: [],
+    });
+    assert.deepEqual(result, ["sentry-agent"]);
   });
 });
 
