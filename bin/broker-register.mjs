@@ -2,9 +2,9 @@
 /**
  * Slack broker registration CLI.
  *
- * Registers this baudbot server with a Slack broker workspace using:
+ * Registers this baudbot server with a broker org using:
  * - broker URL
- * - workspace ID
+ * - org ID
  * - registration token from dashboard callback
  *
  * On success, stores broker config and generated server key material in:
@@ -22,9 +22,10 @@ import { pathToFileURL } from "node:url";
 
 const { subtle } = webcrypto;
 
-const WORKSPACE_ID_RE = /^T[A-Z0-9]+$/;
+const ORG_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const ENV_KEYS = [
   "SLACK_BROKER_URL",
+  "SLACK_BROKER_ORG_ID",
   "SLACK_BROKER_WORKSPACE_ID",
   "SLACK_BROKER_SERVER_PRIVATE_KEY",
   "SLACK_BROKER_SERVER_PUBLIC_KEY",
@@ -47,7 +48,8 @@ export function usageText() {
     "",
     "Options:",
     "  --broker-url URL       Broker base URL (e.g. https://broker.example.com)",
-    "  --workspace-id ID      Slack workspace ID (e.g. T0123ABCD)",
+    "  --org-id ID            Broker org ID (e.g. org_1234abcd)",
+    "  --workspace-id ID      Deprecated alias for --org-id (supported for compatibility)",
     "  --registration-token TOKEN  Registration token from dashboard callback (required)",
     "  --no-restart           Skip automatic agent restart after registration",
     "  -v, --verbose          Show detailed registration progress",
@@ -60,7 +62,7 @@ export function usageText() {
 export function parseArgs(argv) {
   const out = {
     brokerUrl: "",
-    workspaceId: "",
+    orgId: "",
     registrationToken: "",
     verbose: false,
     help: false,
@@ -95,13 +97,24 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg.startsWith("--org-id=")) {
+      out.orgId = arg.slice("--org-id=".length);
+      continue;
+    }
+    if (arg === "--org-id") {
+      i++;
+      out.orgId = argv[i] || "";
+      continue;
+    }
+
+    // Backward-compatible CLI alias.
     if (arg.startsWith("--workspace-id=")) {
-      out.workspaceId = arg.slice("--workspace-id=".length);
+      out.orgId = arg.slice("--workspace-id=".length);
       continue;
     }
     if (arg === "--workspace-id") {
       i++;
-      out.workspaceId = argv[i] || "";
+      out.orgId = argv[i] || "";
       continue;
     }
 
@@ -114,7 +127,6 @@ export function parseArgs(argv) {
       out.registrationToken = argv[i] || "";
       continue;
     }
-
 
     throw new Error(`unknown argument: ${arg}`);
   }
@@ -145,8 +157,14 @@ export function normalizeBrokerUrl(raw) {
   return parsed.toString().replace(/\/$/, "");
 }
 
+export function validateOrgId(orgId) {
+  const normalized = String(orgId || "").trim();
+  return normalized.length > 0 && normalized.length <= 128 && ORG_ID_RE.test(normalized);
+}
+
+// Backward-compatible export for older imports/tests.
 export function validateWorkspaceId(workspaceId) {
-  return WORKSPACE_ID_RE.test(String(workspaceId || ""));
+  return validateOrgId(workspaceId);
 }
 
 function decodeBase64Url(value) {
@@ -222,10 +240,10 @@ export function mapRegisterError(status, errorText) {
     return "registration token already used — re-run OAuth install and use a fresh token";
   }
   if (status === 409 && /already active/i.test(text)) {
-    return "workspace already active — unregister the current server first";
+    return "org already active — unregister the current server first";
   }
-  if (status === 404 && /workspace not found/i.test(text)) {
-    return "workspace not found — complete broker OAuth install first";
+  if (status === 404 && /(workspace|org) not found/i.test(text)) {
+    return "org not found — complete dashboard registration first";
   }
   if (status >= 500) {
     return `broker server error (${status}) — ${text}`;
@@ -235,7 +253,7 @@ export function mapRegisterError(status, errorText) {
 
 export async function registerWithBroker({
   brokerUrl,
-  workspaceId,
+  orgId,
   registrationToken,
   serverKeys,
   fetchImpl = fetch,
@@ -246,13 +264,15 @@ export async function registerWithBroker({
 
   const endpoint = new URL("/api/register", brokerUrl);
   const registerRequestBody = {
-    workspace_id: workspaceId,
+    org_id: orgId,
+    // Keep workspace_id during migration so older broker APIs still accept this payload.
+    workspace_id: orgId,
     server_pubkey: serverKeys.server_pubkey,
     server_signing_pubkey: serverKeys.server_signing_pubkey,
     registration_token: registrationToken,
   };
 
-  logger(`Registering workspace ${workspaceId} at ${endpoint}`);
+  logger(`Registering org ${orgId} at ${endpoint}`);
 
   let registerResponse;
   try {
@@ -262,7 +282,7 @@ export async function registerWithBroker({
       body: JSON.stringify(registerRequestBody),
     });
   } catch (err) {
-    throw new Error(`network failure registering workspace: ${err instanceof Error ? err.message : "unknown error"}`);
+    throw new Error(`network failure registering org: ${err instanceof Error ? err.message : "unknown error"}`);
   }
 
   let registerResponseBody = {};
@@ -471,11 +491,15 @@ async function collectInputs(parsedArgs) {
 
   const brokerUrl = parsedArgs.brokerUrl
     || existing.SLACK_BROKER_URL
+    || existing.GATEWAY_BROKER_URL
     || (await prompt("Broker URL: "));
 
-  const workspaceId = parsedArgs.workspaceId
+  const orgId = parsedArgs.orgId
+    || existing.SLACK_BROKER_ORG_ID
+    || existing.GATEWAY_BROKER_ORG_ID
     || existing.SLACK_BROKER_WORKSPACE_ID
-    || (await prompt("Workspace ID (starts with T): "));
+    || existing.GATEWAY_BROKER_WORKSPACE_ID
+    || (await prompt("Org ID: "));
 
   const registrationToken = parsedArgs.registrationToken || (await prompt("Registration token: "));
 
@@ -485,7 +509,7 @@ async function collectInputs(parsedArgs) {
 
   return {
     brokerUrl: normalizeBrokerUrl(brokerUrl),
-    workspaceId: workspaceId.trim(),
+    orgId: orgId.trim(),
     registrationToken,
     configTargets,
   };
@@ -493,13 +517,13 @@ async function collectInputs(parsedArgs) {
 
 export async function runRegistration({
   brokerUrl,
-  workspaceId,
+  orgId,
   registrationToken,
   fetchImpl = fetch,
   logger = () => {},
 }) {
-  if (!validateWorkspaceId(workspaceId)) {
-    throw new Error("workspace ID must match Slack team ID format (e.g. T0123ABCD)");
+  if (!validateOrgId(orgId)) {
+    throw new Error("org ID is required and must use only letters, numbers, '.', '_', ':', or '-'");
   }
 
   if (!registrationToken) {
@@ -512,7 +536,7 @@ export async function runRegistration({
   const serverKeys = await generateServerKeyMaterial();
   const registration = await registerWithBroker({
     brokerUrl: normalizedBrokerUrl,
-    workspaceId,
+    orgId,
     registrationToken,
     serverKeys,
     fetchImpl,
@@ -521,7 +545,9 @@ export async function runRegistration({
 
   const updates = {
     SLACK_BROKER_URL: normalizedBrokerUrl,
-    SLACK_BROKER_WORKSPACE_ID: workspaceId,
+    SLACK_BROKER_ORG_ID: orgId,
+    // Keep workspace key for backward compatibility with older runtimes.
+    SLACK_BROKER_WORKSPACE_ID: orgId,
     SLACK_BROKER_SERVER_PRIVATE_KEY: serverKeys.server_private_key,
     SLACK_BROKER_SERVER_PUBLIC_KEY: serverKeys.server_pubkey,
     SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: serverKeys.server_signing_private_key,
@@ -615,7 +641,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   logger("Collecting registration inputs...");
   const input = await collectInputs(parsed);
-  logger(`Using broker ${input.brokerUrl} for workspace ${input.workspaceId}`);
+  logger(`Using broker ${input.brokerUrl} for org ${input.orgId}`);
   logger(`Config targets: ${input.configTargets.map((t) => t.path).join(", ")}`);
 
   const { updates } = await runRegistration({ ...input, logger });

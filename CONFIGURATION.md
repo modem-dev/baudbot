@@ -53,7 +53,7 @@ If you're using the Slack broker OAuth flow, register this server after install:
 ```bash
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
-  --workspace-id T0123ABCD \
+  --org-id org_1234abcd \
   --registration-token <token-from-dashboard-callback>
 ```
 
@@ -121,8 +121,10 @@ Set by `sudo baudbot broker register` when using brokered Slack OAuth flow.
 |----------|-------------|
 | `GATEWAY_BROKER_URL` | **Preferred** broker base URL |
 | `SLACK_BROKER_URL` | Legacy alias for `GATEWAY_BROKER_URL` (still supported) |
-| `GATEWAY_BROKER_WORKSPACE_ID` | **Preferred** Slack workspace/team ID (`T...`) |
-| `SLACK_BROKER_WORKSPACE_ID` | Legacy alias for `GATEWAY_BROKER_WORKSPACE_ID` |
+| `GATEWAY_BROKER_ORG_ID` | **Preferred** broker org ID |
+| `SLACK_BROKER_ORG_ID` | Legacy alias for `GATEWAY_BROKER_ORG_ID` |
+| `GATEWAY_BROKER_WORKSPACE_ID` | Deprecated workspace/team ID alias (still accepted for migration) |
+| `SLACK_BROKER_WORKSPACE_ID` | Deprecated alias for `GATEWAY_BROKER_WORKSPACE_ID` |
 | `GATEWAY_BROKER_SERVER_PRIVATE_KEY` | **Preferred** server X25519 private key (base64) |
 | `SLACK_BROKER_SERVER_PRIVATE_KEY` | Legacy alias for `GATEWAY_BROKER_SERVER_PRIVATE_KEY` |
 | `GATEWAY_BROKER_SERVER_PUBLIC_KEY` | **Preferred** server X25519 public key (base64) |
@@ -254,7 +256,7 @@ SENTRY_CHANNEL_ID=C0987654321
 
 # Gateway broker registration (optional, set by: sudo baudbot broker register)
 GATEWAY_BROKER_URL=https://broker.example.com
-GATEWAY_BROKER_WORKSPACE_ID=T0123ABCD
+GATEWAY_BROKER_ORG_ID=org_1234abcd
 # Optional broker auth token fields (set by broker register when provided)
 # GATEWAY_BROKER_ACCESS_TOKEN=...
 # GATEWAY_BROKER_ACCESS_TOKEN_EXPIRES_AT=2026-02-22T22:15:00.000Z

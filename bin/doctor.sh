@@ -223,7 +223,6 @@ if [ -f "$ENV_FILE" ]; then
 
   BROKER_REQUIRED_PAIRS=(
     "GATEWAY_BROKER_URL:SLACK_BROKER_URL"
-    "GATEWAY_BROKER_WORKSPACE_ID:SLACK_BROKER_WORKSPACE_ID"
     "GATEWAY_BROKER_SERVER_PRIVATE_KEY:SLACK_BROKER_SERVER_PRIVATE_KEY"
     "GATEWAY_BROKER_SERVER_PUBLIC_KEY:SLACK_BROKER_SERVER_PUBLIC_KEY"
     "GATEWAY_BROKER_SERVER_SIGNING_PRIVATE_KEY:SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY"
@@ -232,6 +231,11 @@ if [ -f "$ENV_FILE" ]; then
   )
 
   BROKER_MODE_READY=true
+  if [ -z "$(read_first_env_value GATEWAY_BROKER_ORG_ID SLACK_BROKER_ORG_ID)" ] \
+    && [ -z "$(read_first_env_value GATEWAY_BROKER_WORKSPACE_ID SLACK_BROKER_WORKSPACE_ID)" ]; then
+    BROKER_MODE_READY=false
+  fi
+
   for pair in "${BROKER_REQUIRED_PAIRS[@]}"; do
     IFS=':' read -r preferred_key legacy_key <<<"$pair"
     if [ -z "$(read_first_env_value "$preferred_key" "$legacy_key")" ]; then

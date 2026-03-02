@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import {
   parseArgs,
   normalizeBrokerUrl,
+  validateOrgId,
   validateWorkspaceId,
   mapRegisterError,
   registerWithBroker,
@@ -38,20 +39,25 @@ test("parseArgs parses long-form options", () => {
   const parsed = parseArgs([
     "--broker-url",
     "https://broker.example.com/",
-    "--workspace-id",
-    "T123ABC",
+    "--org-id",
+    "org_123abc",
     "--registration-token",
     "token-xyz",
   ]);
 
   assert.deepEqual(parsed, {
     brokerUrl: "https://broker.example.com/",
-    workspaceId: "T123ABC",
+    orgId: "org_123abc",
     registrationToken: "token-xyz",
     verbose: false,
     help: false,
     noRestart: false,
   });
+});
+
+test("parseArgs accepts --workspace-id as backward-compatible alias for --org-id", () => {
+  const parsed = parseArgs(["--workspace-id", "T123ABC"]);
+  assert.equal(parsed.orgId, "T123ABC");
 });
 
 test("parseArgs sets verbose=true for -v and --verbose", () => {
@@ -93,10 +99,12 @@ test("parseArgs rejects legacy auth-code argument", () => {
   assert.throws(() => parseArgs(["--auth-code", "legacy"]), /unknown argument/);
 });
 
-test("validation helpers normalize and enforce broker/workspace formats", () => {
+test("validation helpers normalize and enforce broker/org formats", () => {
   assert.equal(normalizeBrokerUrl("https://broker.example.com/"), "https://broker.example.com");
-  assert.equal(validateWorkspaceId("T0ABC123"), true);
-  assert.equal(validateWorkspaceId("workspace-123"), false);
+  assert.equal(validateOrgId("org_abc-123"), true);
+  assert.equal(validateOrgId("T0ABC123"), true);
+  assert.equal(validateOrgId("bad id with spaces"), false);
+  assert.equal(validateWorkspaceId("org_legacy_alias"), true);
 
   assert.throws(() => normalizeBrokerUrl("ftp://broker.example.com"), /http:\/\/ or https:\/\//);
 });
@@ -104,7 +112,7 @@ test("validation helpers normalize and enforce broker/workspace formats", () => 
 test("mapRegisterError returns actionable messages", () => {
   assert.match(mapRegisterError(400, "missing registration proof"), /registration token is required/);
   assert.match(mapRegisterError(403, "invalid registration token"), /invalid registration token/);
-  assert.match(mapRegisterError(409, "workspace already active"), /already active/);
+  assert.match(mapRegisterError(409, "workspace already active"), /org already active/);
   assert.match(mapRegisterError(500, "oops"), /broker server error/);
 });
 
@@ -123,7 +131,8 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
 
     if (String(url).endsWith("/api/register")) {
       const payload = JSON.parse(init.body);
-      assert.equal(payload.workspace_id, "TTEST123");
+      assert.equal(payload.org_id, "org_test_123");
+      assert.equal(payload.workspace_id, "org_test_123");
       assert.equal(payload.server_pubkey, FIXTURE_SERVER_KEYS.server_pubkey);
       assert.equal(payload.server_signing_pubkey, FIXTURE_SERVER_KEYS.server_signing_pubkey);
       assert.equal(payload.registration_token, "token-abc");
@@ -145,7 +154,7 @@ test("registerWithBroker fetches pubkeys then posts registration payload", async
 
   const result = await registerWithBroker({
     brokerUrl: "https://broker.example.com",
-    workspaceId: "TTEST123",
+    orgId: "org_test_123",
     registrationToken: "token-abc",
     serverKeys: FIXTURE_SERVER_KEYS,
     fetchImpl,
@@ -187,7 +196,7 @@ test("registerWithBroker sends registration_token when provided", async () => {
 
   await registerWithBroker({
     brokerUrl: "https://broker.example.com",
-    workspaceId: "TTEST123",
+    orgId: "org_test_123",
     registrationToken: "token-abc",
     serverKeys: FIXTURE_SERVER_KEYS,
     fetchImpl,
@@ -234,14 +243,17 @@ test("runRegistration integration path succeeds against live local HTTP server",
   try {
     const result = await runRegistration({
       brokerUrl,
-      workspaceId: "TABC12345",
+      orgId: "org_live_12345",
       registrationToken: "token-from-dashboard",
     });
 
     assert.ok(receivedRegisterPayload);
-    assert.equal(receivedRegisterPayload.workspace_id, "TABC12345");
+    assert.equal(receivedRegisterPayload.org_id, "org_live_12345");
+    assert.equal(receivedRegisterPayload.workspace_id, "org_live_12345");
     assert.equal(receivedRegisterPayload.registration_token, "token-from-dashboard");
     assert.equal(receivedRegisterPayload.server_callback_url, undefined);
+    assert.equal(result.updates.SLACK_BROKER_ORG_ID, "org_live_12345");
+    assert.equal(result.updates.SLACK_BROKER_WORKSPACE_ID, "org_live_12345");
     assert.ok(result.updates.SLACK_BROKER_SERVER_PRIVATE_KEY);
     assert.ok(result.updates.SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY);
     assert.equal(result.updates.SLACK_BROKER_PUBLIC_KEY, brokerPubkey);
@@ -278,7 +290,7 @@ test("runRegistration does not write SLACK_BOT_TOKEN even when broker returns en
 
   const result = await runRegistration({
     brokerUrl: "https://broker.example.com",
-    workspaceId: "TABC12345",
+    orgId: "org_bot_token_check",
     registrationToken: "token-from-dashboard",
     fetchImpl,
   });
@@ -290,7 +302,7 @@ test("runRegistration requires registration token", async () => {
   await assert.rejects(
     runRegistration({
       brokerUrl: "https://broker.example.com",
-      workspaceId: "TABC12345",
+      orgId: "org_missing_token",
     }),
     /registration token is required/,
   );

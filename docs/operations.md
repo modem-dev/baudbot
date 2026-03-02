@@ -83,10 +83,10 @@ sudo baudbot env sync --restart
 ## Slack broker registration
 
 ```bash
-# Register this server to a broker workspace (after OAuth callback)
+# Register this server to a broker org (after dashboard registration)
 sudo baudbot broker register \
   --broker-url https://your-broker.example.com \
-  --workspace-id T0123ABCD \
+  --org-id org_1234abcd \
   --registration-token <token-from-dashboard-callback>
 ```
 

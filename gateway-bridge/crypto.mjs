@@ -51,6 +51,9 @@ export function canonicalizeOutbound(workspace, action, timestamp, encryptedBody
  *
  * Uses deterministic JSON serialization (sorted keys) to match broker
  * json-stable-stringify canonicalization.
+ *
+ * Note: payload key remains `workspace_id` for wire compatibility, even when
+ * the routing identifier value is an org ID.
  */
 export function canonicalizeProtocolRequest(workspace, protocolVersion, action, timestamp, payload) {
   return utf8Bytes(
@@ -73,6 +76,9 @@ export function canonicalizeProtocolRequest(workspace, protocolVersion, action, 
  *
  * Uses deterministic JSON serialization (sorted keys) so both sides produce
  * identical canonical bytes regardless of object key insertion order.
+ *
+ * Note: payload key remains `workspace_id` for wire compatibility, even when
+ * the routing identifier value is an org ID.
  */
 export function canonicalizeSendRequest(ws, action, timestamp, encryptedBody, nonce, routing) {
   return utf8Bytes(

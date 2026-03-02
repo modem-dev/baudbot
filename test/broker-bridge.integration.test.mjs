@@ -131,7 +131,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: `http://127.0.0.1:${brokerAddress.port}`,
-        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_ORG_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
@@ -196,7 +196,7 @@ describe("broker pull bridge semi-integration", () => {
         const messages = pullCount === 1
           ? [{
               message_id: "m-poison-1",
-              workspace_id: "T123BROKER",
+              org_id: "T123BROKER",
               encrypted: b64(64),
               broker_timestamp: Math.floor(Date.now() / 1000),
               // valid-length signature bytes, but not valid for payload/key
@@ -252,7 +252,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_ORG_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
@@ -295,6 +295,7 @@ describe("broker pull bridge semi-integration", () => {
 
     await Promise.race([ackWait, bridgeExited]);
 
+    expect(ackPayload.org_id).toBe("T123BROKER");
     expect(ackPayload.workspace_id).toBe("T123BROKER");
     expect(ackPayload.protocol_version).toBe("2026-02-1");
     expect(ackPayload.message_ids).toContain("m-poison-1");
@@ -390,7 +391,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_ORG_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBoxKeypair.privateKey),
         SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBoxKeypair.publicKey),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: b64(32, 13),
@@ -433,6 +434,7 @@ describe("broker pull bridge semi-integration", () => {
 
     await Promise.race([ackWait, bridgeExited]);
 
+    expect(ackPayload.org_id).toBe("T123BROKER");
     expect(ackPayload.workspace_id).toBe("T123BROKER");
     expect(ackPayload.protocol_version).toBe("2026-02-1");
     expect(ackPayload.message_ids).toContain("m-decrypt-fail-1");
@@ -482,7 +484,7 @@ describe("broker pull bridge semi-integration", () => {
     const brokerSign = sodium.crypto_sign_keypair();
     const serverSignSeed = sodium.randombytes_buf(sodium.crypto_sign_SEEDBYTES);
 
-    const workspaceId = "T123BROKER";
+    const orgId = "T123BROKER";
     const eventPayload = {
       type: "event_callback",
       event: {
@@ -502,7 +504,7 @@ describe("broker pull bridge semi-integration", () => {
     const encryptedB64 = toBase64(encrypted);
     const brokerSignature = toBase64(
       sodium.crypto_sign_detached(
-        canonicalizeEnvelope(workspaceId, brokerTimestamp, encryptedB64),
+        canonicalizeEnvelope(orgId, brokerTimestamp, encryptedB64),
         brokerSign.privateKey,
       ),
     );
@@ -517,7 +519,7 @@ describe("broker pull bridge semi-integration", () => {
         const messages = pullCount === 1
           ? [{
               message_id: "m-valid-1",
-              workspace_id: workspaceId,
+              workspace_id: orgId,
               encrypted: encryptedB64,
               broker_timestamp: brokerTimestamp,
               broker_signature: brokerSignature,
@@ -571,7 +573,7 @@ describe("broker pull bridge semi-integration", () => {
         HOME: tempHome,
         PI_SESSION_ID: sessionId,
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_ORG_ID: orgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBox.privateKey),
         SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBox.publicKey),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),
@@ -615,7 +617,8 @@ describe("broker pull bridge semi-integration", () => {
 
     await Promise.race([completeWait, bridgeExited]);
 
-    expect(ackPayload.workspace_id).toBe(workspaceId);
+    expect(ackPayload.org_id).toBe(orgId);
+    expect(ackPayload.workspace_id).toBe(orgId);
     expect(ackPayload.message_ids).toContain("m-valid-1");
 
     expect(receivedCommands.length).toBe(1);
@@ -638,7 +641,7 @@ describe("broker pull bridge semi-integration", () => {
   it("uses protocol-versioned inbox.pull signatures with wait_seconds by default", async () => {
     await sodium.ready;
 
-    const workspaceId = "T123BROKER";
+    const orgId = "T123BROKER";
     const signingSeed = Buffer.alloc(32, 21);
     const signKeypair = sodium.crypto_sign_seed_keypair(new Uint8Array(signingSeed));
     let pullPayload = null;
@@ -707,7 +710,7 @@ describe("broker pull bridge semi-integration", () => {
         ...cleanEnv(),
         HOME: tempHome,
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_ORG_ID: orgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
@@ -724,7 +727,8 @@ describe("broker pull bridge semi-integration", () => {
 
     await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for inbox pull request");
 
-    expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.org_id).toBe(orgId);
+    expect(pullPayload.workspace_id).toBe(orgId);
     expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(10);
     expect(pullPayload.wait_seconds).toBe(20);
@@ -746,7 +750,7 @@ describe("broker pull bridge semi-integration", () => {
     expect(pullPayload.meta.session_total_tokens).toBe(54321);
     expect(pullPayload.meta.session_total_cost_usd).toBe(1.25);
 
-    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
+    const canonical = canonicalizeProtocolRequest(orgId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 10,
       wait_seconds: 20,
     });
@@ -760,7 +764,7 @@ describe("broker pull bridge semi-integration", () => {
   it("uses protocol-versioned inbox.pull signature with wait_seconds=0", async () => {
     await sodium.ready;
 
-    const workspaceId = "T123BROKER";
+    const orgId = "T123BROKER";
     const signingSeed = Buffer.alloc(32, 22);
     const signKeypair = sodium.crypto_sign_seed_keypair(new Uint8Array(signingSeed));
     let pullPayload = null;
@@ -811,7 +815,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_ORG_ID: orgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
@@ -829,12 +833,13 @@ describe("broker pull bridge semi-integration", () => {
 
     await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for protocol inbox pull request");
 
-    expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.org_id).toBe(orgId);
+    expect(pullPayload.workspace_id).toBe(orgId);
     expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(10);
     expect(pullPayload.wait_seconds).toBe(0);
 
-    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
+    const canonical = canonicalizeProtocolRequest(orgId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 10,
       wait_seconds: 0,
     });
@@ -848,7 +853,7 @@ describe("broker pull bridge semi-integration", () => {
   it("clamps max_messages before signing pull requests", async () => {
     await sodium.ready;
 
-    const workspaceId = "T123BROKER";
+    const orgId = "T123BROKER";
     const signingSeed = Buffer.alloc(32, 23);
     const signKeypair = sodium.crypto_sign_seed_keypair(new Uint8Array(signingSeed));
     let pullPayload = null;
@@ -899,7 +904,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_ORG_ID: orgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: signingSeed.toString("base64"),
@@ -917,12 +922,13 @@ describe("broker pull bridge semi-integration", () => {
 
     await waitFor(() => pullPayload !== null, 10_000, 50, "timeout waiting for clamped inbox pull request");
 
-    expect(pullPayload.workspace_id).toBe(workspaceId);
+    expect(pullPayload.org_id).toBe(orgId);
+    expect(pullPayload.workspace_id).toBe(orgId);
     expect(pullPayload.protocol_version).toBe("2026-02-1");
     expect(pullPayload.max_messages).toBe(100);
     expect(pullPayload.wait_seconds).toBe(20);
 
-    const canonical = canonicalizeProtocolRequest(workspaceId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
+    const canonical = canonicalizeProtocolRequest(orgId, "2026-02-1", "inbox.pull", pullPayload.timestamp, {
       max_messages: 100,
       wait_seconds: 20,
     });
@@ -936,7 +942,7 @@ describe("broker pull bridge semi-integration", () => {
   it("sends broker bearer token when configured", async () => {
     await sodium.ready;
 
-    const workspaceId = "T123BROKER";
+    const orgId = "T123BROKER";
     const bridgeApiPort = await reserveFreePort();
     let outboundAuthorization = null;
 
@@ -983,7 +989,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: brokerUrl,
-        SLACK_BROKER_WORKSPACE_ID: workspaceId,
+        SLACK_BROKER_ORG_ID: orgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 24).toString("base64"),
@@ -1040,7 +1046,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...envWithoutBrokerToken,
         SLACK_BROKER_URL: "http://127.0.0.1:65535",
-        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_ORG_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 26).toString("base64"),
@@ -1085,7 +1091,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...process.env,
         SLACK_BROKER_URL: "http://127.0.0.1:65535",
-        SLACK_BROKER_WORKSPACE_ID: "T123BROKER",
+        SLACK_BROKER_ORG_ID: "T123BROKER",
         SLACK_BROKER_SERVER_PRIVATE_KEY: b64(32, 11),
         SLACK_BROKER_SERVER_PUBLIC_KEY: b64(32, 12),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: Buffer.alloc(32, 25).toString("base64"),
@@ -1157,7 +1163,7 @@ describe("broker pull bridge semi-integration", () => {
     const brokerSign = sodium.crypto_sign_keypair();
     const serverSignSeed = sodium.randombytes_buf(sodium.crypto_sign_SEEDBYTES);
 
-    const testWorkspaceId = "T123BROKER";
+    const testOrgId = "T123BROKER";
 
     // Generic envelope wrapping a Slack event_callback
     const genericEnvelope = {
@@ -1184,7 +1190,7 @@ describe("broker pull bridge semi-integration", () => {
     const encryptedB64 = toBase64(encrypted);
     const brokerSignature = toBase64(
       sodium.crypto_sign_detached(
-        canonicalizeEnvelope(testWorkspaceId, brokerTimestamp, encryptedB64),
+        canonicalizeEnvelope(testOrgId, brokerTimestamp, encryptedB64),
         brokerSign.privateKey,
       ),
     );
@@ -1198,7 +1204,7 @@ describe("broker pull bridge semi-integration", () => {
         const messages = pullCount === 1
           ? [{
               message_id: "m-generic-slack-1",
-              workspace_id: testWorkspaceId,
+              workspace_id: testOrgId,
               encrypted: encryptedB64,
               broker_timestamp: brokerTimestamp,
               broker_signature: brokerSignature,
@@ -1247,7 +1253,7 @@ describe("broker pull bridge semi-integration", () => {
         HOME: tempHome,
         PI_SESSION_ID: sessionId,
         SLACK_BROKER_URL: `http://127.0.0.1:${address.port}`,
-        SLACK_BROKER_WORKSPACE_ID: testWorkspaceId,
+        SLACK_BROKER_ORG_ID: testOrgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBox.privateKey),
         SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBox.publicKey),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),
@@ -1314,7 +1320,7 @@ describe("broker pull bridge semi-integration", () => {
     const brokerSign = sodium.crypto_sign_keypair();
     const serverSignSeed = sodium.randombytes_buf(sodium.crypto_sign_SEEDBYTES);
 
-    const testWorkspaceId = "T123BROKER";
+    const testOrgId = "T123BROKER";
 
     const dashboardEnvelope = {
       source: "dashboard",
@@ -1334,7 +1340,7 @@ describe("broker pull bridge semi-integration", () => {
     const encryptedB64 = toBase64(encrypted);
     const brokerSignature = toBase64(
       sodium.crypto_sign_detached(
-        canonicalizeEnvelope(testWorkspaceId, brokerTimestamp, encryptedB64),
+        canonicalizeEnvelope(testOrgId, brokerTimestamp, encryptedB64),
         brokerSign.privateKey,
       ),
     );
@@ -1348,7 +1354,7 @@ describe("broker pull bridge semi-integration", () => {
         const messages = pullCount === 1
           ? [{
               message_id: "m-dashboard-1",
-              workspace_id: testWorkspaceId,
+              workspace_id: testOrgId,
               encrypted: encryptedB64,
               broker_timestamp: brokerTimestamp,
               broker_signature: brokerSignature,
@@ -1395,7 +1401,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: `http://127.0.0.1:${address.port}`,
-        SLACK_BROKER_WORKSPACE_ID: testWorkspaceId,
+        SLACK_BROKER_ORG_ID: testOrgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBox.privateKey),
         SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBox.publicKey),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),
@@ -1454,7 +1460,7 @@ describe("broker pull bridge semi-integration", () => {
     const brokerSign = sodium.crypto_sign_keypair();
     const serverSignSeed = sodium.randombytes_buf(sodium.crypto_sign_SEEDBYTES);
 
-    const testWorkspaceId = "T123BROKER";
+    const testOrgId = "T123BROKER";
 
     const unknownEnvelope = {
       source: "future_service",
@@ -1471,7 +1477,7 @@ describe("broker pull bridge semi-integration", () => {
     const encryptedB64 = toBase64(encrypted);
     const brokerSignature = toBase64(
       sodium.crypto_sign_detached(
-        canonicalizeEnvelope(testWorkspaceId, brokerTimestamp, encryptedB64),
+        canonicalizeEnvelope(testOrgId, brokerTimestamp, encryptedB64),
         brokerSign.privateKey,
       ),
     );
@@ -1485,7 +1491,7 @@ describe("broker pull bridge semi-integration", () => {
         const messages = pullCount === 1
           ? [{
               message_id: "m-unknown-src-1",
-              workspace_id: testWorkspaceId,
+              workspace_id: testOrgId,
               encrypted: encryptedB64,
               broker_timestamp: brokerTimestamp,
               broker_signature: brokerSignature,
@@ -1532,7 +1538,7 @@ describe("broker pull bridge semi-integration", () => {
       env: {
         ...cleanEnv(),
         SLACK_BROKER_URL: `http://127.0.0.1:${address.port}`,
-        SLACK_BROKER_WORKSPACE_ID: testWorkspaceId,
+        SLACK_BROKER_ORG_ID: testOrgId,
         SLACK_BROKER_SERVER_PRIVATE_KEY: toBase64(serverBox.privateKey),
         SLACK_BROKER_SERVER_PUBLIC_KEY: toBase64(serverBox.publicKey),
         SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY: toBase64(serverSignSeed),

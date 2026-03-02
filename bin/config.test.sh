@@ -126,11 +126,14 @@ expect_file_contains "rerun keeps existing Anthropic key" "$ENV5" "ANTHROPIC_API
 # Test 6: Advanced Slack mode clears stale broker registration keys
 # Input: 1=API key tier, 2=OpenAI, key, 2=advanced Slack, tokens, ...
 HOME6="$TMPDIR/clear-broker"
-write_existing_env "$HOME6" 'OPENAI_API_KEY=sk-old\nSLACK_BROKER_URL=https://broker.example.com\nSLACK_BROKER_WORKSPACE_ID=T0123\nSLACK_BROKER_PUBLIC_KEY=abc\n'
+write_existing_env "$HOME6" 'OPENAI_API_KEY=sk-old\nSLACK_BROKER_URL=https://broker.example.com\nSLACK_BROKER_ORG_ID=org_old\nSLACK_BROKER_WORKSPACE_ID=T0123\nGATEWAY_BROKER_ORG_ID=org_old_gateway\nGATEWAY_BROKER_WORKSPACE_ID=Told\nSLACK_BROKER_PUBLIC_KEY=abc\n'
 run_config "$HOME6" '1\n2\nsk-openai-new\n2\nxoxb-new\nxapp-new\n\nn\nn\n'
 ENV6="$HOME6/.baudbot/.env"
 expect_file_not_contains "advanced clears broker URL" "$ENV6" "SLACK_BROKER_URL="
+expect_file_not_contains "advanced clears broker org" "$ENV6" "SLACK_BROKER_ORG_ID="
 expect_file_not_contains "advanced clears broker workspace" "$ENV6" "SLACK_BROKER_WORKSPACE_ID="
+expect_file_not_contains "advanced clears gateway broker org" "$ENV6" "GATEWAY_BROKER_ORG_ID="
+expect_file_not_contains "advanced clears gateway broker workspace" "$ENV6" "GATEWAY_BROKER_WORKSPACE_ID="
 expect_file_contains "advanced retains socket bot token" "$ENV6" "SLACK_BOT_TOKEN=xoxb-new"
 
 # Test 7: Subscription login tier with existing auth.json skips OAuth flow

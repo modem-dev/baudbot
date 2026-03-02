@@ -64,3 +64,40 @@ test("applyGatewayEnvAliases mutates env with resolved canonical legacy keys", (
   assert.equal(env.SLACK_BROKER_URL, "https://broker.gateway.example");
   assert.equal(result.warnings.length, 0);
 });
+
+test("maps GATEWAY_BROKER_ORG_ID to SLACK_BROKER_ORG_ID and legacy workspace key", () => {
+  const env = {
+    GATEWAY_BROKER_ORG_ID: "org_abc123",
+  };
+
+  const result = applyGatewayEnvAliases(env);
+
+  assert.equal(env.SLACK_BROKER_ORG_ID, "org_abc123");
+  assert.equal(env.SLACK_BROKER_WORKSPACE_ID, "org_abc123");
+  assert.equal(result.warnings.length, 0);
+});
+
+test("falls back from deprecated workspace id when org id is absent", () => {
+  const env = {
+    SLACK_BROKER_WORKSPACE_ID: "T123LEGACY",
+  };
+
+  const result = resolveGatewayEnvAliases(env);
+
+  assert.equal(result.resolved.SLACK_BROKER_ORG_ID, "T123LEGACY");
+  assert.equal(result.resolved.SLACK_BROKER_WORKSPACE_ID, "T123LEGACY");
+  assert.ok(result.warnings.some((warning) => warning.includes("SLACK_BROKER_WORKSPACE_ID is deprecated")));
+});
+
+test("prefers org id over workspace id when both are set", () => {
+  const env = {
+    GATEWAY_BROKER_ORG_ID: "org_preferred",
+    GATEWAY_BROKER_WORKSPACE_ID: "Tlegacy_should_not_win",
+  };
+
+  const result = resolveGatewayEnvAliases(env);
+
+  assert.equal(result.resolved.SLACK_BROKER_ORG_ID, "org_preferred");
+  assert.equal(result.resolved.SLACK_BROKER_WORKSPACE_ID, "org_preferred");
+  assert.ok(result.warnings.some((warning) => warning.includes("using GATEWAY_BROKER_ORG_ID")));
+});

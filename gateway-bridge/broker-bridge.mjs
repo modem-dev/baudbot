@@ -129,7 +129,7 @@ for (const warning of gatewayAliasWarnings) {
 
 for (const key of [
   "SLACK_BROKER_URL",
-  "SLACK_BROKER_WORKSPACE_ID",
+  "SLACK_BROKER_ORG_ID",
   "SLACK_BROKER_SERVER_PRIVATE_KEY",
   "SLACK_BROKER_SERVER_PUBLIC_KEY",
   "SLACK_BROKER_SERVER_SIGNING_PRIVATE_KEY",
@@ -154,7 +154,7 @@ const GITHUB_IGNORED_USERS = parseIgnoredUsers(process.env.GITHUB_IGNORED_USERS)
 const slackRateLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 });
 const apiRateLimiter = createRateLimiter({ maxRequests: 30, windowMs: 60_000 });
 
-const workspaceId = process.env.SLACK_BROKER_WORKSPACE_ID;
+const brokerOrgId = String(process.env.SLACK_BROKER_ORG_ID || process.env.SLACK_BROKER_WORKSPACE_ID || "").trim();
 const brokerBaseUrl = String(process.env.SLACK_BROKER_URL || "").replace(/\/$/, "");
 const brokerAccessToken = String(process.env.SLACK_BROKER_ACCESS_TOKEN || "").trim();
 const brokerAccessTokenExpiresAt = String(process.env.SLACK_BROKER_ACCESS_TOKEN_EXPIRES_AT || "").trim();
@@ -210,7 +210,8 @@ const brokerHealth = {
   updated_at: new Date().toISOString(),
   outbound_mode: outboundMode,
   broker_url: brokerBaseUrl,
-  workspace_id: workspaceId,
+  org_id: brokerOrgId,
+  workspace_id: brokerOrgId,
   poll: {
     last_ok_at: null,
     last_error_at: null,
@@ -548,7 +549,7 @@ function getThreadId(channel, threadTs) {
 
 function signProtocolRequest(action, timestamp, protocolRequestPayload) {
   const canonical = canonicalizeProtocolRequest(
-    workspaceId,
+    brokerOrgId,
     INBOX_PROTOCOL_VERSION,
     action,
     timestamp,
@@ -626,7 +627,8 @@ async function pullInbox() {
   const signature = signPullRequest(timestamp, MAX_MESSAGES, BROKER_WAIT_SECONDS);
 
   const inboxPullRequestBody = {
-    workspace_id: workspaceId,
+    org_id: brokerOrgId,
+    workspace_id: brokerOrgId,
     protocol_version: INBOX_PROTOCOL_VERSION,
     max_messages: MAX_MESSAGES,
     wait_seconds: BROKER_WAIT_SECONDS,
@@ -646,7 +648,8 @@ async function ackInbox(messageIds) {
   const signature = signProtocolRequest("inbox.ack", timestamp, { message_ids: messageIds });
 
   await brokerFetch("/api/inbox/ack", {
-    workspace_id: workspaceId,
+    org_id: brokerOrgId,
+    workspace_id: brokerOrgId,
     protocol_version: INBOX_PROTOCOL_VERSION,
     message_ids: messageIds,
     timestamp,
@@ -671,14 +674,15 @@ async function sendViaBroker({ action, routing, actionRequestBody }) {
   // Sign over full send payload (routing + nonce) to match broker's
   // canonicalizeSendRequest() from modem-dev/baudbot-services#12.
   const canonical = canonicalizeSendRequest(
-    workspaceId, action, timestamp, encryptedBody, nonceB64, routing,
+    brokerOrgId, action, timestamp, encryptedBody, nonceB64, routing,
   );
   const sig = sodium.crypto_sign_detached(canonical, cryptoState.serverSignSecretKey);
   const signature = toBase64(sig);
 
   try {
     const result = await brokerFetch("/api/send", {
-      workspace_id: workspaceId,
+      org_id: brokerOrgId,
+      workspace_id: brokerOrgId,
       action,
       routing,
       encrypted_body: encryptedBody,
@@ -794,8 +798,13 @@ function pruneDedupe() {
 }
 
 function verifyBrokerEnvelope(message) {
+  const routingId = String(message?.org_id || message?.workspace_id || "");
+  if (!routingId) {
+    throw new Error(`missing broker envelope org_id/workspace_id (message_id: ${message?.message_id || "unknown"})`);
+  }
+
   const canonical = canonicalizeEnvelope(
-    message.workspace_id,
+    routingId,
     message.broker_timestamp,
     message.encrypted,
   );
@@ -812,7 +821,7 @@ function decryptEnvelope(message) {
       cryptoState.serverBoxPublicKey,
       cryptoState.serverBoxSecretKey,
     );
-  } catch (err) {
+  } catch {
     // Wrap libsodium errors (e.g., "incorrect key pair for the given ciphertext")
     // into a format that isPoisonMessageError() can detect
     throw new Error(`failed to decrypt broker envelope (message_id: ${message.message_id || "unknown"})`);
@@ -825,7 +834,11 @@ function decryptEnvelope(message) {
 
 function isPoisonMessageError(err) {
   const message = err instanceof Error ? err.message : String(err);
-  return message.includes("invalid broker envelope signature") || message.includes("failed to decrypt broker envelope");
+  return (
+    message.includes("invalid broker envelope signature")
+    || message.includes("failed to decrypt broker envelope")
+    || message.includes("missing broker envelope org_id/workspace_id")
+  );
 }
 
 function isGenericEnvelope(payload) {
@@ -1330,7 +1343,7 @@ async function startPollLoop() {
   logInfo("⚡ Gateway bridge (broker pull mode) is running!");
   logInfo(`   outbound mode: ${outboundMode} (via broker)`);
   logInfo(`   broker: ${brokerBaseUrl}`);
-  logInfo(`   workspace: ${workspaceId}`);
+  logInfo(`   org: ${brokerOrgId}`);
   logInfo(`   inbox protocol: ${INBOX_PROTOCOL_VERSION}`);
   logInfo(`   broker auth token: ${brokerAccessToken ? "configured" : "not configured"}`);
   logInfo(
