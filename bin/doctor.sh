@@ -188,7 +188,23 @@ if [ -f "$ENV_FILE" ]; then
   if [ "$VALID_LLM_COUNT" -gt 0 ]; then
     pass "at least one valid LLM API key is set"
   else
-    fail "no valid LLM API key set (need ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)"
+    # Check auth.json for OAuth subscription credentials
+    AUTH_JSON="$BAUDBOT_HOME/.pi/agent/auth.json"
+    HAS_OAUTH=false
+    OAUTH_PROVIDERS=""
+    if [ -f "$AUTH_JSON" ] && command -v jq &>/dev/null; then
+      for oauth_provider in "openai-codex" "anthropic" "google" "github-copilot"; do
+        if jq -e --arg p "$oauth_provider" '.[$p]' "$AUTH_JSON" &>/dev/null; then
+          HAS_OAUTH=true
+          OAUTH_PROVIDERS="${OAUTH_PROVIDERS:+$OAUTH_PROVIDERS, }$oauth_provider"
+        fi
+      done
+    fi
+    if [ "$HAS_OAUTH" = true ]; then
+      pass "OAuth subscription credentials found in auth.json ($OAUTH_PROVIDERS)"
+    else
+      fail "no valid LLM API key set (need ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY; or use: sudo baudbot login)"
+    fi
   fi
 
   read_first_env_value() {

@@ -361,62 +361,148 @@ fi
 echo -e "${BOLD}Required${RESET} ${DIM}(agent won't start without these)${RESET}"
 echo ""
 
-# LLM provider picker
-echo -e "${BOLD}LLM provider${RESET}"
-LLM_CHOICE="$(ui_choose "Choose your primary LLM provider:" \
-  "Anthropic" \
-  "OpenAI" \
-  "Gemini" \
-  "OpenCode Zen")"
+# LLM authentication tier
+echo -e "${BOLD}LLM authentication${RESET}"
+LLM_AUTH_TIER="$(ui_choose "How would you like to authenticate with your LLM?" \
+  "API key" \
+  "Subscription login (OAuth)")"
 
-case "$LLM_CHOICE" in
-  "Anthropic")
-    prompt_secret "ANTHROPIC_API_KEY" \
-      "Anthropic API key" \
-      "https://console.anthropic.com/settings/keys" \
-      "required" \
-      "sk-ant-"
-    ;;
-  "OpenAI")
-    prompt_secret "OPENAI_API_KEY" \
-      "OpenAI API key" \
-      "https://platform.openai.com/api-keys" \
-      "required" \
-      "sk-"
-    ;;
-  "Gemini")
-    prompt_secret "GEMINI_API_KEY" \
-      "Google Gemini API key" \
-      "https://aistudio.google.com/apikey" \
-      "required"
-    ;;
-  "OpenCode Zen")
-    prompt_secret "OPENCODE_ZEN_API_KEY" \
-      "OpenCode Zen API key (multi-provider router)" \
-      "https://opencode.ai" \
-      "required"
-    ;;
-esac
+USED_SUBSCRIPTION_LOGIN=false
 
-SELECTED_LLM_KEY=""
-case "$LLM_CHOICE" in
-  "Anthropic") SELECTED_LLM_KEY="ANTHROPIC_API_KEY" ;;
-  "OpenAI") SELECTED_LLM_KEY="OPENAI_API_KEY" ;;
-  "Gemini") SELECTED_LLM_KEY="GEMINI_API_KEY" ;;
-  "OpenCode Zen") SELECTED_LLM_KEY="OPENCODE_ZEN_API_KEY" ;;
-esac
+if [ "$LLM_AUTH_TIER" = "API key" ]; then
+  # ── API key path ──
+  echo ""
+  LLM_CHOICE="$(ui_choose "Choose your primary LLM provider:" \
+    "Anthropic" \
+    "OpenAI" \
+    "Gemini" \
+    "OpenCode Zen")"
 
-if [ -z "${ENV_VARS[$SELECTED_LLM_KEY]:-}" ]; then
-  echo "❌ $SELECTED_LLM_KEY is required for selected provider '$LLM_CHOICE'"
-  exit 1
-fi
+  case "$LLM_CHOICE" in
+    "Anthropic")
+      prompt_secret "ANTHROPIC_API_KEY" \
+        "Anthropic API key" \
+        "https://console.anthropic.com/settings/keys" \
+        "required" \
+        "sk-ant-"
+      ;;
+    "OpenAI")
+      prompt_secret "OPENAI_API_KEY" \
+        "OpenAI API key" \
+        "https://platform.openai.com/api-keys" \
+        "required" \
+        "sk-"
+      ;;
+    "Gemini")
+      prompt_secret "GEMINI_API_KEY" \
+        "Google Gemini API key" \
+        "https://aistudio.google.com/apikey" \
+        "required"
+      ;;
+    "OpenCode Zen")
+      prompt_secret "OPENCODE_ZEN_API_KEY" \
+        "OpenCode Zen API key (multi-provider router)" \
+        "https://opencode.ai" \
+        "required"
+      ;;
+  esac
 
-# Keep only selected provider key for deterministic config.
-for key in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
-  if [ "$key" != "$SELECTED_LLM_KEY" ]; then
-    unset "ENV_VARS[$key]"
+  SELECTED_LLM_KEY=""
+  case "$LLM_CHOICE" in
+    "Anthropic") SELECTED_LLM_KEY="ANTHROPIC_API_KEY" ;;
+    "OpenAI") SELECTED_LLM_KEY="OPENAI_API_KEY" ;;
+    "Gemini") SELECTED_LLM_KEY="GEMINI_API_KEY" ;;
+    "OpenCode Zen") SELECTED_LLM_KEY="OPENCODE_ZEN_API_KEY" ;;
+  esac
+
+  if [ -z "${ENV_VARS[$SELECTED_LLM_KEY]:-}" ]; then
+    echo "❌ $SELECTED_LLM_KEY is required for selected provider '$LLM_CHOICE'"
+    exit 1
   fi
-done
+
+  # Keep only selected provider key for deterministic config.
+  for key in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY; do
+    if [ "$key" != "$SELECTED_LLM_KEY" ]; then
+      unset "ENV_VARS[$key]"
+    fi
+  done
+
+else
+  # ── Subscription login (OAuth) path ──
+  clear_keys ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENCODE_ZEN_API_KEY
+  LLM_CHOICE="Subscription"
+  SELECTED_LLM_KEY=""
+
+  # Resolve the agent home for auth.json
+  BAUDBOT_HOME="${BAUDBOT_HOME:-/home/baudbot_agent}"
+  AUTH_JSON="$BAUDBOT_HOME/.pi/agent/auth.json"
+
+  # Find Node.js for oauth-login.mjs
+  OAUTH_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/oauth-login.mjs"
+  OAUTH_NODE_BIN=""
+  if [ -f "$SCRIPT_DIR/../bin/lib/runtime-node.sh" ]; then
+    # shellcheck source=bin/lib/runtime-node.sh
+    source "$SCRIPT_DIR/../bin/lib/runtime-node.sh" 2>/dev/null || true
+    OAUTH_NODE_BIN="$(bb_resolve_runtime_node_bin "$BAUDBOT_HOME" 2>/dev/null || true)"
+  fi
+  if [ -z "$OAUTH_NODE_BIN" ] || [ ! -x "$OAUTH_NODE_BIN" ]; then
+    OAUTH_NODE_BIN="$(command -v node 2>/dev/null || true)"
+  fi
+
+  if [ ! -f "$OAUTH_SCRIPT" ]; then
+    echo "❌ oauth-login.mjs not found at $OAUTH_SCRIPT"
+    exit 1
+  fi
+  if [ -z "$OAUTH_NODE_BIN" ]; then
+    echo "❌ Node.js not found — required for OAuth login"
+    exit 1
+  fi
+
+  # Check for existing OAuth credentials
+  HAS_EXISTING_OAUTH=false
+  EXISTING_OAUTH_PROVIDER=""
+  if [ -f "$AUTH_JSON" ] && command -v jq &>/dev/null; then
+    for op in "openai-codex" "anthropic"; do
+      if jq -e --arg p "$op" '.[$p]' "$AUTH_JSON" &>/dev/null; then
+        HAS_EXISTING_OAUTH=true
+        EXISTING_OAUTH_PROVIDER="$op"
+        break
+      fi
+    done
+  fi
+
+  if [ "$HAS_EXISTING_OAUTH" = true ]; then
+    info "Existing OAuth credentials found ($EXISTING_OAUTH_PROVIDER)."
+    if ! ui_confirm "Re-authenticate with a different provider?" false; then
+      info "Keeping existing OAuth credentials."
+      USED_SUBSCRIPTION_LOGIN=true
+    fi
+  fi
+
+  if [ "$USED_SUBSCRIPTION_LOGIN" = false ]; then
+    echo ""
+    dim "  This will open an OAuth flow. You'll get a URL to open in your browser."
+    echo ""
+
+    # Run oauth-login.mjs interactively
+    OAUTH_PROVIDER_ID=""
+    if OAUTH_PROVIDER_ID=$("$OAUTH_NODE_BIN" "$OAUTH_SCRIPT" --auth-path "$AUTH_JSON"); then
+      OAUTH_PROVIDER_ID="$(echo "$OAUTH_PROVIDER_ID" | tr -d '[:space:]')"
+      info "✓ OAuth login complete ($OAUTH_PROVIDER_ID)"
+
+      # Fix ownership if running as root
+      if [ "$(id -u)" -eq 0 ] && id baudbot_agent &>/dev/null; then
+        chown baudbot_agent:baudbot_agent "$AUTH_JSON"
+        # Also fix parent dirs
+        chown baudbot_agent:baudbot_agent "$(dirname "$AUTH_JSON")" 2>/dev/null || true
+      fi
+    else
+      echo "❌ OAuth login failed"
+      exit 1
+    fi
+    USED_SUBSCRIPTION_LOGIN=true
+  fi
+fi
 
 echo ""
 
@@ -655,7 +741,12 @@ VAR_COUNT=$(grep -c '=' "$CONFIG_FILE")
 info "Wrote $VAR_COUNT variables to $CONFIG_FILE"
 echo ""
 echo -e "${BOLD}Summary${RESET}"
-echo -e "  LLM provider: ${BOLD}${LLM_CHOICE}${RESET}"
+echo -e "  LLM auth:     ${BOLD}${LLM_AUTH_TIER}${RESET}"
+if [ "$LLM_AUTH_TIER" = "API key" ]; then
+  echo -e "  LLM provider: ${BOLD}${LLM_CHOICE}${RESET}"
+else
+  echo -e "  LLM provider: ${BOLD}Subscription (OAuth via auth.json)${RESET}"
+fi
 echo -e "  Slack mode:   ${BOLD}${SLACK_CHOICE}${RESET}"
 if [ "$SLACK_CHOICE" = "Use baudbot.ai Slack integration (easy)" ]; then
   echo -e "  ${DIM}Next: run 'sudo baudbot broker register' after install${RESET}"

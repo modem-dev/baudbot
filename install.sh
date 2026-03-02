@@ -268,8 +268,18 @@ if [ -f "$ENV_FILE" ]; then
     if grep -q "^${k}=.\+" "$ENV_FILE" 2>/dev/null; then HAS_LLM=true; break; fi
   done
 fi
+# Also check auth.json for OAuth subscription credentials
+AUTH_JSON="$BAUDBOT_HOME/.pi/agent/auth.json"
+if [ "$HAS_LLM" = false ] && [ -f "$AUTH_JSON" ] && command -v jq &>/dev/null; then
+  for oauth_provider in "openai-codex" "anthropic"; do
+    if jq -e --arg p "$oauth_provider" '.[$p]' "$AUTH_JSON" &>/dev/null; then
+      HAS_LLM=true
+      break
+    fi
+  done
+fi
 if [ "$HAS_LLM" = false ]; then
-  MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY)\n"
+  MISSING+="  - LLM key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY) or subscription login (sudo baudbot login)\n"
 fi
 HAS_SOCKET=false
 HAS_BROKER=false

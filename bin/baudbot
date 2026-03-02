@@ -145,6 +145,7 @@ usage() {
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
   echo "  setup          One-time system setup (user, deps, firewall, systemd; --experimental enables risky integrations)"
   echo "  config         Interactive secrets and config setup"
+  echo "  login          Authenticate with an LLM subscription (OAuth)"
   echo "  env            Manage env vars and backend source (set/get/sync/backend)"
   echo "  deploy         Deploy source + config to agent runtime"
   echo "  broker         Slack broker commands (register workspace linkage)"
@@ -441,6 +442,33 @@ case "$COMMAND_NAME" in
       exec sudo -u baudbot_agent "$BAUDBOT_ROOT/start.sh" "$@"
     fi
     dispatch_registered_command "start" "$@"
+    ;;
+
+  login)
+    require_root "login"
+    BAUDBOT_AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+    BAUDBOT_HOME="$(resolve_user_home "$BAUDBOT_AGENT_USER" 2>/dev/null || echo "/home/$BAUDBOT_AGENT_USER")"
+    AUTH_JSON="$BAUDBOT_HOME/.pi/agent/auth.json"
+
+    NODE_BIN="$(resolve_node_bin || true)"
+    if [ -z "$NODE_BIN" ]; then
+      echo "❌ Could not find node runtime for OAuth login."
+      exit 1
+    fi
+
+    OAUTH_SCRIPT="$BAUDBOT_ROOT/bin/oauth-login.mjs"
+    if [ ! -f "$OAUTH_SCRIPT" ]; then
+      echo "❌ oauth-login.mjs not found at $OAUTH_SCRIPT"
+      exit 1
+    fi
+
+    "$NODE_BIN" "$OAUTH_SCRIPT" --auth-path "$AUTH_JSON" "$@"
+
+    # Fix ownership
+    if [ -f "$AUTH_JSON" ] && id "$BAUDBOT_AGENT_USER" &>/dev/null; then
+      chown "$BAUDBOT_AGENT_USER:$BAUDBOT_AGENT_USER" "$AUTH_JSON"
+      chown "$BAUDBOT_AGENT_USER:$BAUDBOT_AGENT_USER" "$(dirname "$AUTH_JSON")" 2>/dev/null || true
+    fi
     ;;
 
   setup)

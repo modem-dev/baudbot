@@ -121,8 +121,23 @@ elif [ -n "${GEMINI_API_KEY:-}" ]; then
   MODEL="google/gemini-3-pro-preview"
 elif [ -n "${OPENCODE_ZEN_API_KEY:-}" ]; then
   MODEL="opencode-zen/claude-opus-4-6"
+elif [ -f "$HOME/.pi/agent/auth.json" ] && command -v jq &>/dev/null; then
+  # OAuth subscription fallback: check auth.json for credentials saved via `baudbot login` or `pi /login`
+  if jq -e '."openai-codex"' "$HOME/.pi/agent/auth.json" &>/dev/null; then
+    MODEL="openai-codex/gpt-5.2-codex"
+  elif jq -e '.anthropic' "$HOME/.pi/agent/auth.json" &>/dev/null; then
+    MODEL="anthropic/claude-opus-4-6"
+  elif jq -e '.google' "$HOME/.pi/agent/auth.json" &>/dev/null; then
+    MODEL="google/gemini-3-pro-preview"
+  elif jq -e '."github-copilot"' "$HOME/.pi/agent/auth.json" &>/dev/null; then
+    MODEL="github-copilot/claude-sonnet-4"
+  else
+    echo "❌ No LLM credentials found in env vars or auth.json"
+    exit 1
+  fi
 else
   echo "❌ No LLM API key found — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY"
+  echo "   Or use subscription login: sudo baudbot login"
   exit 1
 fi
 
