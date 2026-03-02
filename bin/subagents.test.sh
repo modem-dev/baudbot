@@ -286,12 +286,45 @@ test_reconcile_status_stop() {
   )
 }
 
+test_start_rejects_injected_cwd() {
+  (
+    set -euo pipefail
+    local tmp agent_home fakebin real_user marker manifest output_file
+    tmp="$(mktemp -d /tmp/baudbot-subagents-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    agent_home="$(setup_fixture "$tmp")"
+    fakebin="$tmp/fakebin"
+    real_user="$(/usr/bin/id -un)"
+    marker="$tmp/injected-marker"
+    manifest="$agent_home/.pi/agent/subagents/sentry-agent/subagent.json"
+    output_file="$tmp/start.out"
+
+    jq --arg cwd "~'; touch $marker; echo '" '.cwd = $cwd' "$manifest" > "$manifest.tmp"
+    mv "$manifest.tmp" "$manifest"
+
+    export PATH="$fakebin:$PATH"
+    export BAUDBOT_TEST_ID_U="0"
+    export BAUDBOT_AGENT_USER="$real_user"
+    export BAUDBOT_AGENT_HOME="$agent_home"
+    export BAUDBOT_TEST_TMUX_FILE="$tmp/tmux-sessions"
+
+    if bash "$SCRIPT" start sentry-agent >"$output_file" 2>&1; then
+      return 1
+    fi
+
+    grep -q "cwd does not exist" "$output_file"
+    [ ! -f "$marker" ]
+  )
+}
+
 echo "=== subagents cli tests ==="
 echo ""
 
 run_test "requires root guard" test_requires_root
 run_test "list/install/enable/autostart state" test_list_and_state_toggles
 run_test "reconcile/status/stop lifecycle" test_reconcile_status_stop
+run_test "start rejects injected cwd payload" test_start_rejects_injected_cwd
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

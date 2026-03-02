@@ -43,6 +43,13 @@ require_jq() {
   fi
 }
 
+require_realpath() {
+  if ! command -v realpath >/dev/null 2>&1; then
+    echo "❌ realpath is required for subagent management"
+    exit 1
+  fi
+}
+
 ensure_state_file() {
   if [ -f "$STATE_FILE" ]; then
     return
@@ -124,6 +131,33 @@ resolve_home_path() {
   echo "$value"
 }
 
+shell_quote() {
+  local value="${1:-}"
+  printf "'%s'" "${value//\'/\'\"\'\"\'}"
+}
+
+is_safe_token() {
+  [[ "$1" =~ ^[a-zA-Z0-9._-]+$ ]]
+}
+
+resolve_path_in_package() {
+  local package_dir="$1"
+  local relative_path="$2"
+  local package_root resolved
+
+  package_root="$(realpath -m -- "$package_dir")"
+  resolved="$(realpath -m -- "$package_dir/$relative_path")"
+
+  case "$resolved" in
+    "$package_root"|"$package_root"/*)
+      echo "$resolved"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 resolve_model() {
   local profile="$1"
   local explicit_model="${2:-}"
@@ -196,15 +230,41 @@ spawn_one() {
   local package_dir
   package_dir="$(dirname "$manifest")"
 
-  if [[ "$skill_path" != /* ]] && [[ "$skill_path" != ~* ]]; then
-    skill_path="$package_dir/$skill_path"
+  if ! is_safe_token "$session_name"; then
+    echo "❌ invalid session_name for $id"
+    return 1
   fi
-  skill_path="$(resolve_home_path "$skill_path")"
+  if ! is_safe_token "$ready_alias"; then
+    echo "❌ invalid ready_alias for $id"
+    return 1
+  fi
+
+  if [[ "$skill_path" != /* ]] && [[ "$skill_path" != ~* ]]; then
+    if ! skill_path="$(resolve_path_in_package "$package_dir" "$skill_path")"; then
+      echo "❌ invalid skill_path for $id: $skill_path"
+      return 1
+    fi
+  else
+    skill_path="$(realpath -m -- "$(resolve_home_path "$skill_path")")"
+  fi
 
   if [[ "$cwd" != /* ]] && [[ "$cwd" != ~* ]]; then
-    cwd="$package_dir/$cwd"
+    if ! cwd="$(resolve_path_in_package "$package_dir" "$cwd")"; then
+      echo "❌ invalid cwd for $id: $cwd"
+      return 1
+    fi
+  else
+    cwd="$(realpath -m -- "$(resolve_home_path "$cwd")")"
   fi
-  cwd="$(resolve_home_path "$cwd")"
+
+  if [ ! -d "$cwd" ]; then
+    echo "❌ cwd does not exist: $cwd"
+    return 1
+  fi
+  if [ ! -f "$skill_path" ]; then
+    echo "❌ skill_path does not exist for $id: $skill_path"
+    return 1
+  fi
 
   local model
   if ! model="$(resolve_model "$profile" "$explicit_model")"; then
@@ -220,8 +280,11 @@ spawn_one() {
   local log_path
   log_path="$AGENT_HOME/.pi/agent/logs/spawn-$session_name.log"
 
-  sudo -u "$AGENT_USER" bash -lc "mkdir -p '$AGENT_HOME/.pi/agent/logs'"
-  sudo -u "$AGENT_USER" bash -lc "tmux new-session -d -s '$session_name' \"cd '$cwd' && export PATH=\\\"\\\$HOME/.varlock/bin:\\\$HOME/opt/node/bin:\\\$PATH\\\" && export PI_SESSION_NAME='$session_name' && exec varlock run --path \\\"\\\$HOME/.config/\\\" -- pi --session-control --skill '$skill_path' --model '$model' > '$log_path' 2>&1\""
+  sudo -u "$AGENT_USER" mkdir -p "$AGENT_HOME/.pi/agent/logs"
+
+  local tmux_cmd
+  tmux_cmd="cd $(shell_quote "$cwd") && export PATH=\"\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH\" && export PI_SESSION_NAME=$(shell_quote "$session_name") && exec varlock run --path \"\$HOME/.config/\" -- pi --session-control --skill $(shell_quote "$skill_path") --model $(shell_quote "$model") > $(shell_quote "$log_path") 2>&1"
+  sudo -u "$AGENT_USER" tmux new-session -d -s "$session_name" "$tmux_cmd"
 
   local alias_path="$CONTROL_DIR/$ready_alias.alias"
   local wait_ticks=$((ready_timeout * 5))
@@ -370,6 +433,7 @@ reconcile_subagents() {
 main() {
   require_root
   require_jq
+  require_realpath
 
   local command="${1:-}"
   shift || true
