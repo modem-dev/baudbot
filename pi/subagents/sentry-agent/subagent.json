@@ -1,0 +1,24 @@
+{
+  "id": "sentry-agent",
+  "name": "Sentry Agent",
+  "description": "Incident triage and Sentry issue investigation support.",
+  "version": "1.0.0",
+  "session_name": "sentry-agent",
+  "cwd": "~",
+  "skill_path": "SKILL.md",
+  "model_profile": "cheap_tier",
+  "ready_alias": "sentry-agent",
+  "ready_timeout_sec": 10,
+  "installed_by_default": true,
+  "enabled_by_default": true,
+  "autostart": true,
+  "utilities": [
+    {
+      "name": "extract_issue_id",
+      "description": "Extract a Sentry issue ID from URLs or text payloads.",
+      "entrypoint": "utilities/extract-issue-id.mjs",
+      "timeout_sec": 10,
+      "max_output_bytes": 4096
+    }
+  ]
+}

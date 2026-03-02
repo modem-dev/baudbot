@@ -220,6 +220,14 @@ else
   ok "~/.pi/agent/skills/ is a real directory"
 fi
 
+# shellcheck disable=SC2088
+if [ -L "$BAUDBOT_HOME/.pi/agent/subagents" ]; then
+  finding "CRITICAL" "~/.pi/agent/subagents is a symlink (should be a real dir)" \
+    "Run: rm ~/.pi/agent/subagents && mkdir ~/.pi/agent/subagents && deploy.sh"
+else
+  ok "~/.pi/agent/subagents/ is a real directory (if deployed)"
+fi
+
 BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/gateway-bridge"
 BRIDGE_DIR_LEGACY="$BAUDBOT_CURRENT_LINK/slack-bridge"
 # shellcheck disable=SC2088

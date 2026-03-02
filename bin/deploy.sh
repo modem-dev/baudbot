@@ -83,6 +83,7 @@ trap 'rm -rf "$STAGE_DIR"' EXIT
 STAGE_MANIFEST=(
   "dir|pi/extensions|extensions|required|always"
   "dir|pi/skills|skills|required|always"
+  "dir|pi/subagents|subagents|optional|always"
   "file|start.sh|start.sh|required|always"
   "file|bin/harden-permissions.sh|bin/harden-permissions.sh|optional|always"
   "file|bin/redact-logs.sh|bin/redact-logs.sh|optional|always"
@@ -131,6 +132,7 @@ fi
 if [ "$DRY_RUN" -eq 0 ]; then
   as_agent chmod -R u+rwX "$BAUDBOT_HOME/.pi/agent/extensions" 2>/dev/null || true
   as_agent chmod -R u+rwX "$BAUDBOT_HOME/.pi/agent/skills" 2>/dev/null || true
+  as_agent chmod -R u+rwX "$BAUDBOT_HOME/.pi/agent/subagents" 2>/dev/null || true
   as_agent chmod -R u+rwX "$BAUDBOT_HOME/runtime" 2>/dev/null || true
   as_agent chmod u+w "$BAUDBOT_HOME/.pi/agent/settings.json" 2>/dev/null || true
   as_agent chmod u+w "$BAUDBOT_HOME/.pi/agent/baudbot-version.json" 2>/dev/null || true
@@ -260,6 +262,24 @@ if [ "$DRY_RUN" -eq 0 ]; then
   log "✓ skills/"
 else
   log "would copy: skills/"
+fi
+
+# ── Subagents ───────────────────────────────────────────────────────────────
+
+echo "Deploying subagents..."
+
+SUBAGENTS_SRC="$STAGE_DIR/subagents"
+SUBAGENTS_DEST="$BAUDBOT_HOME/.pi/agent/subagents"
+
+if [ -d "$SUBAGENTS_SRC" ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
+    as_agent bash -c "mkdir -p '$SUBAGENTS_DEST' && cp -r '$SUBAGENTS_SRC/.' '$SUBAGENTS_DEST/'"
+    log "✓ subagents/"
+  else
+    log "would copy: subagents/"
+  fi
+else
+  log "- subagents/: not present"
 fi
 
 # ── Runtime assets (manifest-driven) ────────────────────────────────────────
@@ -441,7 +461,7 @@ VEOF
       echo '  \"source_sha\": \"$GIT_SHA\",'
       echo '  \"files\": {'
       first=1
-      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '/opt/baudbot/current/gateway-bridge' '$BAUDBOT_HOME/runtime/bin'; do
+      for dir in '$BAUDBOT_HOME/.pi/agent/extensions' '$BAUDBOT_HOME/.pi/agent/skills' '$BAUDBOT_HOME/.pi/agent/subagents' '/opt/baudbot/current/gateway-bridge' '$BAUDBOT_HOME/runtime/bin'; do
         if [ -d \"\$dir\" ]; then
           while IFS= read -r f; do
             hash=\$(sha256sum \"\$f\" | cut -d' ' -f1)

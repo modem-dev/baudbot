@@ -140,6 +140,7 @@ usage() {
   echo "  logs           Tail agent logs"
   echo "  debug          Launch debug agent with live dashboard for system observability"
   echo "  sessions       List agent tmux and pi sessions (name → id)"
+  echo "  subagents      Manage subagent packages (list/enable/disable/start/stop/reconcile)"
   echo ""
   echo -e "${BOLD}Setup:${RESET}"
   echo "  install        Bootstrap install from GitHub (download script, then escalate)"
@@ -422,6 +423,7 @@ register_command "update" "exec" "$BAUDBOT_ROOT/bin/update-release.sh" "1" "0" "
 register_command "rollback" "exec" "$BAUDBOT_ROOT/bin/rollback-release.sh" "1" "0" ""
 register_command "uninstall" "exec" "$BAUDBOT_ROOT/bin/uninstall.sh" "1" "0" ""
 register_command "doctor" "exec" "$BAUDBOT_ROOT/bin/doctor.sh" "0" "0" ""
+register_command "subagents" "exec" "$BAUDBOT_ROOT/bin/subagents.sh" "0" "0" ""
 
 COMMAND_NAME="${1:-}"
 if [ -n "$COMMAND_NAME" ]; then

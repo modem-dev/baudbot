@@ -51,6 +51,10 @@ Responsibilities:
 - provide actionable recommendations for fixes
 - hand off coding tasks to dev-agent through control-agent
 
+Sentry-agent and future role agents (SRE/QA/etc.) are managed as subagent packages
+under `pi/subagents/<id>/` and deployed to `~/.pi/agent/subagents/`.
+Use the `subagent_manage` tool (or `baudbot subagents ...`) to install/enable/start/stop/reconcile.
+
 ## Session model
 
 - Control and sentry sessions are long-lived.

@@ -307,6 +307,17 @@ else
   fi
 fi
 
+if [ -d "$BAUDBOT_HOME/.pi/agent/subagents" ]; then
+  SUBAGENT_COUNT=$(find "$BAUDBOT_HOME/.pi/agent/subagents" -mindepth 2 -maxdepth 2 -name 'subagent.json' 2>/dev/null | wc -l)
+  pass "subagents deployed ($SUBAGENT_COUNT packages)"
+else
+  if [ "$IS_ROOT" -ne 1 ] && [ -d "$BAUDBOT_HOME" ]; then
+    warn "cannot verify subagents as non-root (run: sudo baudbot doctor)"
+  else
+    warn "subagents not deployed (run: baudbot deploy)"
+  fi
+fi
+
 BRIDGE_DIR="$BAUDBOT_CURRENT_LINK/gateway-bridge"
 BRIDGE_DIR_LEGACY="$BAUDBOT_CURRENT_LINK/slack-bridge"
 if [ -d "$BRIDGE_DIR" ] && [ -f "$BRIDGE_DIR/bridge.mjs" ]; then

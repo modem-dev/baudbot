@@ -5,6 +5,8 @@ export default defineConfig({
     include: [
       "pi/extensions/heartbeat.test.mjs",
       "pi/extensions/agent-spawn.test.mjs",
+      "pi/extensions/subagent-manager.test.mjs",
+      "pi/extensions/subagent-util.test.mjs",
       "pi/extensions/memory.test.mjs",
       "test/legacy-node-tests.test.mjs",
       "test/broker-bridge.integration.test.mjs",

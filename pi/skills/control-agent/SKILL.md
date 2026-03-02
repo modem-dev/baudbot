@@ -305,42 +305,31 @@ This removes stale `.sock` files, cleans dead aliases, and restarts the Gateway 
 - [ ] **Read memory files** — `ls ~/.pi/agent/memory/` then read each `.md` file to restore context from previous sessions
 - [ ] If `BAUDBOT_EXPERIMENTAL=1`: verify `BAUDBOT_SECRET`, create/verify `BAUDBOT_EMAIL` inbox, and start email monitor (inline mode, **300s / 5 min**)
 - [ ] Verify heartbeat is active (`heartbeat status` — should show enabled)
-- [ ] Find or create sentry-agent:
-  1. Use `list_sessions` to look for a session named `sentry-agent`
-  2. If found, use that session
-  3. If not found, launch with `agent_spawn` (see Sentry Agent section)
-  4. If launched, continue after `agent_spawn` reports readiness
+- [ ] Reconcile autostart subagents with `subagent_manage`:
+  1. Call `subagent_manage` with `action: reconcile`
+  2. Call `subagent_manage` with `action: status`, `id: sentry-agent`
+  3. If `sentry-agent` is not running, call `subagent_manage` with `action: start`, `id: sentry-agent`
 - [ ] Send role assignment to the `sentry-agent` session
 - [ ] Clean up any stale dev-agent worktrees/tmux sessions from previous runs
 
 **Note**: Dev agents are NOT started at startup. They are spawned on-demand when tasks arrive.
 
-### Spawning sentry-agent
+### Subagent package manager
 
-The sentry-agent triages Sentry alerts and investigates critical issues via the Sentry API. It runs on a cheap model to save tokens.
+Subagents are managed declaratively via package manifests in `~/.pi/agent/subagents/`.
+Use the `subagent_manage` tool for lifecycle operations instead of manual spawn commands.
 
-**Triage (cheap):**
+Common actions:
 
-| API key | Model |
-|---------|-------|
-| `ANTHROPIC_API_KEY` | `anthropic/claude-haiku-4-5` |
-| `OPENAI_API_KEY` | `openai/gpt-5-mini` |
-| `GEMINI_API_KEY` | `google/gemini-3-flash-preview` |
-| `OPENCODE_ZEN_API_KEY` | `opencode-zen/claude-haiku-4-5` |
+- `list` — show installed packages and effective state
+- `status` — report runtime status for a package (`id` required)
+- `install` / `uninstall` — mark package installed/uninstalled in state
+- `enable` / `disable` — toggle package runtime availability
+- `autostart_on` / `autostart_off` — control startup reconciliation policy
+- `start` / `stop` — start or stop a package session by `id`
+- `reconcile` — ensure all installed+enabled+autostart packages are running
 
-```bash
-# Spawn via agent_spawn tool
-# Call the tool with:
-#   session_name: sentry-agent
-#   cwd: ~
-#   skill_path: ~/.pi/agent/skills/sentry-agent
-#   model: <MODEL_FROM_TABLE_ABOVE>
-#   ready_alias: sentry-agent
-#   ready_timeout_sec: 10
-```
-
-**Model note**: `github-copilot/*` models reject Personal Access Tokens and will fail in non-interactive sessions.
-**Spawn note**: Do not use raw `tmux new-session` shell commands for sentry-agent startup; use `agent_spawn`.
+Use `subagent_manage` for `sentry-agent` startup and recovery. Do not use raw `tmux new-session` shell commands.
 
 The sentry-agent operates in **on-demand mode** — it does NOT poll. Sentry alerts arrive via the Gateway bridge in real-time and are forwarded by you. The sentry-agent uses `sentry_monitor get <issue_id>` to investigate when asked.
 
@@ -371,7 +360,7 @@ Health checks run automatically every ~10 minutes via the `heartbeat.ts` extensi
 If you need to check manually, use `heartbeat trigger` to run all checks immediately.
 
 When the heartbeat reports a failure, take the appropriate action:
-1. **Missing sentry-agent**: Respawn with `agent_spawn` and re-send role assignment.
+1. **Missing sentry-agent**: Call `subagent_manage` with `action: start`, `id: sentry-agent`, then re-send role assignment.
 2. **Orphaned dev-agents**: Kill tmux session and remove worktree.
 3. **Bridge down**: Restart via `startup-pi.sh`, then check `~/.pi/agent/logs/gateway-bridge.log` (fallback: `~/.pi/agent/logs/slack-bridge.log`).
 4. **Stale worktrees**: `git worktree remove --force` + `rmdir` empty parents.

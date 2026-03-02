@@ -17,6 +17,30 @@ sudo baudbot logs
 # Attach / inspect active sessions
 sudo baudbot attach
 sudo baudbot sessions
+sudo baudbot subagents list
+sudo baudbot subagents reconcile
+```
+
+## Subagent management
+
+```bash
+# List package state
+sudo baudbot subagents list
+
+# Status for all or one package
+sudo baudbot subagents status
+sudo baudbot subagents status sentry-agent
+
+# Lifecycle toggles
+sudo baudbot subagents install sentry-agent
+sudo baudbot subagents enable sentry-agent
+sudo baudbot subagents autostart-on sentry-agent
+sudo baudbot subagents start sentry-agent
+
+# Disable and remove
+sudo baudbot subagents stop sentry-agent
+sudo baudbot subagents disable sentry-agent
+sudo baudbot subagents uninstall sentry-agent
 ```
 
 ## Deployment and upgrades

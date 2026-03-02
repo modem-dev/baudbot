@@ -67,4 +67,8 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/runtime-node-paths.test.sh")).not.toThrow();
   });
 
+  it("subagents cli", () => {
+    expect(() => runScript("bin/subagents.test.sh")).not.toThrow();
+  });
+
 });

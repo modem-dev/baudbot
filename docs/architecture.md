@@ -13,7 +13,7 @@ root-managed releases
 
 baudbot_agent user
 ├── ~/runtime/                     # deployed runtime used by live agent
-├── ~/.pi/agent/                   # skills/extensions/memory/manifests
+├── ~/.pi/agent/                   # skills/extensions/memory/manifests/subagents
 └── ~/workspace/                   # project repos + task worktrees
 ```
 
@@ -35,7 +35,7 @@ This allows reproducible releases and fast rollback.
 
 ```text
 control-agent (persistent)
-├── sentry-agent (persistent/on-demand)
+├── subagent packages (persistent/on-demand; e.g. sentry-agent)
 └── dev-agent-* (ephemeral task workers)
 ```
 

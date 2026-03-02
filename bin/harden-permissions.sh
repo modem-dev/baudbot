@@ -41,6 +41,7 @@ echo "🔒 Hardening baudbot_agent permissions..."
 # Pi state directories — restrict to owner only
 fix_dir "$HOME/.pi" "700"
 fix_dir "$HOME/.pi/agent" "700"
+fix_dir "$HOME/.pi/agent/subagents" "700"
 fix_dir "$HOME/.pi/session-control" "700"
 
 # Pi session directories
@@ -59,6 +60,7 @@ fi
 
 # Pi settings
 fix_file "$HOME/.pi/agent/settings.json" "600"
+fix_file "$HOME/.pi/agent/subagents-state.json" "600"
 
 # Secrets
 fix_file "$HOME/.config/.env" "600"

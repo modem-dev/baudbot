@@ -321,10 +321,10 @@ describe("memory: skill file integration", () => {
     );
   });
 
-  it("control-agent SKILL.md uses agent_spawn for sentry-agent startup", () => {
+  it("control-agent SKILL.md uses subagent_manage for sentry-agent startup", () => {
     assert.ok(
-      controlSkill.includes("session_name: sentry-agent"),
-      "control-agent runbook should define sentry-agent startup via agent_spawn arguments"
+      controlSkill.includes("subagent_manage"),
+      "control-agent runbook should define sentry-agent startup via subagent_manage"
     );
   });
 

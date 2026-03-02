@@ -28,6 +28,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { discoverSubagentPackages, readSubagentState, resolveEffectiveState } from "./subagent-registry.ts";
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
@@ -75,6 +76,25 @@ function clampInt(value: string | undefined, min: number, max: number, fallback:
 function getExpectedSessions(): string[] {
   const env = process.env.HEARTBEAT_EXPECTED_SESSIONS?.trim();
   if (env) return env.split(",").map((s) => s.trim()).filter(Boolean);
+  try {
+    const discovery = discoverSubagentPackages();
+    const state = readSubagentState();
+    const fromSubagents = discovery.packages
+      .map((pkg) => ({
+        effective: resolveEffectiveState(pkg, state),
+        alias: pkg.manifest.ready_alias,
+      }))
+      .filter((entry) => entry.effective.installed && entry.effective.enabled && entry.effective.autostart)
+      .map((entry) => entry.alias)
+      .filter(Boolean);
+
+    if (fromSubagents.length > 0) {
+      return fromSubagents;
+    }
+  } catch {
+    // fall back to historical default
+  }
+
   return ["sentry-agent"];
 }
 
