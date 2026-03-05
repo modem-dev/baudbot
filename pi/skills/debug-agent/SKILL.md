@@ -32,6 +32,16 @@ The activity feed tails the control-agent's session JSONL file — it updates au
 - **Run diagnostics**: check bridge health, socket state, process trees
 - **Make code changes**: edit extensions, skills, configs — same tools as any agent
 
+## Known limitations
+
+**Async message visibility**: Messages sent to this session via `send_to_session` are queued by pi but won't be visible until you complete your current response. This is a fundamental limitation of pi's turn-based conversation model.
+
+**Workaround**: If you suspect messages are queued:
+1. Keep responses short to release the turn quickly
+2. Say "Ready for next message" or use `/ready` to signal completion
+3. The queued messages will then appear as new user prompts
+4. Check your session socket in `/session-control/` to see if connections are pending
+
 ## What you should NOT do
 
 - Don't send disruptive messages to the control-agent while it's mid-task (check activity feed first)
@@ -53,3 +63,4 @@ The activity feed tails the control-agent's session JSONL file — it updates au
 ## Commands
 
 - `/dashboard` — force-refresh the health metrics
+- `/ready` — signal completion and allow queued messages to be processed
