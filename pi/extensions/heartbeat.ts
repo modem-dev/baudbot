@@ -25,9 +25,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { discoverSubagentPackages, readSubagentState, resolveEffectiveState } from "./subagent-registry.ts";
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
@@ -608,6 +608,155 @@ function hasDevAgentForTodo(todoId: string): boolean {
   }
 }
 
+// ── Auto-Recovery ───────────────────────────────────────────────────────────
+
+const RECOVERY_LOG_PATH = join(homedir(), ".pi", "agent", "logs", "auto-recovery.jsonl");
+
+type RecoveryAction = {
+  timestamp: string;
+  check: string;
+  action: string;
+  success: boolean;
+  detail?: string;
+};
+
+function logRecovery(entry: RecoveryAction): void {
+  try {
+    mkdirSync(dirname(RECOVERY_LOG_PATH), { recursive: true });
+    appendFileSync(RECOVERY_LOG_PATH, JSON.stringify(entry) + "\n");
+  } catch {
+    // Best-effort
+  }
+}
+
+/**
+ * Attempt automatic recovery for certain failure types.
+ * Returns an array of results describing what was attempted and whether it worked.
+ * Only performs safe, idempotent actions:
+ *   - Restart bridge tmux session
+ *   - Kill orphaned dev-agent tmux sessions and remove stale aliases
+ */
+async function tryAutoRecover(failures: CheckResult[]): Promise<RecoveryAction[]> {
+  const actions: RecoveryAction[] = [];
+  const { execSync } = require("node:child_process");
+
+  for (const failure of failures) {
+    // Auto-recover: bridge down → restart the bridge tmux session
+    if (failure.name === "bridge") {
+      try {
+        // Find control-agent UUID from alias
+        const controlAlias = join(SOCKET_DIR, "control-agent.alias");
+        if (!existsSync(controlAlias)) {
+          actions.push({
+            timestamp: new Date().toISOString(),
+            check: failure.name,
+            action: "bridge_restart",
+            success: false,
+            detail: "Cannot restart bridge: control-agent.alias not found",
+          });
+          continue;
+        }
+
+        // Kill existing bridge tmux session
+        try {
+          execSync('tmux kill-session -t baudbot-gateway-bridge 2>/dev/null', { timeout: 5000 });
+        } catch {
+          // May not exist — that's fine
+        }
+
+        // Kill anything holding port 7890
+        try {
+          execSync('lsof -ti :7890 2>/dev/null | xargs kill -9 2>/dev/null', { timeout: 5000 });
+        } catch {
+          // Nothing holding port — fine
+        }
+
+        // Restart via startup script
+        const startupScript = join(homedir(), ".pi", "agent", "skills", "control-agent", "startup-pi.sh");
+        if (existsSync(startupScript)) {
+          // Get live session UUIDs from session-control dir
+          const sockFiles = readdirSync(SOCKET_DIR).filter((f) => f.endsWith(".sock"));
+          const uuids = sockFiles.map((f) => f.replace(".sock", "")).join(" ");
+          if (uuids) {
+            execSync(`bash "${startupScript}" ${uuids} 2>&1`, {
+              timeout: 30000,
+              encoding: "utf-8",
+            });
+
+            // Verify bridge came back
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            const verifyResult = await checkBridge();
+
+            const entry: RecoveryAction = {
+              timestamp: new Date().toISOString(),
+              check: failure.name,
+              action: "bridge_restart",
+              success: verifyResult.ok,
+              detail: verifyResult.ok
+                ? "Bridge restarted and verified healthy"
+                : `Bridge restart attempted but still failing: ${verifyResult.detail}`,
+            };
+            actions.push(entry);
+            logRecovery(entry);
+          }
+        }
+      } catch (err: any) {
+        const entry: RecoveryAction = {
+          timestamp: new Date().toISOString(),
+          check: failure.name,
+          action: "bridge_restart",
+          success: false,
+          detail: `Recovery failed: ${err.message || err}`,
+        };
+        actions.push(entry);
+        logRecovery(entry);
+      }
+    }
+
+    // Auto-recover: orphaned dev-agent → kill tmux session + remove alias
+    if (failure.name.startsWith("orphan:")) {
+      const sessionName = failure.name.replace("orphan:", "");
+      try {
+        // Kill the tmux session
+        try {
+          execSync(`tmux kill-session -t "${sessionName}" 2>/dev/null`, { timeout: 5000 });
+        } catch {
+          // May already be dead
+        }
+
+        // Remove the stale alias
+        const aliasPath = join(SOCKET_DIR, `${sessionName}.alias`);
+        if (existsSync(aliasPath)) {
+          const { unlinkSync } = require("node:fs");
+          unlinkSync(aliasPath);
+        }
+
+        const entry: RecoveryAction = {
+          timestamp: new Date().toISOString(),
+          check: failure.name,
+          action: "orphan_cleanup",
+          success: true,
+          detail: `Killed tmux session and removed alias for orphaned dev-agent "${sessionName}"`,
+        };
+        actions.push(entry);
+        logRecovery(entry);
+      } catch (err: any) {
+        const entry: RecoveryAction = {
+          timestamp: new Date().toISOString(),
+          check: failure.name,
+          action: "orphan_cleanup",
+          success: false,
+          detail: `Cleanup failed for "${sessionName}": ${err.message || err}`,
+        };
+        actions.push(entry);
+        logRecovery(entry);
+      }
+    }
+  }
+
+  return actions;
+}
+
 // ── Extension ───────────────────────────────────────────────────────────────
 
 export default function heartbeatExtension(pi: ExtensionAPI): void {
@@ -682,19 +831,52 @@ export default function heartbeatExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      // Something is wrong — inject a prompt so the control-agent can fix it
-      const failureList = failures
+      // Attempt auto-recovery for recoverable failures before prompting the agent
+      const recoveryActions = await tryAutoRecover(failures);
+      const successfulRecoveries = recoveryActions.filter((a) => a.success);
+
+      // Re-check: remove failures that were successfully auto-recovered
+      const recoveredChecks = new Set(successfulRecoveries.map((a) => a.check));
+      const remainingFailures = failures.filter((f) => !recoveredChecks.has(f.name));
+
+      // If all failures were auto-recovered, no need to prompt the agent
+      if (remainingFailures.length === 0) {
+        state.lastFailures = [];
+        if (successfulRecoveries.length > 0) {
+          state.lastFailures = successfulRecoveries.map(
+            (a) => `auto-recovered: ${a.check} — ${a.detail}`,
+          );
+        }
+        state.consecutiveErrors = 0;
+        saveState();
+        armTimer();
+        return;
+      }
+
+      // Build prompt with both failures and recovery attempt details
+      const failureList = remainingFailures
         .map((f) => `- **${f.name}**: ${f.detail}`)
         .join("\n");
+
+      const recoveryInfo = recoveryActions.length > 0
+        ? [
+            "",
+            "**Auto-recovery attempted:**",
+            ...recoveryActions.map((a) =>
+              `- ${a.success ? "✅" : "❌"} ${a.action} (${a.check}): ${a.detail}`,
+            ),
+          ].join("\n")
+        : "";
 
       const prompt = [
         `🫀 **Heartbeat** (run #${state.totalRuns}, ${new Date(now).toISOString()})`,
         ``,
-        `**${failures.length} health check failure(s) detected** — take action:`,
+        `**${remainingFailures.length} health check failure(s) remain** — take action:`,
         ``,
         failureList,
+        recoveryInfo,
         ``,
-        `All other checks passed. Fix the issues above and report what you did.`,
+        `Fix the remaining issues above and report what you did.`,
       ].join("\n");
 
       pi.sendMessage(
