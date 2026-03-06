@@ -266,6 +266,19 @@ test("runRegistration integration path succeeds against live local HTTP server",
   }
 });
 
+test("env schema accepts org IDs for deprecated workspace aliases", () => {
+  const schemaPath = path.resolve(".env.schema");
+  const lines = fs.readFileSync(schemaPath, "utf8").split(/\r?\n/);
+
+  const gatewayWorkspaceIndex = lines.findIndex((line) => line.startsWith("GATEWAY_BROKER_WORKSPACE_ID="));
+  assert.notEqual(gatewayWorkspaceIndex, -1, "GATEWAY_BROKER_WORKSPACE_ID missing from .env.schema");
+  assert.equal(lines[gatewayWorkspaceIndex - 1].trim(), "# @sensitive=false @type=string");
+
+  const slackWorkspaceIndex = lines.findIndex((line) => line.startsWith("SLACK_BROKER_WORKSPACE_ID="));
+  assert.notEqual(slackWorkspaceIndex, -1, "SLACK_BROKER_WORKSPACE_ID missing from .env.schema");
+  assert.equal(lines[slackWorkspaceIndex - 1].trim(), "# @sensitive=false @type=string");
+});
+
 test("runRegistration does not write SLACK_BOT_TOKEN even when broker returns encrypted_bot_token", async () => {
   const fetchImpl = async (url) => {
     if (String(url).endsWith("/api/broker-pubkey")) {
