@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parseArgs,
   normalizeBrokerUrl,
@@ -267,7 +267,7 @@ test("runRegistration integration path succeeds against live local HTTP server",
 });
 
 test("env schema accepts org IDs for deprecated workspace aliases", () => {
-  const schemaPath = path.resolve(".env.schema");
+  const schemaPath = fileURLToPath(new URL("../.env.schema", import.meta.url));
   const lines = fs.readFileSync(schemaPath, "utf8").split(/\r?\n/);
 
   const gatewayWorkspaceIndex = lines.findIndex((line) => line.startsWith("GATEWAY_BROKER_WORKSPACE_ID="));
