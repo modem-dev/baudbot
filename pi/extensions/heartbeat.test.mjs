@@ -470,6 +470,16 @@ describe("heartbeat v2: unanswered mention reply detection", () => {
     assert.equal(hasReplyLogEntry(log, "9999.0000"), false);
   });
 
+  it("matches reply-log entries emitted from both /send and /reply routes", () => {
+    const log = [
+      '{"channel":"C111","thread_ts":"3456.7890","route":"/send","replied_at":"2026-02-27T00:10:00Z"}',
+      '{"channel":"C111","thread_ts":"4567.8901","route":"/reply","replied_at":"2026-02-27T00:11:00Z"}',
+    ].join("\n");
+
+    assert.equal(hasReplyLogEntry(log, "3456.7890"), true);
+    assert.equal(hasReplyLogEntry(log, "4567.8901"), true);
+  });
+
   it("ignores malformed reply-log lines", () => {
     const log = ['{"thread_ts":"1234.5678"}', 'not-json', '{"thread_ts":"2345.6789"}'].join("\n");
     assert.equal(hasReplyLogEntry(log, "2345.6789"), true);

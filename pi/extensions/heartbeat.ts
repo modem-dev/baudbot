@@ -415,9 +415,10 @@ function slackTsToMs(ts: string): number | null {
 function hasRepliedToThread(threadTs: string): boolean {
   // Check multiple sources for evidence of a reply to this thread_ts.
 
-  // 1. Check the reply tracking log (most reliable — written by the agent).
+  // 1. Check the reply tracking log (most reliable — written by the bridge
+  //    for both /send and /reply outbound paths).
   //    File: ~/.pi/agent/slack-reply-log.jsonl
-  //    Each line: {"thread_ts":"...","replied_at":"..."}
+  //    Each line: {"thread_ts":"...","replied_at":"...", ...}
   const replyLogPath = join(homedir(), ".pi", "agent", "slack-reply-log.jsonl");
   if (existsSync(replyLogPath)) {
     try {
@@ -440,57 +441,69 @@ function hasRepliedToThread(threadTs: string): boolean {
     }
   }
 
-  // 2. Check recent control-agent session logs for explicit outbound /send calls.
-  //    Session files are in ~/.pi/agent/sessions/--home-baudbot_agent--/
-  //    and named <timestamp>_<uuid>.jsonl.
-  const controlAgentSessionDir = join(SESSION_DIR, "--home-baudbot_agent--");
-  if (existsSync(controlAgentSessionDir)) {
+  // 2. Fallback for older runs: scan recent assistant bash tool calls for
+  //    explicit outbound /send calls carrying this exact thread_ts.
+  //
+  //    We scan multiple session directories (not just control-agent) because
+  //    replies may come from delegated sessions depending on runtime wiring.
+  if (existsSync(SESSION_DIR)) {
     const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const threadTsPattern = new RegExp(`["']thread_ts["']\\s*:\\s*["']${escapeRegExp(threadTs)}["']`);
 
     try {
-      const sessionFiles = readdirSync(controlAgentSessionDir)
-        .filter((f) => f.endsWith(".jsonl"))
-        .sort()
-        .reverse()
-        .slice(0, 3); // Check last 3 sessions
+      const sessionDirs = readdirSync(SESSION_DIR, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => join(SESSION_DIR, entry.name));
 
-      for (const file of sessionFiles) {
+      for (const sessionDir of sessionDirs) {
+        let sessionFiles: string[] = [];
         try {
-          const content = readFileSync(join(controlAgentSessionDir, file), "utf-8");
-          const lines = content.split("\n");
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            let parsed: any;
-            try {
-              parsed = JSON.parse(trimmed);
-            } catch {
-              continue;
-            }
-
-            if (parsed?.type !== "message") continue;
-            if (parsed?.message?.role !== "assistant") continue;
-
-            const items = parsed?.message?.content;
-            if (!Array.isArray(items)) continue;
-
-            for (const item of items) {
-              if (item?.type !== "toolCall") continue;
-              if (item?.name !== "bash") continue;
-
-              const command = typeof item?.arguments?.command === "string" ? item.arguments.command : "";
-              if (!command.includes("curl")) continue;
-              if (!command.includes("/send")) continue;
-              if (!threadTsPattern.test(command)) continue;
-
-              return true;
-            }
-          }
+          sessionFiles = readdirSync(sessionDir)
+            .filter((f) => f.endsWith(".jsonl"))
+            .sort()
+            .reverse()
+            .slice(0, 10);
         } catch {
-          // File read error - skip
+          continue;
+        }
+
+        for (const file of sessionFiles) {
+          try {
+            const content = readFileSync(join(sessionDir, file), "utf-8");
+            const lines = content.split("\n");
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+
+              let parsed: any;
+              try {
+                parsed = JSON.parse(trimmed);
+              } catch {
+                continue;
+              }
+
+              if (parsed?.type !== "message") continue;
+              if (parsed?.message?.role !== "assistant") continue;
+
+              const items = parsed?.message?.content;
+              if (!Array.isArray(items)) continue;
+
+              for (const item of items) {
+                if (item?.type !== "toolCall") continue;
+                if (item?.name !== "bash") continue;
+
+                const command = typeof item?.arguments?.command === "string" ? item.arguments.command : "";
+                if (!command.includes("curl")) continue;
+                if (!command.includes("/send")) continue;
+                if (!threadTsPattern.test(command)) continue;
+
+                return true;
+              }
+            }
+          } catch {
+            // File read error - skip
+          }
         }
       }
     } catch {

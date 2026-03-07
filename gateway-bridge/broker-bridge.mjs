@@ -48,6 +48,7 @@ function clampInt(value, min, max, fallback) {
 }
 
 const API_PORT = clampInt(process.env.BRIDGE_API_PORT || "7890", 0, 65535, 7890);
+const REPLY_LEDGER_PATH = path.join(homedir(), ".pi", "agent", "slack-reply-log.jsonl");
 const POLL_INTERVAL_MS = clampInt(process.env.SLACK_BROKER_POLL_INTERVAL_MS || "3000", 0, 60_000, 3000);
 const MAX_MESSAGES = clampInt(process.env.SLACK_BROKER_MAX_MESSAGES || "10", 1, 100, 10);
 const MAX_WAIT_SECONDS = 25;
@@ -194,6 +195,31 @@ function resolveAckReaction(channel, threadTs) {
   _react(pending.channel, pending.messageTs, "white_check_mark").catch((err) => {
     logWarn(`✅ check reaction failed: ${err.message}`);
   });
+}
+
+/**
+ * Append a durable outbound-reply proof entry used by heartbeat reply detection.
+ * This tracks replies from both /send (with thread_ts) and /reply endpoints.
+ */
+function appendReplyLedgerEntry({ channel, threadTs, route }) {
+  if (!threadTs) return;
+
+  const entry = {
+    channel,
+    thread_ts: threadTs,
+    route,
+    replied_at: new Date().toISOString(),
+  };
+
+  try {
+    fs.mkdirSync(path.dirname(REPLY_LEDGER_PATH), { recursive: true });
+    fs.appendFileSync(REPLY_LEDGER_PATH, `${JSON.stringify(entry)}\n`, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+  } catch (err) {
+    logWarn(`⚠️ failed to append reply ledger entry: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 let socketPath = null;
@@ -1115,9 +1141,11 @@ function startApiServer() {
           actionRequestBody: { text: safeText },
         });
 
-        // If this is a threaded reply, check for a pending ✅ ack reaction.
+        // If this is a threaded reply, check for a pending ✅ ack reaction
+        // and append a durable reply ledger entry for heartbeat detection.
         if (thread_ts) {
           resolveAckReaction(channel, thread_ts);
+          appendReplyLedgerEntry({ channel, threadTs: thread_ts, route: "/send" });
         }
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -1152,8 +1180,14 @@ function startApiServer() {
           actionRequestBody: { text: safeText },
         });
 
-        // Check for a pending ✅ ack reaction on the /reply path too.
+        // Check for a pending ✅ ack reaction on the /reply path too,
+        // and append a durable reply ledger entry for heartbeat detection.
         resolveAckReaction(thread.channel, thread.thread_ts);
+        appendReplyLedgerEntry({
+          channel: thread.channel,
+          threadTs: thread.thread_ts,
+          route: "/reply",
+        });
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, ts: result.ts }));
