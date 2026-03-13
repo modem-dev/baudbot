@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { appendFileSync, existsSync, mkdirSync, readlinkSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import net from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -63,12 +63,18 @@ function recordFailure(cb: CircuitBreaker): void {
 
 function isCircuitOpen(cb: CircuitBreaker): boolean {
   if (cb.state !== "open") return false;
-  // Check if cooldown has elapsed → transition to half-open
+  // Check if cooldown has elapsed — eligible for half-open probe
   if (cb.lastFailureAt && Date.now() - cb.lastFailureAt >= CIRCUIT_COOLDOWN_MS) {
-    cb.state = "half-open";
     return false;
   }
   return true;
+}
+
+/** Transition to half-open state. Call only after input validation passes. */
+function transitionToHalfOpen(cb: CircuitBreaker): void {
+  if (cb.state === "open" && cb.lastFailureAt && Date.now() - cb.lastFailureAt >= CIRCUIT_COOLDOWN_MS) {
+    cb.state = "half-open";
+  }
 }
 
 function circuitStatus(cb: CircuitBreaker): string {
@@ -401,6 +407,10 @@ export default function agentSpawnExtension(pi: ExtensionAPI): void {
         };
       }
 
+      // All validation passed — now safe to transition circuit to half-open
+      // (allows exactly one probe attempt to test recovery)
+      transitionToHalfOpen(circuit);
+
       logLifecycleEvent({
         timestamp: new Date().toISOString(),
         session_name: sessionName,
@@ -542,10 +552,11 @@ export default function agentSpawnExtension(pi: ExtensionAPI): void {
     async execute() {
       let recentEvents = "";
       try {
-        const { execSync } = require("node:child_process");
-        const tail = execSync(`tail -20 "${LIFECYCLE_LOG_PATH}" 2>/dev/null`, { encoding: "utf-8" });
-        if (tail.trim()) {
-          const lines = tail.trim().split("\n");
+        if (existsSync(LIFECYCLE_LOG_PATH)) {
+          const lines = readFileSync(LIFECYCLE_LOG_PATH, "utf-8")
+            .trimEnd()
+            .split("\n")
+            .slice(-20);
           recentEvents = lines
             .map((line: string) => {
               try {

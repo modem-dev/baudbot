@@ -25,7 +25,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, statSync, unlinkSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { discoverSubagentPackages, readSubagentState, resolveEffectiveState } from "./subagent-registry.ts";
@@ -132,7 +133,6 @@ function checkSessions(): CheckResult[] {
 
     // Check that the symlink target (.sock file) exists
     try {
-      const { readlinkSync } = require("node:fs");
       const target = readlinkSync(aliasPath);
       const sockPath = join(SOCKET_DIR, target);
       if (!existsSync(sockPath)) {
@@ -353,8 +353,7 @@ function checkUnansweredMentions(): CheckResult[] {
     // Support both bridge implementations:
     //   - broker-bridge.mjs: "... (type: app_mention, ts: 1234.5678)"
     //   - bridge.mjs:        "app_mention ... ts: 1234.5678"
-    const { execSync } = require("node:child_process");
-    const logTail = execSync(`tail -500 "${bridgeLogPath}"`, { encoding: "utf-8" });
+    const logTail = execFileSync("tail", ["-500", bridgeLogPath], { encoding: "utf-8" });
 
     const mentionThreadTsSet = new Set<string>(extractMentionThreadTs(logTail));
 
@@ -638,7 +637,6 @@ function logRecovery(entry: RecoveryAction): void {
  */
 async function tryAutoRecover(failures: CheckResult[]): Promise<RecoveryAction[]> {
   const actions: RecoveryAction[] = [];
-  const { execSync } = require("node:child_process");
 
   for (const failure of failures) {
     // Auto-recover: bridge down → restart the bridge tmux session
@@ -659,7 +657,7 @@ async function tryAutoRecover(failures: CheckResult[]): Promise<RecoveryAction[]
 
         // Kill existing bridge tmux session
         try {
-          execSync('tmux kill-session -t baudbot-gateway-bridge 2>/dev/null', { timeout: 5000 });
+          execFileSync("tmux", ["kill-session", "-t", "baudbot-gateway-bridge"], { timeout: 5000 });
         } catch {
           // May not exist — that's fine
         }
@@ -673,33 +671,56 @@ async function tryAutoRecover(failures: CheckResult[]): Promise<RecoveryAction[]
 
         // Restart via startup script
         const startupScript = join(homedir(), ".pi", "agent", "skills", "control-agent", "startup-pi.sh");
-        if (existsSync(startupScript)) {
-          // Get live session UUIDs from session-control dir
-          const sockFiles = readdirSync(SOCKET_DIR).filter((f) => f.endsWith(".sock"));
-          const uuids = sockFiles.map((f) => f.replace(".sock", "")).join(" ");
-          if (uuids) {
-            execSync(`bash "${startupScript}" ${uuids} 2>&1`, {
-              timeout: 30000,
-              encoding: "utf-8",
-            });
-
-            // Verify bridge came back
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-            const verifyResult = await checkBridge();
-
-            const entry: RecoveryAction = {
-              timestamp: new Date().toISOString(),
-              check: failure.name,
-              action: "bridge_restart",
-              success: verifyResult.ok,
-              detail: verifyResult.ok
-                ? "Bridge restarted and verified healthy"
-                : `Bridge restart attempted but still failing: ${verifyResult.detail}`,
-            };
-            actions.push(entry);
-            logRecovery(entry);
-          }
+        if (!existsSync(startupScript)) {
+          const entry: RecoveryAction = {
+            timestamp: new Date().toISOString(),
+            check: failure.name,
+            action: "bridge_restart",
+            success: false,
+            detail: `Bridge session killed but startup script not found at ${startupScript} — cannot restart`,
+          };
+          actions.push(entry);
+          logRecovery(entry);
+          continue;
         }
+
+        // Get live session UUIDs from session-control dir
+        const sockFiles = readdirSync(SOCKET_DIR).filter((f) => f.endsWith(".sock"));
+        const uuids = sockFiles.map((f) => f.replace(".sock", ""));
+        if (uuids.length === 0) {
+          const entry: RecoveryAction = {
+            timestamp: new Date().toISOString(),
+            check: failure.name,
+            action: "bridge_restart",
+            success: false,
+            detail: "Bridge session killed but no live socket UUIDs found — cannot restart",
+          };
+          actions.push(entry);
+          logRecovery(entry);
+          continue;
+        }
+
+        // Pass UUIDs as separate args to avoid shell injection
+        execFileSync("bash", [startupScript, ...uuids], {
+          timeout: 30000,
+          encoding: "utf-8",
+        });
+
+        // Verify bridge came back
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const verifyResult = await checkBridge();
+
+        const entry: RecoveryAction = {
+          timestamp: new Date().toISOString(),
+          check: failure.name,
+          action: "bridge_restart",
+          success: verifyResult.ok,
+          detail: verifyResult.ok
+            ? "Bridge restarted and verified healthy"
+            : `Bridge restart attempted but still failing: ${verifyResult.detail}`,
+        };
+        actions.push(entry);
+        logRecovery(entry);
       } catch (err: any) {
         const entry: RecoveryAction = {
           timestamp: new Date().toISOString(),
@@ -717,17 +738,34 @@ async function tryAutoRecover(failures: CheckResult[]): Promise<RecoveryAction[]
     if (failure.name.startsWith("orphan:")) {
       const sessionName = failure.name.replace("orphan:", "");
       try {
-        // Kill the tmux session
+        // Kill the tmux session (use execFileSync to avoid shell injection)
+        let tmuxKilled = false;
         try {
-          execSync(`tmux kill-session -t "${sessionName}" 2>/dev/null`, { timeout: 5000 });
-        } catch {
-          // May already be dead
+          execFileSync("tmux", ["kill-session", "-t", sessionName], { timeout: 5000 });
+          tmuxKilled = true;
+        } catch (killErr: any) {
+          // "session not found" means it's already dead — that's fine
+          const msg = killErr.message || String(killErr);
+          if (msg.includes("session not found") || msg.includes("can't find session")) {
+            tmuxKilled = true; // Already gone — counts as success
+          } else {
+            // Real error (tmux daemon down, permissions, timeout, etc.)
+            const entry: RecoveryAction = {
+              timestamp: new Date().toISOString(),
+              check: failure.name,
+              action: "orphan_cleanup",
+              success: false,
+              detail: `Failed to kill tmux session "${sessionName}": ${msg}`,
+            };
+            actions.push(entry);
+            logRecovery(entry);
+            continue;
+          }
         }
 
         // Remove the stale alias
         const aliasPath = join(SOCKET_DIR, `${sessionName}.alias`);
         if (existsSync(aliasPath)) {
-          const { unlinkSync } = require("node:fs");
           unlinkSync(aliasPath);
         }
 
