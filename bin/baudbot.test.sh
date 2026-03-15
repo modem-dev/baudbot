@@ -130,6 +130,37 @@ EOF
   )
 }
 
+test_state_requires_root() {
+  (
+    set -euo pipefail
+    local tmp fakebin out
+    tmp="$(mktemp -d /tmp/baudbot-cli-test.XXXXXX)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    mkdir -p "$tmp/fakebin"
+    fakebin="$tmp/fakebin"
+    cat > "$fakebin/id" <<'EOF'
+#!/bin/bash
+if [ "${1:-}" = "-u" ]; then
+  echo 1000
+elif [ "${1:-}" = "-un" ]; then
+  echo tester
+else
+  /usr/bin/id "$@"
+fi
+EOF
+    chmod +x "$fakebin/id"
+
+    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" state backup >/tmp/baudbot-state.out 2>&1; then
+      return 1
+    fi
+
+    out="$(cat /tmp/baudbot-state.out)"
+    rm -f /tmp/baudbot-state.out
+    printf '%s\n' "$out" | grep -q "requires root"
+  )
+}
+
 test_restart_restarts_systemd() {
   (
     set -euo pipefail
@@ -191,6 +222,7 @@ run_test "version reads package.json" test_version_uses_package_json
 run_test "status dispatches via runtime module" test_status_dispatches_via_runtime_module
 run_test "debug requires root" test_debug_requires_root
 run_test "broker register requires root" test_broker_register_requires_root
+run_test "state command requires root" test_state_requires_root
 run_test "restart restarts systemd" test_restart_restarts_systemd
 
 echo ""

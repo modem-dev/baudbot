@@ -81,6 +81,7 @@ run_shell_tests() {
   run "manifest integrity"  bash bin/verify-manifest.test.sh
   run "config flow"         bash bin/config.test.sh
   run "subagents cli"       bash bin/subagents.test.sh
+  run "state backup"        bash bin/state.test.sh
   run "deploy lib helpers"  bash bin/lib/deploy-common.test.sh
   run "doctor lib helpers"  bash bin/lib/doctor-common.test.sh
   run "update release flow" bash bin/update-release.test.sh
