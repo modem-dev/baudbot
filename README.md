@@ -119,6 +119,8 @@ sudo baudbot state restore /tmp/baudbot-state.zip
 sudo baudbot start
 ```
 
+State archives intentionally exclude secrets (`~/.config/.env`, `~/.pi/agent/auth.json`), so reconfigure secrets on the new host.
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## The Slack broker (optional)

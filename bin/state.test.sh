@@ -62,7 +62,7 @@ seed_agent_state() {
   printf '{"anthropic":{"type":"oauth"}}\n' > "$agent_home/.pi/agent/auth.json"
 }
 
-test_round_trip_with_secrets() {
+test_round_trip_excludes_secrets() {
   (
     set -euo pipefail
     local tmp source_home target_home archive
@@ -86,12 +86,12 @@ test_round_trip_with_secrets() {
     [ "$(stat -c '%a' "$target_home/.pi/agent/extensions/custom-ext/run.sh")" = "755" ]
     grep -q "custom skill" "$target_home/.pi/agent/skills/custom-skill/SKILL.md"
     grep -q "enabled" "$target_home/.pi/agent/subagents-state.json"
-    grep -q "ANTHROPIC_API_KEY" "$target_home/.config/.env"
-    grep -q "anthropic" "$target_home/.pi/agent/auth.json"
+    [ ! -f "$target_home/.config/.env" ]
+    [ ! -f "$target_home/.pi/agent/auth.json" ]
   )
 }
 
-test_backup_excludes_secrets_flag() {
+test_restore_does_not_overwrite_existing_secrets() {
   (
     set -euo pipefail
     local tmp source_home target_home archive
@@ -101,15 +101,17 @@ test_backup_excludes_secrets_flag() {
 
     source_home="$tmp/source-home"
     target_home="$tmp/target-home"
-    archive="$tmp/state-no-secrets.zip"
+    archive="$tmp/state.zip"
 
     seed_agent_state "$source_home"
 
-    run_state "$source_home" backup "$archive" --exclude-secrets
+    mkdir -p "$target_home/.config"
+    printf 'ANTHROPIC_API_KEY=keep-existing\n' > "$target_home/.config/.env"
+
+    run_state "$source_home" backup "$archive"
     run_state "$target_home" restore "$archive"
 
-    [ -f "$target_home/.pi/agent/memory/operational.md" ]
-    [ ! -f "$target_home/.config/.env" ]
+    grep -q "ANTHROPIC_API_KEY=keep-existing" "$target_home/.config/.env"
     [ ! -f "$target_home/.pi/agent/auth.json" ]
   )
 }
@@ -117,8 +119,8 @@ test_backup_excludes_secrets_flag() {
 echo "=== state backup/restore tests ==="
 echo ""
 
-run_test "round-trip backup/restore includes secrets" test_round_trip_with_secrets
-run_test "backup --exclude-secrets omits secret files" test_backup_excludes_secrets_flag
+run_test "round-trip backup/restore excludes secrets" test_round_trip_excludes_secrets
+run_test "restore keeps existing target secrets" test_restore_does_not_overwrite_existing_secrets
 
 echo ""
 echo "=== $PASSED/$TOTAL passed, $FAILED failed ==="

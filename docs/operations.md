@@ -81,10 +81,9 @@ sudo baudbot start
 ```
 
 Notes:
-- Archive includes `~/.config/.env` and `~/.pi/agent/auth.json` by default.
-- Treat archive files as sensitive secrets (store/encrypt/transfer accordingly).
-- Use `--exclude-secrets` if you need a shareable archive.
+- Archives intentionally exclude secrets (`~/.config/.env`, `~/.pi/agent/auth.json`).
 - Restore refuses to run while the service is active.
+- Reconfigure secrets on the new host via `sudo baudbot config` / `sudo baudbot env` / `sudo baudbot login`.
 
 ## Updating API keys after install
 
