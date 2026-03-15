@@ -117,16 +117,28 @@ write_metadata_file() {
     host_name="$(hostname 2>/dev/null || echo unknown)"
   fi
 
-  cat > "$metadata_file" <<EOF
-{
-  "format": "$STATE_FORMAT",
-  "created_at": "$now",
-  "host": "$host_name",
-  "agent_user": "$BAUDBOT_AGENT_USER",
-  "agent_home": "$BAUDBOT_AGENT_HOME",
-  "include_secrets": $([ "$include_secrets" = "1" ] && echo true || echo false)
-}
-EOF
+  require_python3
+  python3 - "$metadata_file" "$STATE_FORMAT" "$now" "$host_name" "$BAUDBOT_AGENT_USER" "$BAUDBOT_AGENT_HOME" "$include_secrets" <<'PY'
+import json
+import sys
+
+metadata_path, state_format, created_at, host_name, agent_user, agent_home, include_secrets = sys.argv[1:]
+
+with open(metadata_path, "w", encoding="utf-8") as handle:
+    json.dump(
+        {
+            "format": state_format,
+            "created_at": created_at,
+            "host": host_name,
+            "agent_user": agent_user,
+            "agent_home": agent_home,
+            "include_secrets": include_secrets == "1",
+        },
+        handle,
+        indent=2,
+    )
+    handle.write("\n")
+PY
 }
 
 create_zip_archive() {
@@ -168,6 +180,7 @@ extract_zip_archive_safe() {
   python3 - "$archive_path" "$extract_dir" <<'PY'
 import os
 import pathlib
+import stat
 import sys
 import zipfile
 
@@ -181,6 +194,10 @@ with zipfile.ZipFile(archive_path, "r") as zip_file:
         if name.startswith("/") or "\x00" in name:
             raise SystemExit(f"unsafe archive entry: {name}")
 
+        member_mode = (member.external_attr >> 16) & 0o177777
+        if stat.S_ISLNK(member_mode):
+            raise SystemExit(f"unsafe archive entry (symlink): {name}")
+
         parts = pathlib.PurePosixPath(name).parts
         if any(part == ".." for part in parts):
             raise SystemExit(f"unsafe archive entry: {name}")
@@ -191,11 +208,18 @@ with zipfile.ZipFile(archive_path, "r") as zip_file:
 
         if member.is_dir():
             os.makedirs(target_path, exist_ok=True)
+            dir_mode = member_mode & 0o7777
+            if dir_mode:
+                os.chmod(target_path, dir_mode)
             continue
 
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with zip_file.open(member, "r") as source, open(target_path, "wb") as target:
             target.write(source.read())
+
+        file_mode = member_mode & 0o7777
+        if file_mode:
+            os.chmod(target_path, file_mode)
 PY
 }
 
@@ -372,6 +396,9 @@ if fmt != expected:
 PY
 
   mkdir -p "$BAUDBOT_AGENT_HOME"
+  if [ -n "$(ls -A "$BAUDBOT_AGENT_HOME" 2>/dev/null || true)" ]; then
+    bb_warn "agent home is not empty; existing files not in the archive will be preserved"
+  fi
   cp -a "$payload_root/." "$BAUDBOT_AGENT_HOME/"
 
   restore_ownership_if_root

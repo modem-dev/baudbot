@@ -89,12 +89,11 @@ fi
 EOF
     chmod +x "$fakebin/id"
 
-    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" debug >/tmp/baudbot-debug.out 2>&1; then
+    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" debug >"$tmp/debug.out" 2>&1; then
       return 1
     fi
 
-    out="$(cat /tmp/baudbot-debug.out)"
-    rm -f /tmp/baudbot-debug.out
+    out="$(cat "$tmp/debug.out")"
     printf '%s\n' "$out" | grep -q "requires root"
   )
 }
@@ -120,12 +119,11 @@ fi
 EOF
     chmod +x "$fakebin/id"
 
-    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" broker register >/tmp/baudbot-broker.out 2>&1; then
+    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" broker register >"$tmp/broker.out" 2>&1; then
       return 1
     fi
 
-    out="$(cat /tmp/baudbot-broker.out)"
-    rm -f /tmp/baudbot-broker.out
+    out="$(cat "$tmp/broker.out")"
     printf '%s\n' "$out" | grep -q "requires root"
   )
 }
@@ -151,12 +149,11 @@ fi
 EOF
     chmod +x "$fakebin/id"
 
-    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" state backup >/tmp/baudbot-state.out 2>&1; then
+    if PATH="$fakebin:$PATH" BAUDBOT_ROOT="$REPO_ROOT" bash "$CLI" state backup >"$tmp/state.out" 2>&1; then
       return 1
     fi
 
-    out="$(cat /tmp/baudbot-state.out)"
-    rm -f /tmp/baudbot-state.out
+    out="$(cat "$tmp/state.out")"
     printf '%s\n' "$out" | grep -q "requires root"
   )
 }

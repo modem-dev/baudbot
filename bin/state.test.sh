@@ -54,6 +54,8 @@ seed_agent_state() {
   printf 'todo-item\n' > "$agent_home/.pi/todos/TODO-demo.md"
   printf '{"theme":"dark"}\n' > "$agent_home/.pi/agent/settings.json"
   printf 'export default true;\n' > "$agent_home/.pi/agent/extensions/custom-ext/index.ts"
+  printf '#!/bin/bash\necho custom\n' > "$agent_home/.pi/agent/extensions/custom-ext/run.sh"
+  chmod 755 "$agent_home/.pi/agent/extensions/custom-ext/run.sh"
   printf '# custom skill\n' > "$agent_home/.pi/agent/skills/custom-skill/SKILL.md"
   printf '{"enabled":true}\n' > "$agent_home/.pi/agent/subagents-state.json"
   printf 'ANTHROPIC_API_KEY=sk-ant-test\n' > "$agent_home/.config/.env"
@@ -81,6 +83,7 @@ test_round_trip_with_secrets() {
     grep -q "todo-item" "$target_home/.pi/todos/TODO-demo.md"
     grep -q "theme" "$target_home/.pi/agent/settings.json"
     grep -q "export default" "$target_home/.pi/agent/extensions/custom-ext/index.ts"
+    [ "$(stat -c '%a' "$target_home/.pi/agent/extensions/custom-ext/run.sh")" = "755" ]
     grep -q "custom skill" "$target_home/.pi/agent/skills/custom-skill/SKILL.md"
     grep -q "enabled" "$target_home/.pi/agent/subagents-state.json"
     grep -q "ANTHROPIC_API_KEY" "$target_home/.config/.env"
