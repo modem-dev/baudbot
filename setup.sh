@@ -252,10 +252,17 @@ echo "=== Installing varlock ==="
 # varlock must be available to the agent user (start.sh adds ~/.varlock/bin to PATH).
 # Install as agent user so it lands in the right home directory.
 AGENT_VARLOCK="$BAUDBOT_HOME/.varlock/bin/varlock"
-if [ -x "$AGENT_VARLOCK" ]; then
+AGENT_VARLOCK_CONFIG_BIN="$BAUDBOT_HOME/.config/varlock/bin/varlock"
+if [ -x "$AGENT_VARLOCK" ] || [ -x "$AGENT_VARLOCK_CONFIG_BIN" ]; then
   echo "varlock already installed for baudbot_agent, skipping"
 else
   sudo -u baudbot_agent bash -c 'curl -sSfL https://varlock.dev/install.sh | sh -s'
+fi
+
+# Newer varlock installers place the binary under ~/.config/varlock/bin.
+# Keep a compatibility link at ~/.varlock/bin/varlock for existing runtime scripts.
+if [ -x "$AGENT_VARLOCK_CONFIG_BIN" ]; then
+  sudo -u baudbot_agent bash -c "mkdir -p '$BAUDBOT_HOME/.varlock/bin' && ln -sf '$AGENT_VARLOCK_CONFIG_BIN' '$AGENT_VARLOCK'"
 fi
 
 echo "=== Publishing initial git-free /opt release ==="

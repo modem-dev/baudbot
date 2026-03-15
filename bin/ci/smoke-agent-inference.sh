@@ -166,7 +166,7 @@ finally:
 PY
 }
 
-readonly CI_MODEL="anthropic/claude-haiku"
+readonly CI_MODEL="anthropic/claude-haiku-4-5"
 
 inject_ci_config() {
   if [[ -z "${CI_ANTHROPIC_API_KEY:-}" ]]; then
