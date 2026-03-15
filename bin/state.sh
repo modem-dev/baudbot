@@ -5,7 +5,7 @@
 # - persistent memory (~/.pi/agent/memory)
 # - todos (~/.pi/todos)
 # - local runtime customizations (extensions/skills/subagents/settings)
-# - optional secrets (.config/.env and auth.json)
+# Secrets are intentionally excluded from state archives.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=bin/lib/shell-common.sh
@@ -28,15 +28,10 @@ STATE_PATHS=(
   ".pi/agent/subagents-state.json"
 )
 
-STATE_SECRET_PATHS=(
-  ".config/.env"
-  ".pi/agent/auth.json"
-)
-
 usage() {
   cat <<'EOF'
 Usage:
-  sudo baudbot state backup [ARCHIVE.zip] [--exclude-secrets] [--force]
+  sudo baudbot state backup [ARCHIVE.zip] [--force]
   sudo baudbot state restore <ARCHIVE.zip> [--restart]
 
 What gets backed up:
@@ -47,11 +42,13 @@ What gets backed up:
   - ~/.pi/agent/skills
   - ~/.pi/agent/subagents
   - ~/.pi/agent/subagents-state.json (if present)
-  - ~/.config/.env and ~/.pi/agent/auth.json (unless --exclude-secrets)
+
+Never backed up (private by design):
+  - ~/.config/.env
+  - ~/.pi/agent/auth.json
 
 Examples:
   sudo baudbot state backup /tmp/baudbot-state.zip
-  sudo baudbot state backup --exclude-secrets
   sudo baudbot stop
   sudo baudbot state restore /tmp/baudbot-state.zip
   sudo baudbot start
@@ -108,7 +105,6 @@ copy_path_if_present() {
 
 write_metadata_file() {
   local metadata_file="$1"
-  local include_secrets="$2"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -118,11 +114,11 @@ write_metadata_file() {
   fi
 
   require_python3
-  python3 - "$metadata_file" "$STATE_FORMAT" "$now" "$host_name" "$BAUDBOT_AGENT_USER" "$BAUDBOT_AGENT_HOME" "$include_secrets" <<'PY'
+  python3 - "$metadata_file" "$STATE_FORMAT" "$now" "$host_name" "$BAUDBOT_AGENT_USER" "$BAUDBOT_AGENT_HOME" <<'PY'
 import json
 import sys
 
-metadata_path, state_format, created_at, host_name, agent_user, agent_home, include_secrets = sys.argv[1:]
+metadata_path, state_format, created_at, host_name, agent_user, agent_home = sys.argv[1:]
 
 with open(metadata_path, "w", encoding="utf-8") as handle:
     json.dump(
@@ -132,7 +128,7 @@ with open(metadata_path, "w", encoding="utf-8") as handle:
             "host": host_name,
             "agent_user": agent_user,
             "agent_home": agent_home,
-            "include_secrets": include_secrets == "1",
+            "secrets_included": False,
         },
         handle,
         indent=2,
@@ -248,7 +244,7 @@ restore_ownership_if_root() {
     return 0
   fi
 
-  for rel_path in "${STATE_PATHS[@]}" "${STATE_SECRET_PATHS[@]}"; do
+  for rel_path in "${STATE_PATHS[@]}"; do
     if [ -e "$BAUDBOT_AGENT_HOME/$rel_path" ]; then
       chown -R "$BAUDBOT_AGENT_USER:$BAUDBOT_AGENT_USER" "$BAUDBOT_AGENT_HOME/$rel_path"
     fi
@@ -258,7 +254,6 @@ restore_ownership_if_root() {
 cmd_backup() {
   local archive_raw=""
   local archive_path=""
-  local include_secrets="1"
   local overwrite="0"
   local tmp_dir=""
   local state_root=""
@@ -267,9 +262,6 @@ cmd_backup() {
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --exclude-secrets)
-        include_secrets="0"
-        ;;
       --force)
         overwrite="1"
         ;;
@@ -312,23 +304,13 @@ cmd_backup() {
     copy_path_if_present "$rel_path" "$payload_root"
   done
 
-  if [ "$include_secrets" = "1" ]; then
-    for rel_path in "${STATE_SECRET_PATHS[@]}"; do
-      copy_path_if_present "$rel_path" "$payload_root"
-    done
-  fi
-
-  write_metadata_file "$state_root/metadata.json" "$include_secrets"
+  write_metadata_file "$state_root/metadata.json"
   create_zip_archive "$state_root" "$archive_path"
 
   chmod 600 "$archive_path" 2>/dev/null || true
 
   echo "✓ state backup created: $archive_path"
-  if [ "$include_secrets" = "1" ]; then
-    echo "  includes secrets (.config/.env + auth.json)"
-  else
-    echo "  excludes secrets"
-  fi
+  echo "  secrets are excluded by design"
 }
 
 cmd_restore() {
