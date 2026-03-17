@@ -261,8 +261,13 @@ fi
 
 # Newer varlock installers place the binary under ~/.config/varlock/bin.
 # Keep a compatibility link at ~/.varlock/bin/varlock for existing runtime scripts.
+# If a real legacy binary already exists, preserve it (do not replace with symlink).
 if [ -x "$AGENT_VARLOCK_CONFIG_BIN" ]; then
-  sudo -u baudbot_agent bash -c "mkdir -p '$BAUDBOT_HOME/.varlock/bin' && ln -sf '$AGENT_VARLOCK_CONFIG_BIN' '$AGENT_VARLOCK'"
+  if [ -x "$AGENT_VARLOCK" ] && [ ! -L "$AGENT_VARLOCK" ]; then
+    echo "Keeping existing legacy varlock binary at $AGENT_VARLOCK"
+  else
+    sudo -u baudbot_agent bash -c "mkdir -p '$BAUDBOT_HOME/.varlock/bin' && ln -sfn '$AGENT_VARLOCK_CONFIG_BIN' '$AGENT_VARLOCK'"
+  fi
 fi
 
 echo "=== Publishing initial git-free /opt release ==="
