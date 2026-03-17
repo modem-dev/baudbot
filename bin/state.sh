@@ -223,6 +223,20 @@ restore_secure_permissions() {
   local env_file="$BAUDBOT_AGENT_HOME/.config/.env"
   local auth_file="$BAUDBOT_AGENT_HOME/.pi/agent/auth.json"
   local settings_file="$BAUDBOT_AGENT_HOME/.pi/agent/settings.json"
+  local secure_dir=""
+  local secure_dirs=(
+    "$BAUDBOT_AGENT_HOME/.pi"
+    "$BAUDBOT_AGENT_HOME/.pi/agent"
+    "$BAUDBOT_AGENT_HOME/.pi/agent/memory"
+    "$BAUDBOT_AGENT_HOME/.pi/agent/subagents"
+    "$BAUDBOT_AGENT_HOME/.pi/todos"
+  )
+
+  for secure_dir in "${secure_dirs[@]}"; do
+    if [ -d "$secure_dir" ]; then
+      chmod 700 "$secure_dir"
+    fi
+  done
 
   if [ -f "$env_file" ]; then
     chmod 600 "$env_file"

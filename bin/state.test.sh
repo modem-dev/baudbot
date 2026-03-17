@@ -83,6 +83,9 @@ test_round_trip_excludes_secrets() {
     grep -q "todo-item" "$target_home/.pi/todos/TODO-demo.md"
     grep -q "theme" "$target_home/.pi/agent/settings.json"
     grep -q "export default" "$target_home/.pi/agent/extensions/custom-ext/index.ts"
+    [ "$(stat -c '%a' "$target_home/.pi")" = "700" ]
+    [ "$(stat -c '%a' "$target_home/.pi/agent")" = "700" ]
+    [ "$(stat -c '%a' "$target_home/.pi/todos")" = "700" ]
     [ "$(stat -c '%a' "$target_home/.pi/agent/extensions/custom-ext/run.sh")" = "755" ]
     grep -q "custom skill" "$target_home/.pi/agent/skills/custom-skill/SKILL.md"
     grep -q "enabled" "$target_home/.pi/agent/subagents-state.json"
