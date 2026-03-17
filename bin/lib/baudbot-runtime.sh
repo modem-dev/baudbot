@@ -519,7 +519,7 @@ cmd_debug() {
 
   exec sudo -u "$AGENT_USER" bash -lc "
     unset PKG_EXECPATH
-    export PATH='$AGENT_HOME/.varlock/bin:$node_bin_dir':\$PATH
+    export PATH='$AGENT_HOME/.varlock/bin:$AGENT_HOME/.config/varlock/bin:$node_bin_dir':\$PATH
     export VARLOCK_TELEMETRY_DISABLED=1
     cd ~
     varlock run --path ~/.config/ -- pi \

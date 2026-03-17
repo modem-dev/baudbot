@@ -77,10 +77,10 @@ echo "$CLI_TARGET" | grep -qE '^/opt/baudbot/releases/.+/bin/baudbot$'
 baudbot --version
 HELP_OUT=$(baudbot --help)
 echo "$HELP_OUT" | grep -q "baudbot"
-# varlock installed for agent user
-test -x /home/baudbot_agent/.varlock/bin/varlock
+# varlock installed for agent user (supports both legacy and current install paths)
+test -x /home/baudbot_agent/.varlock/bin/varlock || test -x /home/baudbot_agent/.config/varlock/bin/varlock
 # Agent can load env (smoke test — varlock validates schema + .env)
-sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/opt/node/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
+sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$HOME/opt/node/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
 echo "  ✓ bootstrap + install verification passed"
 
 echo "=== Running CLI smoke checks ==="
