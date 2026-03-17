@@ -18,8 +18,8 @@ cd ~
 
 NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
 
-# Set PATH
-export PATH="$HOME/.varlock/bin:$NODE_BIN_DIR:$PATH"
+# Set PATH (varlock may be installed in ~/.varlock/bin or ~/.config/varlock/bin)
+export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$NODE_BIN_DIR:$PATH"
 
 # Work around varlock telemetry config crash by opting out at runtime.
 export VARLOCK_TELEMETRY_DISABLED=1

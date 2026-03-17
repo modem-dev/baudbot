@@ -80,10 +80,12 @@ if [ -n "${BAUDBOT_ROOT:-}" ] && command -v rg &>/dev/null; then
   fi
 fi
 
-if command -v varlock &>/dev/null || [ -x "$BAUDBOT_HOME/.varlock/bin/varlock" ]; then
+if command -v varlock &>/dev/null || [ -x "$BAUDBOT_HOME/.varlock/bin/varlock" ] || [ -x "$BAUDBOT_HOME/.config/varlock/bin/varlock" ]; then
   pass "varlock is installed"
   if [ -f "$BAUDBOT_HOME/.varlock/config.json" ] && grep -q '"anonymousId"' "$BAUDBOT_HOME/.varlock/config.json"; then
     warn "$BAUDBOT_HOME/.varlock/config.json includes anonymousId (export VARLOCK_TELEMETRY_DISABLED=1 or remove this field)"
+  elif [ -f "$BAUDBOT_HOME/.config/varlock/config.json" ] && grep -q '"anonymousId"' "$BAUDBOT_HOME/.config/varlock/config.json"; then
+    warn "$BAUDBOT_HOME/.config/varlock/config.json includes anonymousId (export VARLOCK_TELEMETRY_DISABLED=1 or remove this field)"
   fi
 else
   fail "varlock not found"

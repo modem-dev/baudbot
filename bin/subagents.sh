@@ -283,7 +283,7 @@ spawn_one() {
   sudo -u "$AGENT_USER" mkdir -p "$AGENT_HOME/.pi/agent/logs"
 
   local tmux_cmd
-  tmux_cmd="cd $(shell_quote "$cwd") && export PATH=\"\$HOME/.varlock/bin:\$HOME/opt/node/bin:\$PATH\" && export PI_SESSION_NAME=$(shell_quote "$session_name") && exec varlock run --path \"\$HOME/.config/\" -- pi --session-control --skill $(shell_quote "$skill_path") --model $(shell_quote "$model") > $(shell_quote "$log_path") 2>&1"
+  tmux_cmd="cd $(shell_quote "$cwd") && export PATH=\"\$HOME/.varlock/bin:\$HOME/.config/varlock/bin:\$HOME/opt/node/bin:\$PATH\" && export PI_SESSION_NAME=$(shell_quote "$session_name") && exec varlock run --path \"\$HOME/.config/\" -- pi --session-control --skill $(shell_quote "$skill_path") --model $(shell_quote "$model") > $(shell_quote "$log_path") 2>&1"
   sudo -u "$AGENT_USER" tmux new-session -d -s "$session_name" "$tmux_cmd"
 
   local alias_path="$CONTROL_DIR/$ready_alias.alias"
