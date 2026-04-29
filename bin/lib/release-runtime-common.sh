@@ -59,8 +59,10 @@ bb_verify_deployed_release_sha() {
 
   local version_file="$BAUDBOT_AGENT_HOME/.pi/agent/baudbot-version.json"
   local deployed_sha
+  local deployed_version
 
   deployed_sha="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "sha" 2>/dev/null || true)"
+  deployed_version="$(sudo -u "$BAUDBOT_AGENT_USER" sh -c "cat '$version_file' 2>/dev/null" | json_get_string_stdin "version" 2>/dev/null || true)"
 
   if [ -z "$deployed_sha" ]; then
     die "deployed version file missing or unreadable: $version_file"
@@ -71,6 +73,10 @@ bb_verify_deployed_release_sha() {
   fi
 
   if [ -n "$verified_label" ]; then
-    log "deployed version verified: $verified_label"
+    if [ -n "$deployed_version" ]; then
+      log "deployed version verified: $deployed_version ($verified_label)"
+    else
+      log "deployed version verified: $verified_label"
+    fi
   fi
 }

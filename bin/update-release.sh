@@ -54,6 +54,8 @@ source "$SCRIPT_DIR/lib/release-common.sh"
 source "$SCRIPT_DIR/lib/release-runtime-common.sh"
 # shellcheck source=bin/lib/json-common.sh
 source "$SCRIPT_DIR/lib/json-common.sh"
+# shellcheck source=bin/lib/version-common.sh
+source "$SCRIPT_DIR/lib/version-common.sh"
 
 # ---------------------------------------------------------------------------
 # Resolve the full path to npm.  This script runs as root (sudo) where the
@@ -239,12 +241,16 @@ write_release_metadata() {
   local branch="$3"
   local deployed_by
   local built_at
+  local release_version=""
 
   deployed_by="${SUDO_USER:-$(whoami)}"
   built_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  release_version="$(bb_package_version_or_unknown "$release_dir")"
 
   cat > "$release_dir/baudbot-release.json" <<EOF
 {
+  "version": "$release_version",
+  "tag": "$(bb_release_tag_for_version "$release_version")",
   "sha": "$TARGET_SHA",
   "short": "$TARGET_SHORT",
   "branch": "$branch",

@@ -171,6 +171,7 @@ See [SECURITY.md](SECURITY.md) for full threat model, trust boundaries, and know
 - [docs/linux-runtime.md](docs/linux-runtime.md) — Linux execution model, tools, and constraints
 - [docs/operations.md](docs/operations.md) — day-2 operations (start/stop/update/rollback/audit)
 - [docs/architecture.md](docs/architecture.md) — source/runtime/release architecture
+- [docs/releases.md](docs/releases.md) — semver policy and release automation
 - [CONFIGURATION.md](CONFIGURATION.md) — full env var reference
 - [SECURITY.md](SECURITY.md) — deep security model and vulnerability reporting
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow

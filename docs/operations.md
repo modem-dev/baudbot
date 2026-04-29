@@ -56,6 +56,8 @@ sudo baudbot update
 sudo baudbot rollback previous
 ```
 
+Release versions are driven by `package.json.version`, while production snapshots remain SHA-addressed under `/opt/baudbot/releases/<sha>` for immutability and rollback safety.
+
 Provision with a pinned pi version (optional):
 
 ```bash
