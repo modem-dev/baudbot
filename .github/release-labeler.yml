@@ -1,0 +1,10 @@
+labels:
+  - name: release:minor
+    color: "1d76db"
+    description: "Release should bump minor version"
+  - name: release:patch
+    color: "0e8a16"
+    description: "Release should bump patch version"
+  - name: release:none
+    color: "6e7781"
+    description: "Release should not cut a version"
