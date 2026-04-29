@@ -35,6 +35,18 @@ if [ -f "$RUNTIME_NODE_HELPER" ]; then
   source "$RUNTIME_NODE_HELPER"
 fi
 
+JSON_COMMON_HELPER="$BAUDBOT_ROOT/bin/lib/json-common.sh"
+if [ -f "$JSON_COMMON_HELPER" ]; then
+  # shellcheck source=bin/lib/json-common.sh
+  source "$JSON_COMMON_HELPER"
+fi
+
+VERSION_COMMON_HELPER="$BAUDBOT_ROOT/bin/lib/version-common.sh"
+if [ -f "$VERSION_COMMON_HELPER" ]; then
+  # shellcheck source=bin/lib/version-common.sh
+  source "$VERSION_COMMON_HELPER"
+fi
+
 json_get_string_or_empty() {
   local file="$1"
   local key="$2"
@@ -63,6 +75,11 @@ else
 fi
 
 version() {
+  if [ -n "${VERSION_COMMON_HELPER:-}" ] && [ -f "$VERSION_COMMON_HELPER" ]; then
+    bb_package_version_or_unknown "$BAUDBOT_ROOT"
+    return 0
+  fi
+
   local package_json="$BAUDBOT_ROOT/package.json"
   local pkg_version=""
 

@@ -174,6 +174,8 @@ Broker mode also emits best-effort context usage telemetry in inbox pull `meta` 
 
 ### Release Updater / Rollback (CLI env overrides)
 
+Baudbot release versioning is driven by the root `package.json.version`. Runtime and release metadata record both semver and git SHA, while on-disk release snapshots remain SHA-addressed.
+
 These are **command-time overrides** for `baudbot update` / `baudbot rollback` (or the underlying scripts). They are not required in `~/.config/.env`.
 
 | Variable | Description | Default |

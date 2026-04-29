@@ -7,7 +7,7 @@ Baudbot runs live operations from release snapshots under `/opt/baudbot`, with a
 ```text
 root-managed releases
 ├── /opt/baudbot/
-│   ├── releases/<sha>/            # immutable, git-free snapshots
+│   ├── releases/<sha>/            # immutable, git-free snapshots with semver metadata
 │   ├── current -> releases/<sha>
 │   └── previous -> releases/<sha>
 
@@ -26,10 +26,11 @@ baudbot_agent user
 1. Update is initiated from a target ref/repo.
 2. Deploy/update scripts build a staged snapshot.
 3. Snapshot is published to `/opt/baudbot/releases/<sha>`.
-4. Runtime files are deployed for `baudbot_agent`.
-5. Symlink switch (`current`) is updated atomically on success.
+4. Release metadata records both semver (`package.json.version`) and git SHA provenance.
+5. Runtime files are deployed for `baudbot_agent`.
+6. Symlink switch (`current`) is updated atomically on success.
 
-This allows reproducible releases and fast rollback.
+This allows reproducible releases, semver-based operator visibility, and fast rollback.
 
 ## Agent topology
 

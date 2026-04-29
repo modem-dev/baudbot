@@ -28,6 +28,8 @@ source "$SCRIPT_DIR/lib/json-common.sh"
 source "$SCRIPT_DIR/lib/deploy-common.sh"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/lib/runtime-node.sh"
+# shellcheck source=bin/lib/version-common.sh
+source "$SCRIPT_DIR/lib/version-common.sh"
 bb_enable_strict_mode
 bb_init_paths
 
@@ -422,25 +424,35 @@ if [ "$DRY_RUN" -eq 0 ]; then
   GIT_SHA=""
   GIT_SHA_SHORT=""
   GIT_BRANCH=""
+  RELEASE_VERSION=""
+  RELEASE_TAG=""
 
   if (cd "$BAUDBOT_SRC" && git rev-parse HEAD >/dev/null 2>&1); then
     GIT_SHA=$(cd "$BAUDBOT_SRC" && git rev-parse HEAD 2>/dev/null || echo "unknown")
     GIT_SHA_SHORT=$(cd "$BAUDBOT_SRC" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     GIT_BRANCH=$(cd "$BAUDBOT_SRC" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    RELEASE_VERSION="$(bb_package_version_or_unknown "$BAUDBOT_SRC")"
+    RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
   elif [ -f "$RELEASE_META_FILE" ]; then
     GIT_SHA="$(json_get_string_or_empty "$RELEASE_META_FILE" "sha")"
     GIT_SHA_SHORT="$(json_get_string_or_empty "$RELEASE_META_FILE" "short")"
     GIT_BRANCH="$(json_get_string_or_empty "$RELEASE_META_FILE" "branch")"
+    RELEASE_VERSION="$(json_get_string_or_empty "$RELEASE_META_FILE" "version")"
+    RELEASE_TAG="$(json_get_string_or_empty "$RELEASE_META_FILE" "tag")"
   fi
 
   [ -n "$GIT_SHA" ] || GIT_SHA="unknown"
   [ -n "$GIT_SHA_SHORT" ] || GIT_SHA_SHORT="unknown"
   [ -n "$GIT_BRANCH" ] || GIT_BRANCH="unknown"
+  [ -n "$RELEASE_VERSION" ] || RELEASE_VERSION="unknown"
+  [ -n "$RELEASE_TAG" ] || RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
   DEPLOY_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   # Write version file via agent
   as_agent bash -c "cat > '$VERSION_FILE'" <<VEOF
 {
+  "version": "$RELEASE_VERSION",
+  "tag": "$RELEASE_TAG",
   "sha": "$GIT_SHA",
   "short": "$GIT_SHA_SHORT",
   "branch": "$GIT_BRANCH",
@@ -449,7 +461,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
 }
 VEOF
   as_agent chmod 644 "$VERSION_FILE"
-  log "✓ baudbot-version.json ($GIT_SHA_SHORT @ $GIT_BRANCH)"
+  log "✓ baudbot-version.json ($RELEASE_VERSION, $GIT_SHA_SHORT @ $GIT_BRANCH)"
 
   # Generate sha256 manifest of all deployed files (excluding node_modules)
   # Agent reads its own files to compute hashes
