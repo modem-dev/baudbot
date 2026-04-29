@@ -52,9 +52,10 @@ s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 try:
     s.settimeout(2)
     s.connect(sys.argv[1])
-    s.close()
 except Exception:
     sys.exit(1)
+finally:
+    s.close()
 " "$sock" 2>/dev/null
 }
 
