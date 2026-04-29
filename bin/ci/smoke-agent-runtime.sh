@@ -44,6 +44,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+socket_is_connectable() {
+  local sock="$1"
+  sudo -u "$AGENT_USER" python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    s.settimeout(2)
+    s.connect(sys.argv[1])
+    s.close()
+except Exception:
+    sys.exit(1)
+" "$sock" 2>/dev/null
+}
+
 wait_for_control_socket() {
   local deadline=$((SECONDS + START_TIMEOUT_SECONDS))
   local target=""
@@ -55,7 +69,7 @@ wait_for_control_socket() {
         if [[ "$target" != /* ]]; then
           target="${CONTROL_DIR}/${target}"
         fi
-        if [[ -S "$target" ]]; then
+        if [[ -S "$target" ]] && socket_is_connectable "$target"; then
           printf '%s\n' "$target"
           return 0
         fi
