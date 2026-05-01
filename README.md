@@ -85,7 +85,7 @@ sudo baudbot update
 Connect/talk to the control agent:
 
 ```
-sudo baudbot attach
+sudo baudbot debug
 ```
 
 Install with a specific pi version (optional):
