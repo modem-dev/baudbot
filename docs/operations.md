@@ -62,6 +62,29 @@ Provision with a pinned pi version (optional):
 BAUDBOT_PI_VERSION=0.52.12 baudbot install
 ```
 
+## State backup / restore (droplet migration)
+
+Use state archives to move persistent runtime data (memory, todos, local customizations) between droplets.
+
+```bash
+# On old droplet
+sudo baudbot state backup /tmp/baudbot-state.zip
+
+# Copy archive off-host (example)
+scp root@old-droplet:/tmp/baudbot-state.zip .
+scp ./baudbot-state.zip root@new-droplet:/tmp/
+
+# On new droplet (after install + deploy)
+sudo baudbot stop
+sudo baudbot state restore /tmp/baudbot-state.zip
+sudo baudbot start
+```
+
+Notes:
+- Archives intentionally exclude secrets (`~/.config/.env`, `~/.pi/agent/auth.json`).
+- Restore refuses to run while the service is active.
+- Reconfigure secrets on the new host via `sudo baudbot config` / `sudo baudbot env` / `sudo baudbot login`.
+
 ## Updating API keys after install
 
 ```bash

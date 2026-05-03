@@ -71,4 +71,7 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/subagents.test.sh")).not.toThrow();
   });
 
+  it("state backup/restore", () => {
+    expect(() => runScript("bin/state.test.sh")).not.toThrow();
+  });
 });
