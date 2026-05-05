@@ -15,13 +15,15 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.1",
-    "@mariozechner/pi-coding-agent": "^0.52.12",
+    "@mariozechner/pi-coding-agent": "^0.73.0",
     "@onkernel/sdk": "^0.33.0",
     "@sinclair/typebox": "^0.34.48",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.5",
     "agentmail": "^0.2.15",
+    "file-type": "^21.3.4",
     "libsodium-wrappers-sumo": "^0.8.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.5",
+    "yaml": "^2.8.4"
   }
 }
