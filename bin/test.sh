@@ -85,6 +85,7 @@ run_shell_tests() {
   run "doctor lib helpers"  bash bin/lib/doctor-common.test.sh
   run "update release flow" bash bin/update-release.test.sh
   run "rollback release"    bash bin/rollback-release.test.sh
+  run "version common"      bash bin/lib/version-common.test.sh
   echo ""
 }
 

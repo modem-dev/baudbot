@@ -13,6 +13,8 @@ has_systemd() {
 print_deployed_version() {
   local agent_user="${BAUDBOT_AGENT_USER:-baudbot_agent}"
   local version_file="/home/$agent_user/.pi/agent/baudbot-version.json"
+  local version=""
+  local tag=""
   local short=""
   local sha=""
   local branch=""
@@ -20,6 +22,8 @@ print_deployed_version() {
   local line=""
 
   if [ -r "$version_file" ]; then
+    version="$(json_get_string_or_empty "$version_file" "version")"
+    tag="$(json_get_string_or_empty "$version_file" "tag")"
     short="$(json_get_string_or_empty "$version_file" "short")"
     sha="$(json_get_string_or_empty "$version_file" "sha")"
     branch="$(json_get_string_or_empty "$version_file" "branch")"
@@ -28,6 +32,8 @@ print_deployed_version() {
     local version_json=""
     version_json="$(sudo -u "$agent_user" sh -c "cat '$version_file' 2>/dev/null" || true)"
     if [ -n "$version_json" ]; then
+      version="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "version" 2>/dev/null || true)"
+      tag="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "tag" 2>/dev/null || true)"
       short="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "short" 2>/dev/null || true)"
       sha="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "sha" 2>/dev/null || true)"
       branch="$(printf '%s' "$version_json" | json_get_string_stdin_or_empty "branch" 2>/dev/null || true)"
@@ -35,14 +41,14 @@ print_deployed_version() {
     fi
   fi
 
-  if [ -z "$short" ] && [ -z "$sha" ] && [ -z "$branch" ] && [ -z "$deployed_at" ]; then
+  if [ -z "$version" ] && [ -z "$short" ] && [ -z "$sha" ] && [ -z "$branch" ] && [ -z "$deployed_at" ]; then
     local release_target=""
     local release_sha=""
 
     release_target="$(readlink -f /opt/baudbot/current 2>/dev/null || true)"
     if printf '%s\n' "$release_target" | grep -Eq '/releases/[0-9a-f]{7,40}$'; then
       release_sha="${release_target##*/}"
-      echo -e "${BOLD}deployed version:${RESET} ${release_sha:0:7} sha: $release_sha (from /opt/baudbot/current)"
+      echo -e "${BOLD}deployed version:${RESET} unknown (${release_sha:0:7}) sha: $release_sha (from /opt/baudbot/current)"
     else
       echo -e "${BOLD}deployed version:${RESET} unavailable"
     fi
@@ -53,8 +59,10 @@ print_deployed_version() {
     short="${sha:0:7}"
   fi
 
-  line="${short:-unknown}"
-  [ -n "$branch" ] && line="$line (branch: $branch)"
+  line="${version:-unknown}"
+  [ -n "$short" ] && line="$line ($short)"
+  [ -n "$tag" ] && line="$line tag: $tag"
+  [ -n "$branch" ] && line="$line branch: $branch"
   [ -n "$deployed_at" ] && line="$line deployed: $deployed_at"
   [ -n "$sha" ] && line="$line sha: $sha"
 
