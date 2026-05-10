@@ -206,7 +206,7 @@ jobs:
           gh release create "$TAG" --title "$TAG" --notes-file "$NOTES"
 
       - name: Release summary
-        if: steps.bump.outputs.tag != ''
+        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         run: |
           echo "## Release created" >> "$GITHUB_STEP_SUMMARY"
           echo "Tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
