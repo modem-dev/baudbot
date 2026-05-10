@@ -12,7 +12,7 @@ Baudbot uses semantic versioning with the root `package.json` as the canonical p
 
 - **patch**: bug fixes, operational fixes, internal maintenance that changes shipped behavior in a backward-compatible way
 - **minor**: new user-facing features, new capabilities, or notable backward-compatible behavior expansion
-- **major**: reserved for intentional breaking changes and handled manually
+- **major**: intentional breaking changes
 
 ## Release model
 
@@ -37,18 +37,26 @@ Each release snapshot includes `baudbot-release.json` with:
 
 The deployed runtime mirrors this in `~/.pi/agent/baudbot-version.json`.
 
-## Automation
+## Manual release workflow
 
-The `release-on-main` workflow:
-- inspects merged PRs since the last release tag
-- decides `none`, `patch`, or `minor`
-- bumps `package.json.version`
-- updates `package-lock.json`
-- creates a release commit
-- creates tag `vX.Y.Z`
-- publishes a GitHub Release
+Normal PR merges do **not** automatically publish a new version. To cut a release, run the **Release on main** GitHub Actions workflow manually.
 
-Major version bumps are manual-only.
+Inputs:
+
+- `bump`: `patch`, `minor`, or `major` — used when `exact_version` is empty
+- `exact_version`: optional `X.Y.Z` or `vX.Y.Z` override
+- `dry_run`: preview mode; when true, no commit, tag, or GitHub Release is created
+
+When publishing, the workflow:
+
+1. checks out `main`
+2. computes the target version from `bump` or `exact_version`
+3. updates `package.json` and `package-lock.json` when needed
+4. commits `release: vX.Y.Z [skip release]` when the package version changed
+5. tags `vX.Y.Z`
+6. publishes a GitHub Release with merged PR notes since the previous tag
+
+This keeps version timing human-controlled while still making the release mechanics repeatable.
 
 ## Operational visibility
 

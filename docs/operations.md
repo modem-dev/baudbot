@@ -56,7 +56,7 @@ sudo baudbot update
 sudo baudbot rollback previous
 ```
 
-Release versions are driven by `package.json.version`, while production snapshots remain SHA-addressed under `/opt/baudbot/releases/<sha>` for immutability and rollback safety.
+Release versions are driven by `package.json.version`, while production snapshots remain SHA-addressed under `/opt/baudbot/releases/<sha>` for immutability and rollback safety. Normal PR merges do not cut versions automatically; run the **Release on main** GitHub Actions workflow when you want to publish a semver tag/release.
 
 Provision with a pinned pi version (optional):
 

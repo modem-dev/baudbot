@@ -1,9 +1,26 @@
 name: Release on main
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump to apply when exact_version is empty"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      exact_version:
+        description: "Optional exact version (X.Y.Z or vX.Y.Z); overrides bump"
+        required: false
+        type: string
+      dry_run:
+        description: "Preview without committing, tagging, or publishing"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -11,18 +28,16 @@ permissions:
 
 concurrency:
   group: release-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
-    env:
-      RELEASE_DRY_RUN: ${{ vars.RELEASE_DRY_RUN || 'true' }}
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Setup Node
@@ -32,8 +47,10 @@ jobs:
 
       - name: Resolve dry-run mode
         id: dryrun
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          case "${RELEASE_DRY_RUN,,}" in
+          case "${DRY_RUN,,}" in
             1|true|yes|on) echo "enabled=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "enabled=false" >> "$GITHUB_OUTPUT" ;;
           esac
@@ -62,7 +79,7 @@ jobs:
           REPO="${OWNER_REPO#*/}"
 
           if [ "$LAST_TAG" = "v0.0.0" ]; then
-            # No prior release — look back 30 days instead of all time
+            # No prior release — look back 30 days instead of all time.
             START_DATE=$(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%SZ')
           else
             START_DATE=$(git log -1 --format=%cI "$LAST_TAG")
@@ -79,104 +96,127 @@ jobs:
           COUNT=$(jq 'length' /tmp/merged_prs.json)
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
-          if [ "$COUNT" -eq 0 ]; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo '[]' > /tmp/pr_context.json
-            exit 0
-          fi
-
           jq '[.[] | {number, title, body: (.body // "" | .[:200]), labels: [.labels[].name], user: .user.login, merged_at, html_url}]' /tmp/merged_prs.json > /tmp/pr_context.json
 
-          echo "has_changes=true" >> "$GITHUB_OUTPUT"
-
-      - name: Decide release bump from PR labels
-        id: decide
-        if: steps.prs.outputs.has_changes == 'true'
-        run: |
-          set -euo pipefail
-
-          DECISION=$(jq -r '
-            if any(.[]; (.labels // []) | index("release:minor")) then "minor"
-            elif any(.[]; (.labels // []) | index("release:patch")) then "patch"
-            elif all(.[]; ((.labels // []) | index("release:none"))) then "none"
-            else "patch"
-            end
-          ' /tmp/pr_context.json)
-
-          REASON=$(jq -r --arg decision "$DECISION" '
-            if $decision == "minor" then
-              "At least one merged PR requested a minor release via label."
-            elif $decision == "patch" then
-              "No minor label found; defaulting to patch for shipped changes."
-            else
-              "All merged PRs were explicitly marked release:none."
-            end
-          ' /tmp/pr_context.json)
-
-          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
-          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
-
-      - name: No-op summary
-        if: steps.prs.outputs.has_changes != 'true' || steps.decide.outputs.decision == 'none'
-        run: |
-          echo "## Release decision" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.prs.outputs.has_changes }}" != "true" ]; then
-            echo "No merged PRs since last tag; skipping release." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Decision: none" >> "$GITHUB_STEP_SUMMARY"
-            echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Bump version
-        id: bump
-        if: steps.decide.outputs.decision == 'patch' || steps.decide.outputs.decision == 'minor'
+      - name: Determine target version
+        id: version
         env:
-          BUMP: ${{ steps.decide.outputs.decision }}
+          CURRENT: ${{ steps.last_tag.outputs.current_version }}
+          BUMP: ${{ inputs.bump }}
+          EXACT_VERSION: ${{ inputs.exact_version }}
         run: |
           set -euo pipefail
-          CURRENT="${{ steps.last_tag.outputs.current_version }}"
-          NEXT=$(node -e "const v=process.argv[1].split('.').map(Number); if(process.argv[2]==='minor'){v[1]++; v[2]=0;} else {v[2]++;} process.stdout.write(v.join('.'))" -- "${CURRENT}" "${BUMP}")
-          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version=process.argv[1]; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n');" -- "${NEXT}"
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const current = process.env.CURRENT;
+          const bump = process.env.BUMP;
+          const exactInput = (process.env.EXACT_VERSION || "").trim();
+          const semverPattern = /^\d+\.\d+\.\d+$/;
+
+          function parseVersion(value, label) {
+            const normalized = value.replace(/^v/, "");
+            if (!semverPattern.test(normalized)) {
+              throw new Error(`${label} must be a stable semver like 1.2.3 or v1.2.3`);
+            }
+            return normalized.split(".").map(Number);
+          }
+
+          function compareVersions(a, b) {
+            for (let i = 0; i < 3; i += 1) {
+              if (a[i] !== b[i]) return a[i] - b[i];
+            }
+            return 0;
+          }
+
+          const currentParts = parseVersion(current, "package.json version");
+          let nextParts;
+          let decision;
+          let reason;
+
+          if (exactInput) {
+            nextParts = parseVersion(exactInput, "exact_version");
+            if (compareVersions(nextParts, currentParts) < 0) {
+              throw new Error(`exact_version ${nextParts.join(".")} is lower than current ${current}`);
+            }
+            decision = "exact";
+            reason = `Manual release requested exact version v${nextParts.join(".")}.`;
+          } else {
+            nextParts = [...currentParts];
+            if (bump === "major") {
+              nextParts[0] += 1;
+              nextParts[1] = 0;
+              nextParts[2] = 0;
+            } else if (bump === "minor") {
+              nextParts[1] += 1;
+              nextParts[2] = 0;
+            } else if (bump === "patch") {
+              nextParts[2] += 1;
+            } else {
+              throw new Error(`unsupported bump: ${bump}`);
+            }
+            decision = bump;
+            reason = `Manual release requested ${bump} bump.`;
+          }
+
+          const next = nextParts.join(".");
+          console.log(`current=${current}`);
+          console.log(`next=${next}`);
+          console.log(`tag=v${next}`);
+          console.log(`decision=${decision}`);
+          console.log(`reason=${reason}`);
+          console.log(`changed=${next === current ? "false" : "true"}`);
+          NODE
+
+      - name: Update package version
+        if: steps.version.outputs.changed == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version=process.argv[1]; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');" -- "$NEXT"
           if [ -f package-lock.json ]; then
             npm install --package-lock-only --ignore-scripts
           fi
-          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
-          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "tag=v${NEXT}" >> "$GITHUB_OUTPUT"
 
       - name: Check tag does not already exist
         id: tag_check
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
+        if: steps.version.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         env:
-          TAG: ${{ steps.bump.outputs.tag }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists: $TAG. Skipping to keep idempotent."
+            echo "Tag already exists: $TAG. Skipping tag creation to keep idempotent."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and tag
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true' && steps.tag_check.outputs.exists != 'true'
+      - name: Commit package version
+        if: steps.version.outputs.changed == 'true' && steps.dryrun.outputs.enabled != 'true' && steps.tag_check.outputs.exists != 'true'
         env:
-          TAG: ${{ steps.bump.outputs.tag }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json || true
           git commit -m "release: ${TAG} [skip release]"
+
+      - name: Tag and push
+        if: steps.version.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true' && steps.tag_check.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
           git tag "$TAG"
           git push --atomic origin main "$TAG"
 
       - name: Build changelog markdown
         id: changelog
-        if: steps.bump.outputs.tag != ''
+        if: steps.version.outputs.tag != ''
         env:
-          TAG: ${{ steps.bump.outputs.tag }}
-          DECISION: ${{ steps.decide.outputs.decision }}
-          REASON: ${{ steps.decide.outputs.reason }}
+          TAG: ${{ steps.version.outputs.tag }}
+          DECISION: ${{ steps.version.outputs.decision }}
+          REASON: ${{ steps.version.outputs.reason }}
         run: |
           set -euo pipefail
           {
@@ -186,16 +226,20 @@ jobs:
             echo
             echo "Reason: ${REASON}"
             echo
-            echo "### Merged PRs"
-            jq -r '.[] | "- #\(.number) \(.title) (@\(.user)) — \(.html_url)"' /tmp/pr_context.json
+            echo "### Merged PRs since previous tag"
+            if [ "$(jq 'length' /tmp/pr_context.json)" -eq 0 ]; then
+              echo "No merged PRs found since the previous release tag."
+            else
+              jq -r '.[] | "- #\(.number) \(.title) (@\(.user)) — \(.html_url)"' /tmp/pr_context.json
+            fi
           } > /tmp/release-notes.md
           echo "notes_path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
+        if: steps.version.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.bump.outputs.tag }}
+          TAG: ${{ steps.version.outputs.tag }}
           NOTES: ${{ steps.changelog.outputs.notes_path }}
         run: |
           set -euo pipefail
@@ -206,19 +250,18 @@ jobs:
           gh release create "$TAG" --title "$TAG" --notes-file "$NOTES"
 
       - name: Release summary
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
+        if: steps.version.outputs.tag != '' && steps.dryrun.outputs.enabled != 'true'
         run: |
           echo "## Release created" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: ${{ steps.version.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Decision: ${{ steps.version.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ steps.version.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run release summary
-        if: steps.bump.outputs.tag != '' && steps.dryrun.outputs.enabled == 'true'
+        if: steps.version.outputs.tag != '' && steps.dryrun.outputs.enabled == 'true'
         run: |
           echo "## Dry run: no release published" >> "$GITHUB_STEP_SUMMARY"
-          echo "Decision: ${{ steps.decide.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Reason: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Current version: ${{ steps.bump.outputs.current }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Would publish tag: ${{ steps.bump.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-
+          echo "Decision: ${{ steps.version.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ steps.version.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Current version: ${{ steps.version.outputs.current }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Would publish tag: ${{ steps.version.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
