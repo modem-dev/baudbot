@@ -65,10 +65,31 @@ JS_TEST_NAMES=(
   "broker register"
 )
 
+JS_TEST_RUNNERS=(
+  "node"
+  "vitest"
+  "vitest"
+  "node"
+  "node"
+  "node"
+  "node"
+)
+
 run_js_tests() {
   echo "JS/TS:"
   for i in "${!JS_TEST_FILES[@]}"; do
-    run "${JS_TEST_NAMES[$i]}" node --test "${JS_TEST_FILES[$i]}"
+    case "${JS_TEST_RUNNERS[$i]}" in
+      node)
+        run "${JS_TEST_NAMES[$i]}" node --test "${JS_TEST_FILES[$i]}"
+        ;;
+      vitest)
+        run "${JS_TEST_NAMES[$i]}" npx vitest run --config vitest.config.mjs "${JS_TEST_FILES[$i]}"
+        ;;
+      *)
+        echo "Unknown JS test runner: ${JS_TEST_RUNNERS[$i]}" >&2
+        FAILED=$((FAILED + 1))
+        ;;
+    esac
   done
   echo ""
 }
