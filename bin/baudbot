@@ -80,6 +80,8 @@ version() {
     return 0
   fi
 
+  # Fallback for partially copied/degraded installations where the shared
+  # version helper is missing but package.json is still present.
   local package_json="$BAUDBOT_ROOT/package.json"
   local pkg_version=""
 

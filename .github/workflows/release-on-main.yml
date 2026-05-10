@@ -87,9 +87,6 @@ jobs:
 
           jq '[.[] | {number, title, body: (.body // "" | .[:200]), labels: [.labels[].name], user: .user.login, merged_at, html_url}]' /tmp/merged_prs.json > /tmp/pr_context.json
 
-          # Cap at 50 most recent PRs for the Claude prompt to keep payload reasonable
-          jq '[ sort_by(.merged_at) | reverse | .[:50] | reverse | .[] ]' /tmp/pr_context.json > /tmp/pr_context_capped.json
-
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
       - name: Decide release bump from PR labels

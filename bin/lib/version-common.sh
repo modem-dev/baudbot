@@ -1,5 +1,6 @@
 #!/bin/bash
 # Shared version helpers for Baudbot shell scripts.
+# Prerequisite: callers must source bin/lib/json-common.sh before this file.
 
 bb_package_json_path() {
   local root="${1:?repo root required}"
@@ -17,6 +18,10 @@ bb_package_version() {
 
   package_json="$(bb_package_json_path "$root")"
   [ -r "$package_json" ] || return 1
+  if ! command -v json_get_string >/dev/null 2>&1; then
+    echo "json_get_string unavailable; source bin/lib/json-common.sh before version-common.sh" >&2
+    return 1
+  fi
 
   json_get_string "$package_json" "version"
 }

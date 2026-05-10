@@ -432,7 +432,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
     GIT_SHA_SHORT=$(cd "$BAUDBOT_SRC" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     GIT_BRANCH=$(cd "$BAUDBOT_SRC" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     RELEASE_VERSION="$(bb_package_version_or_unknown "$BAUDBOT_SRC")"
-    RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
+    if [ "$RELEASE_VERSION" != "unknown" ]; then
+      RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
+    fi
   elif [ -f "$RELEASE_META_FILE" ]; then
     GIT_SHA="$(json_get_string_or_empty "$RELEASE_META_FILE" "sha")"
     GIT_SHA_SHORT="$(json_get_string_or_empty "$RELEASE_META_FILE" "short")"
@@ -445,7 +447,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
   [ -n "$GIT_SHA_SHORT" ] || GIT_SHA_SHORT="unknown"
   [ -n "$GIT_BRANCH" ] || GIT_BRANCH="unknown"
   [ -n "$RELEASE_VERSION" ] || RELEASE_VERSION="unknown"
-  [ -n "$RELEASE_TAG" ] || RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
+  if [ -z "$RELEASE_TAG" ] && [ "$RELEASE_VERSION" != "unknown" ]; then
+    RELEASE_TAG="$(bb_release_tag_for_version "$RELEASE_VERSION")"
+  fi
   DEPLOY_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   # Write version file via agent
