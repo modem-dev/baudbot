@@ -10,7 +10,7 @@
 
 **Always-on, multiplayer dev-assistant for eng teams - write code, act on alerts, and more**
 
-💬 _Join us on the Modem Discord: https://discord.gg/MKkTFvQ4_
+💬 _Join us on the Modem Discord: https://discord.gg/WZFjaP6Gt8_
 
 ---
 
