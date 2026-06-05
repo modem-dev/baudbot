@@ -198,10 +198,18 @@ npm run lint && npm run typecheck
 npm run lint:shell
 ```
 
+## Sponsor
+
+Sponsored by [Modem](https://modem.dev?utm_source=github&utm_medium=oss&utm_campaign=oss_baudbot&utm_content=readme_footer).
+
+<a href="https://modem.dev?utm_source=github&utm_medium=oss&utm_campaign=oss_baudbot&utm_content=readme_footer">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://modem.dev/images/logo/svg/modem-combined-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://modem.dev/images/logo/svg/modem-combined-black.svg">
+    <img src="https://modem.dev/images/logo/svg/modem-combined-black.svg" alt="Modem" width="220">
+  </picture>
+</a>
+
 ## License
 
 MIT
-
-## About
-
-Brought to you by the team at Modem, your dev team's auto-triage product manager.
