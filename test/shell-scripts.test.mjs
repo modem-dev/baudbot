@@ -59,6 +59,10 @@ describe("shell script test suites", () => {
     expect(() => runScript("bin/lib/doctor-common.test.sh")).not.toThrow();
   });
 
+  it("varlock helpers", () => {
+    expect(() => runScript("bin/lib/varlock-common.test.sh")).not.toThrow();
+  });
+
   it("baudbot cli", () => {
     expect(() => runScript("bin/baudbot.test.sh")).not.toThrow();
   });
