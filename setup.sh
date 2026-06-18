@@ -65,6 +65,8 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$REPO_DIR/bin/lib/runtime-node.sh"
 NODE_VERSION="$(bb_runtime_node_version)"
 PI_VERSION="${BAUDBOT_PI_VERSION:-0.52.12}"
+# shellcheck source=bin/lib/varlock-common.sh
+source "$REPO_DIR/bin/lib/varlock-common.sh"
 NODE_VERSIONED_DIR="$BAUDBOT_HOME/opt/node-v$NODE_VERSION-linux-x64"
 NODE_BIN_DIR="$(bb_runtime_node_bin_dir "$BAUDBOT_HOME")"
 
@@ -248,27 +250,11 @@ done < <(find "$REPO_DIR/pi/extensions" -name package.json -not -path '*/node_mo
 echo "=== Installing Gateway bridge dependencies ==="
 (cd "$REPO_DIR/gateway-bridge" && npm install)
 
-echo "=== Installing varlock ==="
-# varlock must be available to the agent user (start.sh adds ~/.varlock/bin to PATH).
-# Install as agent user so it lands in the right home directory.
-AGENT_VARLOCK="$BAUDBOT_HOME/.varlock/bin/varlock"
-AGENT_VARLOCK_CONFIG_BIN="$BAUDBOT_HOME/.config/varlock/bin/varlock"
-if [ -x "$AGENT_VARLOCK" ] || [ -x "$AGENT_VARLOCK_CONFIG_BIN" ]; then
-  echo "varlock already installed for baudbot_agent, skipping"
-else
-  sudo -u baudbot_agent bash -c 'curl -sSfL https://varlock.dev/install.sh | sh -s'
-fi
-
-# Newer varlock installers place the binary under ~/.config/varlock/bin.
-# Keep a compatibility link at ~/.varlock/bin/varlock for existing runtime scripts.
-# If a real legacy binary already exists, preserve it (do not replace with symlink).
-if [ -x "$AGENT_VARLOCK_CONFIG_BIN" ]; then
-  if [ -x "$AGENT_VARLOCK" ] && [ ! -L "$AGENT_VARLOCK" ]; then
-    echo "Keeping existing legacy varlock binary at $AGENT_VARLOCK"
-  else
-    sudo -u baudbot_agent bash -c "mkdir -p '$BAUDBOT_HOME/.varlock/bin' && ln -sfn '$AGENT_VARLOCK_CONFIG_BIN' '$AGENT_VARLOCK'"
-  fi
-fi
+echo "=== Installing varlock $(bb_varlock_pinned_version) ==="
+# varlock must be available to the agent user (start.sh adds ~/.varlock/bin to
+# PATH). Reconcile to the pinned version, persist the telemetry opt-out, and
+# maintain the legacy symlink — see bin/lib/varlock-common.sh.
+bb_reconcile_varlock baudbot_agent "$BAUDBOT_HOME"
 
 echo "=== Publishing initial git-free /opt release ==="
 # Build an immutable release snapshot from the local source checkout, then deploy

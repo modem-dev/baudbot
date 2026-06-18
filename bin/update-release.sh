@@ -56,6 +56,8 @@ source "$SCRIPT_DIR/lib/release-runtime-common.sh"
 source "$SCRIPT_DIR/lib/json-common.sh"
 # shellcheck source=bin/lib/version-common.sh
 source "$SCRIPT_DIR/lib/version-common.sh"
+# shellcheck source=bin/lib/varlock-common.sh
+source "$SCRIPT_DIR/lib/varlock-common.sh"
 
 # ---------------------------------------------------------------------------
 # Resolve the full path to npm.  This script runs as root (sudo) where the
@@ -424,6 +426,14 @@ log "target: $TARGET_SHORT"
 run_preflight "$CHECKOUT_DIR"
 publish_release "$CHECKOUT_DIR" "$REPO_URL" "$TARGET_BRANCH"
 run_deploy
+
+# Reconcile the agent's varlock binary to the pinned version before restart so
+# the agent comes back up on the expected version. Non-fatal: a varlock hiccup
+# must not abort an otherwise-good release.
+AGENT_USER="${BAUDBOT_AGENT_USER:-baudbot_agent}"
+log "reconciling varlock ($(bb_varlock_pinned_version)) for $AGENT_USER"
+bb_reconcile_varlock "$AGENT_USER" "/home/$AGENT_USER" || log "warning: varlock reconcile failed"
+
 run_restart_and_health
 
 CURRENT_TARGET=""

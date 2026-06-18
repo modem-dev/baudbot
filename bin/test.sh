@@ -107,6 +107,7 @@ run_shell_tests() {
   run "update release flow" bash bin/update-release.test.sh
   run "rollback release"    bash bin/rollback-release.test.sh
   run "version common"      bash bin/lib/version-common.test.sh
+  run "varlock common"      bash bin/lib/varlock-common.test.sh
   echo ""
 }
 
