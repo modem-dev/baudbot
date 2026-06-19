@@ -131,8 +131,12 @@ fi
 
 # --- Launch bridge in a tmux session with supervised restart loop ---
 # The restart loop:
-# - Re-reads .env on every restart (picks up config changes)
-# - Unsets SLACK_BROKER_* and GATEWAY_BROKER_* before sourcing (avoids stale parent env)
+# - Runs the bridge under `varlock run`, which re-resolves config from
+#   ~/.config/.env on every restart (picks up rotated/removed broker config) and
+#   validates it against the schema. Because the control-agent itself is launched
+#   via `varlock run` (see runtime/start.sh), varlock's nested-resolution marker
+#   propagates here, so broker values inherited from the long-lived control-agent
+#   are re-resolved from source rather than honored as stale user overrides.
 # - Tracks consecutive fast failures (<60s runtime) and gives up after 10
 # - Backs off: 5s base + 2s per failure, capped at 60s
 # - Kills port holders before retrying (avoids EADDRINUSE spin)
@@ -171,9 +175,7 @@ tmux new-session -d -s "$BRIDGE_TMUX_SESSION" "\
   while true; do \
     echo \"[\$(date -Is)] bridge: starting $BRIDGE_SCRIPT (attempt \$((consecutive_failures + 1)))\" >> $BRIDGE_LOG_FILE; \
     start_time=\$(date +%s); \
-    for v in \$(env | grep -E '^(SLACK_BROKER_|GATEWAY_BROKER_)' | cut -d= -f1 || true); do unset \$v; done; \
-    set -a; source \$HOME/.config/.env; set +a; \
-    node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
+    varlock run --path \$HOME/.config/ -- node $BRIDGE_SCRIPT >> $BRIDGE_LOG_FILE 2>&1; \
     exit_code=\$?; \
     runtime=\$(( \$(date +%s) - start_time )); \
     echo \"[\$(date -Is)] bridge: exited with code \$exit_code after \${runtime}s\" >> $BRIDGE_LOG_FILE; \

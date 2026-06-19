@@ -13,6 +13,8 @@ source "$SCRIPT_DIR/lib/paths-common.sh"
 source "$SCRIPT_DIR/lib/doctor-common.sh"
 # shellcheck source=bin/lib/runtime-node.sh
 source "$SCRIPT_DIR/lib/runtime-node.sh"
+# shellcheck source=bin/lib/varlock-common.sh
+source "$SCRIPT_DIR/lib/varlock-common.sh"
 bb_enable_strict_mode
 bb_init_paths
 
@@ -82,12 +84,14 @@ fi
 
 if command -v varlock &>/dev/null || [ -x "$BAUDBOT_HOME/.varlock/bin/varlock" ] || [ -x "$BAUDBOT_HOME/.config/varlock/bin/varlock" ]; then
   pass "varlock is installed"
-  if [ -f "$BAUDBOT_HOME/.varlock/config.json" ] && grep -q '"anonymousId"' "$BAUDBOT_HOME/.varlock/config.json"; then
-    warn "$BAUDBOT_HOME/.varlock/config.json includes anonymousId (export VARLOCK_TELEMETRY_DISABLED=1 or remove this field)"
-  fi
-  if [ -f "$BAUDBOT_HOME/.config/varlock/config.json" ] && grep -q '"anonymousId"' "$BAUDBOT_HOME/.config/varlock/config.json"; then
-    warn "$BAUDBOT_HOME/.config/varlock/config.json includes anonymousId (export VARLOCK_TELEMETRY_DISABLED=1 or remove this field)"
-  fi
+  # Warn only if a telemetry config exists that is NOT explicitly disabled.
+  # `varlock telemetry disable` leaves an anonymousId behind but sets
+  # "telemetryDisabled": true, so keying off anonymousId would false-positive.
+  for vl_cfg in "$BAUDBOT_HOME/.varlock/config.json" "$BAUDBOT_HOME/.config/varlock/config.json"; do
+    if [ -f "$vl_cfg" ] && ! bb_varlock_telemetry_disabled "$vl_cfg"; then
+      warn "$vl_cfg has telemetry enabled (run 'varlock telemetry disable' or export VARLOCK_TELEMETRY_DISABLED=1)"
+    fi
+  done
 else
   fail "varlock not found"
 fi

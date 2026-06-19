@@ -98,8 +98,14 @@ HELP_OUT=$(baudbot --help)
 echo "$HELP_OUT" | grep -q "baudbot"
 # varlock installed for agent user (supports both legacy and current install paths)
 test -x /home/baudbot_agent/.varlock/bin/varlock || test -x /home/baudbot_agent/.config/varlock/bin/varlock
+# varlock reconciled to the pinned version (single source: bin/lib/varlock-common.sh)
+# shellcheck source=bin/lib/varlock-common.sh
+source /home/baudbot_admin/baudbot/bin/lib/varlock-common.sh
+EXPECTED_VARLOCK="$(bb_varlock_pinned_version)"
+ACTUAL_VARLOCK="$(sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$PATH" && varlock --version' | head -n1 | tr -d '[:space:]')"
+test "$ACTUAL_VARLOCK" = "$EXPECTED_VARLOCK" || { echo "varlock version mismatch: got '$ACTUAL_VARLOCK', expected '$EXPECTED_VARLOCK'"; exit 1; }
 # Agent can load env (smoke test — varlock validates schema + .env)
-sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$HOME/opt/node/bin:$PATH" && cd ~ && varlock load --path ~/.config/'
+sudo -u baudbot_agent bash -c 'export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$HOME/opt/node/bin:$PATH" && export VARLOCK_TELEMETRY_DISABLED=1 && cd ~ && varlock load --path ~/.config/'
 echo "  ✓ bootstrap + install verification passed"
 
 echo "=== Running CLI smoke checks ==="

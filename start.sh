@@ -21,18 +21,25 @@ NODE_BIN_DIR="$(bb_resolve_runtime_node_bin_dir "$HOME")"
 # Set PATH (varlock may be installed in ~/.varlock/bin or ~/.config/varlock/bin)
 export PATH="$HOME/.varlock/bin:$HOME/.config/varlock/bin:$NODE_BIN_DIR:$PATH"
 
-# Work around varlock telemetry config crash by opting out at runtime.
+# Opt out of varlock telemetry at runtime (belt-and-suspenders: setup also
+# persists this via `varlock telemetry disable`). Inherited by child processes.
 export VARLOCK_TELEMETRY_DISABLED=1
 
-# Validate and load secrets via varlock
-varlock load --path ~/.config/ || {
+# Validate secrets via varlock (fail fast before hardening/cleanup).
+#
+# We intentionally do NOT `source ~/.config/.env` into this shell. The launch
+# chain is rooted at `varlock run` (see the exec at the end of this script):
+# varlock 1.7.x injects a resolution marker (__VARLOCK_RUN / __VARLOCK_ENV) into
+# pi and every descendant `varlock run` (gateway bridge, dev/sentry subagents).
+# With the marker present, descendants re-resolve config from ~/.config/.env on
+# each restart instead of honoring stale values inherited from the long-lived
+# control-agent process. Sourcing .env into this shell would re-introduce
+# exactly those stale overrides, so this shell stays secret-free and varlock run
+# owns resolution end-to-end.
+varlock load --path ~/.config/ >/dev/null || {
   echo "❌ Environment validation failed — check ~/.config/.env against .env.schema"
   exit 1
 }
-set -a
-# shellcheck disable=SC1090
-source ~/.config/.env
-set +a
 
 # Harden file permissions (pi defaults are too permissive)
 umask 077
@@ -45,7 +52,11 @@ umask 077
 ~/runtime/bin/redact-logs.sh 2>/dev/null || true
 
 # Verify deployed runtime integrity against deploy manifest.
-INTEGRITY_MODE="${BAUDBOT_STARTUP_INTEGRITY_MODE:-warn}"
+# Resolve the integrity mode through varlock since we no longer source .env into
+# this shell (the value may be configured in ~/.config/.env). Falls back to the
+# schema default of "warn" if varlock can't resolve it.
+INTEGRITY_MODE="$(varlock run --path ~/.config/ -- sh -c 'printf "%s" "${BAUDBOT_STARTUP_INTEGRITY_MODE:-warn}"' 2>/dev/null || true)"
+INTEGRITY_MODE="${INTEGRITY_MODE:-warn}"
 if [ -x "$HOME/runtime/bin/verify-manifest.sh" ]; then
   if ! BAUDBOT_STARTUP_INTEGRITY_MODE="$INTEGRITY_MODE" "$HOME/runtime/bin/verify-manifest.sh"; then
     echo "❌ Startup integrity verification failed (mode: $INTEGRITY_MODE). Refusing to start."
@@ -110,45 +121,60 @@ fi
 # Set session name (read by auto-name.ts extension)
 export PI_SESSION_NAME="control-agent"
 
-# Pick model: explicit override or auto-detect from API keys (first match wins)
-if [ -n "${BAUDBOT_MODEL:-}" ]; then
-  MODEL="$BAUDBOT_MODEL"
-elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  MODEL="anthropic/claude-opus-4-6"
-elif [ -n "${OPENAI_API_KEY:-}" ]; then
-  MODEL="openai/gpt-5.2-codex"
-elif [ -n "${GEMINI_API_KEY:-}" ]; then
-  MODEL="google/gemini-3-pro-preview"
-elif [ -n "${OPENCODE_ZEN_API_KEY:-}" ]; then
-  MODEL="opencode-zen/claude-opus-4-6"
-elif [ -f "$HOME/.pi/agent/auth.json" ] && command -v jq &>/dev/null; then
-  # OAuth subscription fallback: check auth.json for credentials saved via `baudbot login` or `pi /login`
-  if jq -e '."openai-codex"' "$HOME/.pi/agent/auth.json" &>/dev/null; then
-    MODEL="openai-codex/gpt-5.2-codex"
-  elif jq -e '.anthropic' "$HOME/.pi/agent/auth.json" &>/dev/null; then
-    MODEL="anthropic/claude-opus-4-6"
-  elif jq -e '.google' "$HOME/.pi/agent/auth.json" &>/dev/null; then
-    MODEL="google/gemini-3-pro-preview"
-  elif jq -e '."github-copilot"' "$HOME/.pi/agent/auth.json" &>/dev/null; then
-    MODEL="github-copilot/claude-sonnet-4"
-  else
-    echo "❌ No LLM credentials found in env vars or auth.json"
-    exit 1
-  fi
-else
-  echo "❌ No LLM API key found — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY"
-  echo "   Or use subscription login: sudo baudbot login"
-  exit 1
-fi
-
-# Start control-agent.
-# Save our PID as the process group ID for cleanup on next restart.
-# When systemd launches start.sh (Type=simple), our PID is already the
-# process group leader. `exec pi` replaces this process in-place (same PID,
-# same PGID), so all child processes (bridge, workers) inherit the group.
-# On restart, killing -$PGID terminates the entire tree automatically.
+# Start control-agent under `varlock run` so pi and its entire subtree inherit
+# varlock-resolved config plus the resolution marker (see the note near the top
+# of this script). Model auto-detection reads API keys / auth.json, which only
+# exist inside the varlock context now that we no longer source .env — so the
+# detection runs in the same `bash -c` that ultimately exec's pi.
+#
+# Process-group semantics are preserved: when systemd launches start.sh
+# (Type=simple) our PID ($$) is the process-group leader. `exec varlock run`
+# replaces start.sh in place (same PID, same PGID); varlock runs the inner bash
+# in that same group, and `exec pi` replaces the inner bash. So pi and every
+# child (bridge, workers) stay in PGID $$, and on the next restart killing
+# -$PGID terminates the entire tree automatically. We record $$ before exec'ing.
+#
+# Inside the bash -c body (single-quoted so the inner shell expands the
+# varlock-provided secrets), jq filters use double quotes to avoid nested
+# single-quote escaping.
 #
 # --session-control: enables inter-session communication (handled by control.ts extension)
 echo "Starting control-agent..."
 echo $$ > "$CONTROL_PGID_FILE"
-exec pi --session-control --model "$MODEL" --skill ~/.pi/agent/skills/control-agent "/skill:control-agent"
+exec varlock run --path ~/.config/ -- bash -c '
+  set -euo pipefail
+
+  # Pick model: explicit override or auto-detect from API keys (first match wins)
+  if [ -n "${BAUDBOT_MODEL:-}" ]; then
+    MODEL="$BAUDBOT_MODEL"
+  elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    MODEL="anthropic/claude-opus-4-6"
+  elif [ -n "${OPENAI_API_KEY:-}" ]; then
+    MODEL="openai/gpt-5.2-codex"
+  elif [ -n "${GEMINI_API_KEY:-}" ]; then
+    MODEL="google/gemini-3-pro-preview"
+  elif [ -n "${OPENCODE_ZEN_API_KEY:-}" ]; then
+    MODEL="opencode-zen/claude-opus-4-6"
+  elif [ -f "$HOME/.pi/agent/auth.json" ] && command -v jq >/dev/null 2>&1; then
+    # OAuth subscription fallback: check auth.json for credentials saved via
+    # `baudbot login` or `pi /login`
+    if jq -e ".\"openai-codex\"" "$HOME/.pi/agent/auth.json" >/dev/null 2>&1; then
+      MODEL="openai-codex/gpt-5.2-codex"
+    elif jq -e ".anthropic" "$HOME/.pi/agent/auth.json" >/dev/null 2>&1; then
+      MODEL="anthropic/claude-opus-4-6"
+    elif jq -e ".google" "$HOME/.pi/agent/auth.json" >/dev/null 2>&1; then
+      MODEL="google/gemini-3-pro-preview"
+    elif jq -e ".\"github-copilot\"" "$HOME/.pi/agent/auth.json" >/dev/null 2>&1; then
+      MODEL="github-copilot/claude-sonnet-4"
+    else
+      echo "❌ No LLM credentials found in env vars or auth.json"
+      exit 1
+    fi
+  else
+    echo "❌ No LLM API key found — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENCODE_ZEN_API_KEY"
+    echo "   Or use subscription login: sudo baudbot login"
+    exit 1
+  fi
+
+  exec pi --session-control --model "$MODEL" --skill "$HOME/.pi/agent/skills/control-agent" "/skill:control-agent"
+'
