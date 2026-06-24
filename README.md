@@ -107,6 +107,20 @@ sudo baudbot env set ANTHROPIC_API_KEY
 # or: sudo baudbot env set OPENAI_API_KEY sk-... --restart
 ```
 
+Migrating droplets and want to keep memory/todos/custom runtime state?
+
+```bash
+# old host
+sudo baudbot state backup /tmp/baudbot-state.zip
+
+# new host
+sudo baudbot stop
+sudo baudbot state restore /tmp/baudbot-state.zip
+sudo baudbot start
+```
+
+State archives intentionally exclude secrets (`~/.config/.env`, `~/.pi/agent/auth.json`), so reconfigure secrets on the new host.
+
 See [CONFIGURATION.md](CONFIGURATION.md) for required environment variables and secret setup.
 
 ## The Slack broker (optional)
