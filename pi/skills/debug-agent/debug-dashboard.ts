@@ -807,6 +807,14 @@ export default function dashboardExtension(pi: ExtensionAPI): void {
     },
   });
 
+  // /ready command — signal completion for queued messages
+  pi.registerCommand("ready", {
+    description: "Signal completion to allow queued send_to_session messages to be processed",
+    handler: async (_args, ctx) => {
+      ctx.ui.notify("Ready for next message. Complete your response to process queue.", "info");
+    },
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     savedCtx = ctx;
     await refresh();
