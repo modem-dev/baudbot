@@ -13,16 +13,16 @@ function randomId() {
 }
 
 function createExtensionHarness(execImpl) {
-  let registeredTool = null;
+  const registeredTools = {};
   const pi = {
     registerTool(tool) {
-      registeredTool = tool;
+      registeredTools[tool.name] = tool;
     },
     exec: execImpl,
   };
   agentSpawnExtension(pi);
-  if (!registeredTool) throw new Error("agent_spawn tool was not registered");
-  return registeredTool;
+  if (!registeredTools.agent_spawn) throw new Error("agent_spawn tool was not registered");
+  return registeredTools.agent_spawn;
 }
 
 function startUnixSocketServer(socketPath) {
@@ -241,5 +241,57 @@ describe("agent_spawn extension tool", () => {
     expect(result.details.error).toBe("readiness_aborted");
     expect(result.details.aborted).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
+
+  it("opens circuit breaker after 3 consecutive failures", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "agent-spawn-test-"));
+    tempDirs.push(root);
+    const worktree = path.join(root, "worktree");
+    const skillPath = path.join(root, "dev-skill");
+    const controlDir = path.join(root, "session-control");
+    process.env[CONTROL_DIR_ENV] = controlDir;
+    mkdirSync(worktree, { recursive: true });
+    mkdirSync(skillPath, { recursive: true });
+    mkdirSync(controlDir, { recursive: true });
+
+    // Spawns succeed at tmux level but readiness always times out (1s timeout)
+    const execSpy = vi.fn(async () => ({ stdout: "", stderr: "", code: 0, killed: false }));
+    const tool = createExtensionHarness(execSpy);
+
+    const params = {
+      session_name: `dev-agent-circuit-${randomId()}`,
+      cwd: worktree,
+      skill_path: skillPath,
+      model: "anthropic/claude-opus-4-6",
+      ready_timeout_sec: 1,
+    };
+
+    // Fail 3 times (readiness timeout)
+    for (let i = 0; i < 3; i++) {
+      params.session_name = `dev-agent-circuit-${randomId()}`;
+      const result = await tool.execute("id", params, undefined, undefined, {});
+      expect(result.isError).toBe(true);
+      expect(result.details.error).toBe("readiness_timeout");
+    }
+
+    // 4th attempt should be rejected by circuit breaker
+    params.session_name = `dev-agent-circuit-${randomId()}`;
+    const rejected = await tool.execute("id", params, undefined, undefined, {});
+    expect(rejected.isError).toBe(true);
+    expect(rejected.details.error).toBe("circuit_open");
+    expect(String(rejected.content[0].text)).toContain("Circuit breaker OPEN");
+  });
+
+  it("exposes spawn_status tool", () => {
+    const registeredTools = {};
+    const pi = {
+      registerTool(tool) {
+        registeredTools[tool.name] = tool;
+      },
+      exec: async () => ({ stdout: "", stderr: "", code: 0 }),
+    };
+    agentSpawnExtension(pi);
+    expect(registeredTools.spawn_status).toBeDefined();
+    expect(registeredTools.spawn_status.name).toBe("spawn_status");
   });
 });
